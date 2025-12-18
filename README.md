@@ -1,11 +1,8 @@
-# LuaCsForBarotrauma 
-This is a Barotrauma modification that adds Lua and Cs modding support.
+# LuaCsForBarotrauma Enhanced Performence Project
+This is a LuaCsForBarotrauma modification that adds Multi-Thread and Multi-Core support.
 
-### Online Documentation: https://evilfactory.github.io/LuaCsForBarotrauma
-### VS Code Documentation: https://gitee.com/zhurengong/btlua-docs
-### Discord: https://discord.gg/f9zvNNuxu9
-
-### This project uses a fork of Moonsharp: https://github.com/evilfactory/moonsharp
+### This project uses a fork of Moonsharp from EvilFactory: https://github.com/evilfactory/moonsharp
+### This project WILL heavily modify original LuaCsForBarotrauma/Barotrauma code.
 
 # Barotrauma
 
