@@ -4,6 +4,8 @@ using Microsoft.Xna.Framework;
 using System.Threading;
 using FarseerPhysics.Dynamics;
 using FarseerPhysics;
+using System.Threading.Tasks;
+using System.Linq;
 
 
 #if DEBUG && CLIENT
@@ -69,6 +71,7 @@ namespace Barotrauma
 
             MapEntity.ClearHighlightedEntities();
 
+            Task PhysicsTask = Task.Factory.StartNew(() => ExecutePhysics());
 #if RUN_PHYSICS_IN_SEPARATE_THREAD
             var physicsThread = new Thread(ExecutePhysics)
             {
@@ -138,6 +141,7 @@ namespace Barotrauma
 
             GameTime += deltaTime;
 
+            //Physics Update; wait for changes.
             foreach (PhysicsBody body in PhysicsBody.List)
             {
                 //update character (colliders) regardless if they're enabled or not, so that the draw position is updated
@@ -146,15 +150,20 @@ namespace Barotrauma
                     body.BodyType != BodyType.Static) 
                 { 
                     body.Update(); 
-                }               
+                }
+                if (body.Enabled && body.BodyType != FarseerPhysics.BodyType.Static)
+                {
+                    body.SetPrevTransform(body.SimPosition, body.Rotation);
+                }
             }
+
             MapEntity.ClearHighlightedEntities();
 
 #if CLIENT
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
 #endif
-
+            //This is not changed yet. Will be back for it.
             GameMain.GameSession?.Update((float)deltaTime);
 
 #if CLIENT
@@ -195,8 +204,14 @@ namespace Barotrauma
 
             Character.UpdateAll((float)deltaTime, cam);
 #elif SERVER
-            if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance);
-            Character.UpdateAll((float)deltaTime, Camera.Instance);
+            Task LevelTask = Task.Factory.StartNew(() =>
+            {
+                if (Level.Loaded != null)
+                {
+                    Level.Loaded.Update((float)deltaTime, Camera.Instance);
+                }
+            });
+            Task CharacterTask = Task.Factory.StartNew(() => Character.UpdateAll((float)deltaTime, Camera.Instance));
 #endif
 
 
@@ -206,7 +221,7 @@ namespace Barotrauma
             sw.Restart(); 
 #endif
 
-            StatusEffect.UpdateAll((float)deltaTime);
+            Task SETask = Task.Factory.StartNew(() => StatusEffect.UpdateAll((float)deltaTime));
 
 #if CLIENT
             sw.Stop();
@@ -259,10 +274,12 @@ namespace Barotrauma
                     body.SetPrevTransform(body.SimPosition, body.Rotation); 
                 }
             }
-
 #if CLIENT
             MapEntity.UpdateAll((float)deltaTime, cam);
 #elif SERVER
+            Task.WaitAll(LevelTask, CharacterTask, SETask);
+
+            //This is internally multi-threaded
             MapEntity.UpdateAll((float)deltaTime, Camera.Instance);
 #endif
 
@@ -284,7 +301,7 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Ragdolls", sw.ElapsedTicks);
             sw.Restart(); 
 #endif
-
+            //Sub update. Wait for change
             foreach (Submarine sub in Submarine.Loaded)
             {
                 sub.Update((float)deltaTime);

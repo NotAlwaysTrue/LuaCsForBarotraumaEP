@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 
 namespace Barotrauma
@@ -647,35 +648,40 @@ namespace Barotrauma
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
 #endif
-            if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
+            Task StructuralTask = Task.Factory.StartNew(() =>
             {
-
-                foreach (Hull hull in Hull.HullList)
+                if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
                 {
-                    hull.Update(deltaTime * MapEntityUpdateInterval, cam);
-                }
+                    foreach (Hull hull in Hull.HullList)
+                    {
+                        hull.Update(deltaTime * MapEntityUpdateInterval, cam);
+                    }
 #if CLIENT
-                Hull.UpdateCheats(deltaTime * MapEntityUpdateInterval, cam);
+                    Hull.UpdateCheats(deltaTime * MapEntityUpdateInterval, cam);
 #endif
 
-                foreach (Structure structure in Structure.WallList)
-                {
-                    structure.Update(deltaTime * MapEntityUpdateInterval, cam);
+                    foreach (Structure structure in Structure.WallList)
+                    {
+                        structure.Update(deltaTime * MapEntityUpdateInterval, cam);
+                    }
                 }
-            }
+            });
 
-            foreach (Gap gap in Gap.GapList)
+            Task GapTask = Task.Factory.StartNew(() =>
             {
-                gap.ResetWaterFlowThisFrame();
-            }
-            //update gaps in random order, because otherwise in rooms with multiple gaps
-            //the water/air will always tend to flow through the first gap in the list,
-            //which may lead to weird behavior like water draining down only through
-            //one gap in a room even if there are several
-            foreach (Gap gap in Gap.GapList.OrderBy(g => Rand.Int(int.MaxValue)))
-            {
-                gap.Update(deltaTime, cam);
-            }
+                foreach (Gap gap in Gap.GapList)
+                {
+                    gap.ResetWaterFlowThisFrame();
+                }
+                //update gaps in random order, because otherwise in rooms with multiple gaps
+                //the water/air will always tend to flow through the first gap in the list,
+                //which may lead to weird behavior like water draining down only through
+                //one gap in a room even if there are several
+                foreach (Gap gap in Gap.GapList.OrderBy(g => Rand.Int(int.MaxValue)))
+                {
+                    gap.Update(deltaTime, cam);
+                }
+            });
 
             if (mapEntityUpdateTick % PoweredUpdateInterval == 0)
             {
@@ -687,7 +693,6 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Misc", sw.ElapsedTicks);
             sw.Restart();
 #endif
-
             Item.UpdatePendingConditionUpdates(deltaTime);
             if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
             {
@@ -705,32 +710,38 @@ namespace Barotrauma
                 catch (InvalidOperationException e)
                 {
                     GameAnalyticsManager.AddErrorEventOnce(
-                        "MapEntity.UpdateAll:ItemUpdateInvalidOperation", 
-                        GameAnalyticsManager.ErrorSeverity.Critical, 
+                        "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
+                        GameAnalyticsManager.ErrorSeverity.Critical,
                         $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
                     throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
                 }
             }
 
-            foreach (var item in GameMain.LuaCs.Game.UpdatePriorityItems)
+            Task PItemTask = Task.Factory.StartNew(() =>
             {
-                if (item.Removed) continue;
+                foreach (var item in GameMain.LuaCs.Game.UpdatePriorityItems)
+                {
+                    if (item.Removed) continue;
 
-                item.Update(deltaTime, cam);
-            }
+                    item.Update(deltaTime, cam);
+                }
+            });
 
 #if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Items", sw.ElapsedTicks);
             sw.Restart();
 #endif
-
-            if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
+            Task SpawnerTask = Task.Factory.StartNew(() =>
             {
-                UpdateAllProjSpecific(deltaTime * MapEntityUpdateInterval);
+                if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
+                {
+                    UpdateAllProjSpecific(deltaTime * MapEntityUpdateInterval);
 
-                Spawner?.Update();
-            }
+                    Spawner?.Update();
+                }
+            });
+            Task.WaitAll(SpawnerTask, PItemTask, GapTask, StructuralTask);
         }
 
         static partial void UpdateAllProjSpecific(float deltaTime);

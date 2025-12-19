@@ -13,6 +13,7 @@ using System.Xml.Linq;
 using MoonSharp.Interpreter;
 using System.Net;
 using Barotrauma.Extensions;
+using System.Threading.Tasks;
 
 namespace Barotrauma
 {
@@ -327,11 +328,16 @@ namespace Barotrauma
             }
 
             Stopwatch performanceCounterTimer = Stopwatch.StartNew();
-
             stopwatch = Stopwatch.StartNew();
+
+            PerformenceMonitor PM = new PerformenceMonitor();
+
             long prevTicks = stopwatch.ElapsedTicks;
             while (ShouldRun)
             {
+#if DEBUG
+                Console.WriteLine(PM.ToString());
+#endif
                 long currTicks = stopwatch.ElapsedTicks;
                 double elapsedTime = Math.Max(currTicks - prevTicks, 0) / frequency;
                 Timing.Accumulator += elapsedTime;
@@ -374,6 +380,7 @@ namespace Barotrauma
 
                     Timing.Accumulator -= Timing.Step;
                     updateCount++;
+                    PM.Update();
                 }
 
 #if !DEBUG
@@ -421,6 +428,9 @@ namespace Barotrauma
                     updateCount = 0;
                 }
             }
+
+            PerformenceMonitor.PM.Dispose();
+
             stopwatch.Stop();
 
             CloseServer();
