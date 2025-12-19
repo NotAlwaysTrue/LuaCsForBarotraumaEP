@@ -693,30 +693,6 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Misc", sw.ElapsedTicks);
             sw.Restart();
 #endif
-            Item.UpdatePendingConditionUpdates(deltaTime);
-            if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
-            {
-                Item lastUpdatedItem = null;
-
-                try
-                {
-                    foreach (Item item in Item.ItemList)
-                    {
-                        if (GameMain.LuaCs.Game.UpdatePriorityItems.Contains(item)) { continue; }
-                        lastUpdatedItem = item;
-                        item.Update(deltaTime * MapEntityUpdateInterval, cam);
-                    }
-                }
-                catch (InvalidOperationException e)
-                {
-                    GameAnalyticsManager.AddErrorEventOnce(
-                        "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
-                        GameAnalyticsManager.ErrorSeverity.Critical,
-                        $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
-                    throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
-                }
-            }
-
             Task PItemTask = Task.Factory.StartNew(() =>
             {
                 foreach (var item in GameMain.LuaCs.Game.UpdatePriorityItems)
@@ -727,11 +703,6 @@ namespace Barotrauma
                 }
             });
 
-#if CLIENT
-            sw.Stop();
-            GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Items", sw.ElapsedTicks);
-            sw.Restart();
-#endif
             Task SpawnerTask = Task.Factory.StartNew(() =>
             {
                 if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
@@ -741,7 +712,40 @@ namespace Barotrauma
                     Spawner?.Update();
                 }
             });
+
             Task.WaitAll(SpawnerTask, PItemTask, GapTask, StructuralTask);
+
+            Item.UpdatePendingConditionUpdates(deltaTime);
+            if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
+            {
+                lock(Item.ItemList)
+                {
+                    Item lastUpdatedItem = null;
+
+                    try
+                    {
+                        foreach (Item item in Item.ItemList)
+                        {
+                            if (GameMain.LuaCs.Game.UpdatePriorityItems.Contains(item)) { continue; }
+                            lastUpdatedItem = item;
+                            item.Update(deltaTime * MapEntityUpdateInterval, cam);
+                        }
+                    }
+                    catch (InvalidOperationException e)
+                    {
+                        GameAnalyticsManager.AddErrorEventOnce(
+                            "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
+                            GameAnalyticsManager.ErrorSeverity.Critical,
+                            $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
+                        throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
+                    }
+                }
+            }
+#if CLIENT
+            sw.Stop();
+            GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Items", sw.ElapsedTicks);
+            sw.Restart();
+#endif
         }
 
         static partial void UpdateAllProjSpecific(float deltaTime);

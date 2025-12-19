@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
+
 namespace Barotrauma
 {
     public class PerformenceMonitor
@@ -129,6 +130,9 @@ namespace Barotrauma
                 TickRateLow = 60;
                 TickRateHigh = 60;
                 tickrate60stimer = TotalTimeElapsed;
+#if !DEBUG
+                GameServer.Log(PM.ToString(), ServerLog.MessageType.ServerMessage);
+#endif
             }
             if (RealTickRate > TickRateHigh)
             {
@@ -147,7 +151,12 @@ namespace Barotrauma
         }
         override public string ToString()
         {
-            return $"Item Count: {ItemCount}\n" +
+            return
+#if !DEBUG
+                   $"[{DateTime.Now}]\n" +
+                   $"Server Performence Info \n" +
+#endif
+                   $"Item Count: {ItemCount}\n" +
                    $"Character Count: {CharacterCount}\n" +
                    $"PhysicsBody Count: {PhysicsBodyCount}\n" +
                    $"Tick Rate: {RealTickRate}\n" +
@@ -156,8 +165,8 @@ namespace Barotrauma
                    $"Total Ticks: {TotalTicks}\n" +
                    $"All time Average Tick Rate: {AverageTickRate}\n" +
                    $"10s Average Tick Rate: {AverageTickRate10s}\n" +
-                   $"TotalTimeElapsed: {TotalTimeElapsed}\n" +
-                   $"Memory Usage: {MemoryUsage}";
+                   $"Total Time Elapsed: {TotalTimeElapsed}\n" +
+                   $"Memory Usage: {MemoryUsage}\n";
         }
 
     }
