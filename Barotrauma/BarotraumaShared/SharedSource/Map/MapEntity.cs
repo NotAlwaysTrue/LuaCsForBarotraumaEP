@@ -643,7 +643,6 @@ namespace Barotrauma
         public static void UpdateAll(float deltaTime, Camera cam)
         {
             mapEntityUpdateTick++;
-
 #if CLIENT
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
@@ -657,7 +656,7 @@ namespace Barotrauma
                         hull.Update(deltaTime * MapEntityUpdateInterval, cam);
                     }
 #if CLIENT
-                    Hull.UpdateCheats(deltaTime * MapEntityUpdateInterval, cam);
+                Hull.UpdateCheats(deltaTime * MapEntityUpdateInterval, cam);
 #endif
 
                     foreach (Structure structure in Structure.WallList)
@@ -693,53 +692,40 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Misc", sw.ElapsedTicks);
             sw.Restart();
 #endif
-            Task PItemTask = Task.Factory.StartNew(() =>
-            {
-                foreach (var item in GameMain.LuaCs.Game.UpdatePriorityItems)
+            Task ItemTask = Task.Factory.StartNew(() =>
                 {
-                    if (item.Removed) continue;
-
-                    item.Update(deltaTime, cam);
-                }
-            });
-
-            Task SpawnerTask = Task.Factory.StartNew(() =>
-            {
-                if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
-                {
-                    UpdateAllProjSpecific(deltaTime * MapEntityUpdateInterval);
-
-                    Spawner?.Update();
-                }
-            });
-
-            Task.WaitAll(SpawnerTask, PItemTask, GapTask, StructuralTask);
-
-            Item.UpdatePendingConditionUpdates(deltaTime);
-            if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
-            {
-                lock(Item.ItemList)
-                {
-                    Item lastUpdatedItem = null;
-
-                    try
+                    Item.UpdatePendingConditionUpdates(deltaTime);
+                    //mapEntityUpdateTick % MapEntityUpdateInterval == 0
+                    if (true)
                     {
-                        foreach (Item item in Item.ItemList)
+                        Item lastUpdatedItem = null;
+
+                        try
                         {
-                            if (GameMain.LuaCs.Game.UpdatePriorityItems.Contains(item)) { continue; }
-                            lastUpdatedItem = item;
-                            item.Update(deltaTime * MapEntityUpdateInterval, cam);
+                            foreach (Item item in Item.ItemList)
+                            {
+                                lastUpdatedItem = item;
+                                item.Update(deltaTime * MapEntityUpdateInterval, cam);
+                            }
+                        }
+                        catch (InvalidOperationException e)
+                        {
+                            GameAnalyticsManager.AddErrorEventOnce(
+                                "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
+                                GameAnalyticsManager.ErrorSeverity.Critical,
+                                $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
+                            throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
                         }
                     }
-                    catch (InvalidOperationException e)
-                    {
-                        GameAnalyticsManager.AddErrorEventOnce(
-                            "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
-                            GameAnalyticsManager.ErrorSeverity.Critical,
-                            $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
-                        throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
-                    }
-                }
+                });
+
+            Task.WaitAll(ItemTask, GapTask, StructuralTask);
+
+            if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
+            {
+                UpdateAllProjSpecific(deltaTime * MapEntityUpdateInterval);
+
+                Spawner?.Update();
             }
 #if CLIENT
             sw.Stop();

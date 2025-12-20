@@ -127,12 +127,12 @@ namespace Barotrauma
             }
             if (TotalTimeElapsed - 60000 >= tickrate60stimer)
             {
-                TickRateLow = 60;
-                TickRateHigh = 60;
-                tickrate60stimer = TotalTimeElapsed;
 #if !DEBUG
                 GameServer.Log(PM.ToString(), ServerLog.MessageType.ServerMessage);
 #endif
+                TickRateLow = 60;
+                TickRateHigh = 60;
+                tickrate60stimer = TotalTimeElapsed;
             }
             if (RealTickRate > TickRateHigh)
             {
@@ -153,7 +153,6 @@ namespace Barotrauma
         {
             return
 #if !DEBUG
-                   $"[{DateTime.Now}]\n" +
                    $"Server Performence Info \n" +
 #endif
                    $"Item Count: {ItemCount}\n" +

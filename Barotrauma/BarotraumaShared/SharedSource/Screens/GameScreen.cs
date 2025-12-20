@@ -107,6 +107,9 @@ namespace Barotrauma
         /// </summary>
         public override void Update(double deltaTime)
         {
+
+#warning For now CL side performence counter is partly useless bucz multiple changes on such things. Need time to take care of it
+
 #if RUN_PHYSICS_IN_SEPARATE_THREAD
             physicsTime += deltaTime;
             lock (updateLock)
@@ -220,9 +223,6 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Character", sw.ElapsedTicks);
             sw.Restart(); 
 #endif
-
-            Task SETask = Task.Factory.StartNew(() => StatusEffect.UpdateAll((float)deltaTime));
-
 #if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:StatusEffects", sw.ElapsedTicks);
@@ -277,10 +277,12 @@ namespace Barotrauma
 #if CLIENT
             MapEntity.UpdateAll((float)deltaTime, cam);
 #elif SERVER
-            Task.WaitAll(LevelTask, CharacterTask, SETask);
+            Task.WaitAll(LevelTask, CharacterTask);
 
             //This is internally multi-threaded
             MapEntity.UpdateAll((float)deltaTime, Camera.Instance);
+
+            StatusEffect.UpdateAll((float)deltaTime);
 #endif
 
 #if CLIENT
