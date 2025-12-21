@@ -21,7 +21,7 @@ namespace Barotrauma
 
         private double tickrate60stimer = 0;
 
-        private static Queue<double> tickrate10s = new Queue<double>(10);
+        private static Queue<double> tickrate60s = new Queue<double>(61);
 
         public int ItemCount
         {
@@ -65,7 +65,7 @@ namespace Barotrauma
         {
             get
             {
-                return tickrate10s.Count > 0 ? tickrate10s.Average() : 60;
+                return tickrate60s.Count > 0 ? tickrate60s.Average() : 60;
             }
         }
 
@@ -74,6 +74,14 @@ namespace Barotrauma
             get
             {
                 return PMStopwatch.Elapsed.TotalMilliseconds;
+            }
+        }
+
+        public TimeSpan TimeElapsed
+        {
+            get
+            {
+                return TimeSpan.FromMilliseconds(TotalTimeElapsed);
             }
         }
 
@@ -114,14 +122,14 @@ namespace Barotrauma
         {
             TotalTicks += 1;
             LastSecondTicks += 1;
-            if(tickrate10s.Count >= 10)
+            if (tickrate60s.Count > 60)
             {
-                tickrate10s.Dequeue();
+                tickrate60s.Dequeue();
             }
             if (TotalTimeElapsed - 1000 >= tickratetimer)
             {
                 RealTickRate = LastSecondTicks / (TotalTimeElapsed - tickratetimer) * 1000;
-                tickrate10s.Enqueue(RealTickRate);
+                tickrate60s.Enqueue(RealTickRate);
                 tickratetimer = TotalTimeElapsed;
                 LastSecondTicks = 0;
             }
@@ -163,8 +171,8 @@ namespace Barotrauma
                    $"Max Tick Rate: {TickRateHigh}\n" +
                    $"Total Ticks: {TotalTicks}\n" +
                    $"All time Average Tick Rate: {AverageTickRate}\n" +
-                   $"10s Average Tick Rate: {AverageTickRate10s}\n" +
-                   $"Total Time Elapsed: {TotalTimeElapsed}\n" +
+                   $"60s Average Tick Rate: {AverageTickRate10s}\n" +
+                   $"Server Run Time: {TimeElapsed}\n" +
                    $"Memory Usage: {MemoryUsage}\n";
         }
 

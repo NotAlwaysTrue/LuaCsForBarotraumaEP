@@ -692,11 +692,11 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Misc", sw.ElapsedTicks);
             sw.Restart();
 #endif
+            //TODO: Divide ItemList into different parts to update
             Task ItemTask = Task.Factory.StartNew(() =>
                 {
                     Item.UpdatePendingConditionUpdates(deltaTime);
-                    //mapEntityUpdateTick % MapEntityUpdateInterval == 0
-                    if (true)
+                    if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
                     {
                         Item lastUpdatedItem = null;
 

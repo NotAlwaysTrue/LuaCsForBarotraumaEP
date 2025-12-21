@@ -230,6 +230,7 @@ namespace Barotrauma
                     Level.Loaded.Update((float)deltaTime, Camera.Instance);
                 }
             });
+            //TODO: Divide CharacterList into different parts to update
             Task CharacterTask = Task.Factory.StartNew(() => Character.UpdateAll((float)deltaTime, Camera.Instance));
 #endif
 
