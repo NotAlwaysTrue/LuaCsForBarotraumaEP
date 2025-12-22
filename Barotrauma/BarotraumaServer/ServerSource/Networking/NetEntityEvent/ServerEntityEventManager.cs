@@ -123,35 +123,29 @@ namespace Barotrauma.Networking
 
         private readonly Task createEventTask;
 
-        private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        private readonly SemaphoreSlim eventSignal = new SemaphoreSlim(0);
-
         public ServerEntityEventManager(GameServer server)
         {
             events = new List<ServerEntityEvent>();
+
             this.server = server;
+
             bufferedEvents = new List<BufferedEvent>();
+
             uniqueEvents = new List<ServerEntityEvent>();
+
             pendingCreateQueue = new ConcurrentQueue<PendingCreateEvent>();
+
             lastWarningTime = -10.0;
+
             SEM = this;
 
-            createEventTask = Task.Run(() => CreateEventProcessorLoop(cancellationTokenSource.Token));
+            createEventTask = Task.Run(async () => await CreateEventProcessorLoop());
         }
-
-        private async Task CreateEventProcessorLoop(CancellationToken token)
+        private Task CreateEventProcessorLoop()
         {
-            while (!token.IsCancellationRequested)
+            while (true)
             {
-                try
-                {
-                    await eventSignal.WaitAsync(100, token);
-                    ProcessPendingCreateEvents();
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
+                ProcessPendingCreateEvents();
             }
         }
 
@@ -215,31 +209,10 @@ namespace Barotrauma.Networking
 
             // enqueue and let background task handle the rest
             pendingCreateQueue.Enqueue(new PendingCreateEvent(entity, extraData));
-            
-            if (eventSignal.CurrentCount == 0)
-            {
-                eventSignal.Release();
-            }
         }
-
-        public void Dispose()
-        {
-            cancellationTokenSource.Cancel();
-            eventSignal.Release();
-            try
-            {
-                createEventTask?.Wait(2000);
-            }
-            catch (AggregateException) { }
-            finally
-            {
-                cancellationTokenSource.Dispose();
-                eventSignal.Dispose();
-            }
-        }
-
         public void Update(List<Client> clients)
         {
+
             foreach (BufferedEvent bufferedEvent in bufferedEvents)
             {
                 if (bufferedEvent.Character == null || bufferedEvent.Character.IsDead)
@@ -285,45 +258,25 @@ namespace Barotrauma.Networking
                 bufferedEvent.IsProcessed = true;
             }
 
-            List<Client> inGameClients = null;
-            List<Client> midRoundSyncClients = null;
-            Client ownerClient = null;
-            
-            foreach (var c in clients)
-            {
-                if (c.InGame)
-                {
-                    if (c.NeedsMidRoundSync)
-                    {
-                        (midRoundSyncClients ??= new List<Client>()).Add(c);
-                    }
-                    else
-                    {
-                        (inGameClients ??= new List<Client>()).Add(c);
-                    }
-                }
-                if (server.OwnerConnection != null && c.Connection == server.OwnerConnection)
-                {
-                    ownerClient = c;
-                }
-            }
-
-            if (inGameClients != null && inGameClients.Count > 0)
+            var inGameClients = clients.FindAll(c => c.InGame && !c.NeedsMidRoundSync);
+            if (inGameClients.Count > 0)
             {
                 lastSentToAnyone = inGameClients[0].LastRecvEntityEventID;
-                lastSentToAll = ownerClient?.LastRecvEntityEventID ?? inGameClients[0].LastRecvEntityEventID;
+                lastSentToAll = inGameClients[0].LastRecvEntityEventID;
 
-                foreach (var c in inGameClients)
+                if (server.OwnerConnection != null)
                 {
-                    if (NetIdUtils.IdMoreRecent(lastSentToAll, c.LastRecvEntityEventID)) 
-                    { 
-                        lastSentToAll = c.LastRecvEntityEventID; 
-                    }
-                    if (NetIdUtils.IdMoreRecent(c.LastRecvEntityEventID, lastSentToAnyone)) 
-                    { 
-                        lastSentToAnyone = c.LastRecvEntityEventID; 
+                    var owner = clients.Find(c => c.Connection == server.OwnerConnection);
+                    if (owner != null)
+                    {
+                        lastSentToAll = owner.LastRecvEntityEventID;
                     }
                 }
+                inGameClients.ForEach(c =>
+                {
+                    if (NetIdUtils.IdMoreRecent(lastSentToAll, c.LastRecvEntityEventID)) { lastSentToAll = c.LastRecvEntityEventID; }
+                    if (NetIdUtils.IdMoreRecent(c.LastRecvEntityEventID, lastSentToAnyone)) { lastSentToAnyone = c.LastRecvEntityEventID; }
+                });
                 lastSentToAnyoneTime = events.Find(e => e.ID == lastSentToAnyone)?.CreateTime ?? Timing.TotalTime;
 
                 if (Timing.TotalTime - lastWarningTime > 5.0 &&
@@ -379,21 +332,11 @@ namespace Barotrauma.Networking
                 }
             }
 
-            if (midRoundSyncClients != null)
+            var timedOutClients = clients.FindAll(c => c.Connection != GameMain.Server.OwnerConnection && c.InGame && c.NeedsMidRoundSync && Timing.TotalTime > c.MidRoundSyncTimeOut);
+            foreach (Client timedOutClient in timedOutClients)
             {
-                foreach (var c in midRoundSyncClients)
-                {
-                    if (NetIdUtils.IdMoreRecent(lastSentToAll, c.FirstNewEventID))
-                    {
-                        lastSentToAll = (ushort)(c.FirstNewEventID - 1);
-                    }
-                    
-                    if (c.Connection != GameMain.Server.OwnerConnection && Timing.TotalTime > c.MidRoundSyncTimeOut)
-                    {
-                        GameServer.Log("Disconnecting client " + GameServer.ClientLogName(c) + ". Syncing took too long.", ServerLog.MessageType.Error);
-                        GameMain.Server.DisconnectClient(c, PeerDisconnectPacket.WithReason(DisconnectReason.SyncTimeout));
-                    }
-                }
+                GameServer.Log("Disconnecting client " + GameServer.ClientLogName(timedOutClient) + ". Syncing the client with the server took too long.", ServerLog.MessageType.Error);
+                GameMain.Server.DisconnectClient(timedOutClient, PeerDisconnectPacket.WithReason(DisconnectReason.SyncTimeout));
             }
 
             bufferedEvents.RemoveAll(b => b.IsProcessed);
