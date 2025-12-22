@@ -638,53 +638,80 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// Call Update() on every object in Entity.list
+        /// Call Update() on every object in Entity.list - 完全并行版本
         /// </summary>
-        public static void UpdateAll(float deltaTime, Camera cam)
+        public static void UpdateAll(float deltaTime, Camera cam , ParallelOptions parallelOptions)
         {
             mapEntityUpdateTick++;
 #if CLIENT
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
 #endif
-            Task StructuralTask = Task.Factory.StartNew(() =>
-            {
-                if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
+
+            bool shouldUpdateMapEntities = mapEntityUpdateTick % MapEntityUpdateInterval == 0;
+            bool shouldUpdatePower = mapEntityUpdateTick % PoweredUpdateInterval == 0;
+
+            // Buffer lists to avoid repeated allocations
+            var hullList = shouldUpdateMapEntities ? Hull.HullList.ToList() : null;
+            var structureList = shouldUpdateMapEntities ? Structure.WallList.ToList() : null;
+            var gapList = Gap.GapList.ToList();
+            var itemList = shouldUpdateMapEntities ? Item.ItemList.ToList() : null;
+
+            // First phase: parallel updates that have no order dependencies
+            Parallel.Invoke(parallelOptions,
+                // Hull parallel update
+                () =>
                 {
-                    foreach (Hull hull in Hull.HullList)
+                    if (shouldUpdateMapEntities && hullList != null)
                     {
-                        hull.Update(deltaTime * MapEntityUpdateInterval, cam);
+                        Parallel.ForEach(hullList, parallelOptions, hull =>
+                        {
+                            hull.Update(deltaTime * MapEntityUpdateInterval, cam);
+                        });
                     }
+                },
+                // Structure parallel update
+                () =>
+                {
+                    if (shouldUpdateMapEntities && structureList != null)
+                    {
+                        Parallel.ForEach(structureList, parallelOptions, structure =>
+                        {
+                            structure.Update(deltaTime * MapEntityUpdateInterval, cam);
+                        });
+                    }
+                },
+                // Gap reset (must be done before update)
+                () =>
+                {
+                    Parallel.ForEach(gapList, parallelOptions, gap =>
+                    {
+                        gap.ResetWaterFlowThisFrame();
+                    });
+                },
+                // Powered components update
+                () =>
+                {
+                    if (shouldUpdatePower)
+                    {
+                        Powered.UpdatePower(deltaTime * PoweredUpdateInterval);
+                    }
+                }
+            );
+
 #if CLIENT
+            // Hull Cheats need to be executed after Hull update
+            if (shouldUpdateMapEntities)
+            {
                 Hull.UpdateCheats(deltaTime * MapEntityUpdateInterval, cam);
+            }
 #endif
 
-                    foreach (Structure structure in Structure.WallList)
-                    {
-                        structure.Update(deltaTime * MapEntityUpdateInterval, cam);
-                    }
-                }
-            });
-
-            Task GapTask = Task.Factory.StartNew(() =>
+            // Gap update (has order dependencies, keep random order but execute sequentially)
+            var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
+            foreach (Gap gap in shuffledGaps)
             {
-                foreach (Gap gap in Gap.GapList)
-                {
-                    gap.ResetWaterFlowThisFrame();
-                }
-                //update gaps in random order, because otherwise in rooms with multiple gaps
-                //the water/air will always tend to flow through the first gap in the list,
-                //which may lead to weird behavior like water draining down only through
-                //one gap in a room even if there are several
-                foreach (Gap gap in Gap.GapList.OrderBy(g => Rand.Int(int.MaxValue)))
-                {
-                    gap.Update(deltaTime, cam);
-                }
-            });
-
-            if (mapEntityUpdateTick % PoweredUpdateInterval == 0)
-            {
-                Powered.UpdatePower(deltaTime * PoweredUpdateInterval);
+                gap.Update(deltaTime, cam);
             }
 
 #if CLIENT
@@ -692,45 +719,39 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Misc", sw.ElapsedTicks);
             sw.Restart();
 #endif
-            //TODO: Divide ItemList into different parts to update
-            Task ItemTask = Task.Factory.StartNew(() =>
-                {
-                    Item.UpdatePendingConditionUpdates(deltaTime);
-                    if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
-                    {
-                        Item lastUpdatedItem = null;
 
-                        try
-                        {
-                            foreach (Item item in Item.ItemList)
-                            {
-                                lastUpdatedItem = item;
-                                item.Update(deltaTime * MapEntityUpdateInterval, cam);
-                            }
-                        }
-                        catch (InvalidOperationException e)
-                        {
-                            GameAnalyticsManager.AddErrorEventOnce(
-                                "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
-                                GameAnalyticsManager.ErrorSeverity.Critical,
-                                $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
-                            throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
-                        }
-                    }
-                });
-
-            Task.WaitAll(ItemTask, GapTask, StructuralTask);
-
-            if (mapEntityUpdateTick % MapEntityUpdateInterval == 0)
+            // Item update (Item.Update() is not thread-safe and must be executed on the main thread)
+            if (shouldUpdateMapEntities && itemList != null)
             {
-                UpdateAllProjSpecific(deltaTime * MapEntityUpdateInterval);
+                Item.UpdatePendingConditionUpdates(deltaTime);
 
+                float scaledDeltaTime = deltaTime * MapEntityUpdateInterval;
+                Item lastUpdatedItem = null;
+                
+                try
+                {
+                    foreach (Item item in itemList)
+                    {
+                        lastUpdatedItem = item;
+                        item.Update(scaledDeltaTime, cam);
+                    }
+                }
+                catch (InvalidOperationException e)
+                {
+                    GameAnalyticsManager.AddErrorEventOnce(
+                        "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
+                        GameAnalyticsManager.ErrorSeverity.Critical,
+                        $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
+                    throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
+                }
+
+                UpdateAllProjSpecific(scaledDeltaTime);
                 Spawner?.Update();
             }
+
 #if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Items", sw.ElapsedTicks);
-            sw.Restart();
 #endif
         }
 

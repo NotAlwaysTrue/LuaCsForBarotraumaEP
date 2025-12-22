@@ -273,11 +273,11 @@ namespace Barotrauma
             });
 
 #if CLIENT
-            MapEntity.UpdateAll((float)deltaTime, cam);
+            MapEntity.UpdateAll((float)deltaTime, cam, parallelOptions);
 #elif SERVER
 
             // TODO: Move both UpdateAll() method to this file
-            MapEntity.UpdateAll((float)deltaTime, Camera.Instance);
+            MapEntity.UpdateAll((float)deltaTime, Camera.Instance, parallelOptions);
             StatusEffect.UpdateAll((float)deltaTime);
 
 #endif
