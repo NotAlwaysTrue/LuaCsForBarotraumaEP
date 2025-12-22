@@ -1218,7 +1218,7 @@ namespace Barotrauma.Networking
 
             errorLines.Add("");
             errorLines.Add("EntitySpawner events:");
-            foreach (var entityEvent in entityEventManager.UniqueEvents)
+            foreach (var entityEvent in entityEventManager.UniqueEvents.ToList())
             {
                 if (entityEvent.Entity is EntitySpawner)
                 {
