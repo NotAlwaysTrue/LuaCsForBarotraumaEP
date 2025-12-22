@@ -1,19 +1,15 @@
 ﻿using Barotrauma.Extensions;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using static Barotrauma.EosInterface.Ownership;
 
 namespace Barotrauma.Networking
 {
     class ServerEntityEvent : NetEntityEvent
     {
         private IServerSerializable serializable;
-
+                
 #if DEBUG
         public string StackTrace;
 #endif
@@ -48,8 +44,6 @@ namespace Barotrauma.Networking
 
     class ServerEntityEventManager : NetEntityEventManager
     {
-        static public ServerEntityEventManager SEM;
-
         private readonly List<ServerEntityEvent> events;
 
         //list of unique events (i.e. !IsDuplicate) created during the round
@@ -108,22 +102,8 @@ namespace Barotrauma.Networking
         private readonly GameServer server;
 
         private double lastEventCountHighWarning;
-        private class PendingCreateEvent
-        {
-            public IServerSerializable Entity;
-            public NetEntityEvent.IData Data;
-            public PendingCreateEvent(IServerSerializable entity, NetEntityEvent.IData data)
-            {
-                Entity = entity;
-                Data = data;
-            }
-        }
-
-        private readonly ConcurrentQueue<PendingCreateEvent> pendingCreateQueue;
-
-        private readonly Task createEventTask;
-
-        public ServerEntityEventManager(GameServer server)
+        
+        public ServerEntityEventManager(GameServer server) 
         {
             events = new List<ServerEntityEvent>();
 
@@ -133,86 +113,51 @@ namespace Barotrauma.Networking
 
             uniqueEvents = new List<ServerEntityEvent>();
 
-            pendingCreateQueue = new ConcurrentQueue<PendingCreateEvent>();
-
             lastWarningTime = -10.0;
-
-            SEM = this;
-
-            createEventTask = Task.Run(async () => await CreateEventProcessorLoop());
-        }
-        private Task CreateEventProcessorLoop()
-        {
-            while (true)
-            {
-                ProcessPendingCreateEvents();
-            }
         }
 
-        private void ProcessPendingCreateEvents()
-        {
-            // Dequeue and process all pending events currently in the queue.
-            // Use a lock to synchronize modifications to shared lists / ID.
-            while (pendingCreateQueue.TryDequeue(out PendingCreateEvent pending))
-            {
-                // The original CreateEvent logic (mostly unchanged) but executed under a lock
-                if (pending == null || pending.Entity == null) { continue; }
-
-                var entity = pending.Entity;
-                var extraData = pending.Data;
-
-                var newEvent = new ServerEntityEvent(entity, (UInt16)(ID + 1));
-                if (extraData != null) newEvent.SetData(extraData);
-
-                bool inGameClientsPresent = server.ConnectedClients.Count(c => c.InGame) > 0;
-                //remove old events that have been sent to all clients, they are redundant now
-                //  keep at least one event in the list (lastSentToAll == e.ID) so we can use it to keep track of the latest ID
-                //  and events less than 15 seconds old to give disconnected clients a bit of time to reconnect without getting desynced
-                if (GameMain.GameSession.RoundDuration > server.ServerSettings.RoundStartSyncDuration)
-                {
-                    events.RemoveAll(e =>
-                        (NetIdUtils.IdMoreRecent(lastSentToAll, e.ID) || !inGameClientsPresent) &&
-                        e.CreateTime < Timing.TotalTime - server.ServerSettings.EventRemovalTime);
-                }
-
-                bool duplicateFound = false;
-                for (int i = events.Count - 1; i >= 0; i--)
-                {
-                    //we already have an identical event that's waiting to be sent
-                    // -> no need to add a new one
-                    if (events[i].IsDuplicate(newEvent) && !events[i].Sent)
-                    {
-                        duplicateFound = true;
-                        break;
-                    }
-                }
-
-                if (duplicateFound) { continue; }
-
-                ID++;
-
-                events.Add(newEvent);
-
-                if (!uniqueEvents.Any(e => e.IsDuplicate(newEvent)))
-                {
-                    //create a copy of the event and give it a new ID
-                    var uniqueEvent = new ServerEntityEvent(entity, (UInt16)(uniqueEvents.Count + 1));
-                    uniqueEvent.SetData(extraData);
-
-                    uniqueEvents.Add(uniqueEvent);
-                }
-            }
-        }
         public void CreateEvent(IServerSerializable entity, NetEntityEvent.IData extraData = null)
         {
             if (!ValidateEntity(entity)) { return; }
 
-            // enqueue and let background task handle the rest
-            pendingCreateQueue.Enqueue(new PendingCreateEvent(entity, extraData));
+            var newEvent = new ServerEntityEvent(entity, (UInt16)(ID + 1));
+            if (extraData != null) newEvent.SetData(extraData);
+
+            bool inGameClientsPresent = server.ConnectedClients.Count(c => c.InGame) > 0;
+
+            //remove old events that have been sent to all clients, they are redundant now
+            //  keep at least one event in the list (lastSentToAll == e.ID) so we can use it to keep track of the latest ID
+            //  and events less than 15 seconds old to give disconnected clients a bit of time to reconnect without getting desynced
+            if (GameMain.GameSession.RoundDuration > server.ServerSettings.RoundStartSyncDuration)
+            {
+                events.RemoveAll(e => 
+                    (NetIdUtils.IdMoreRecent(lastSentToAll, e.ID) || !inGameClientsPresent) && 
+                    e.CreateTime < Timing.TotalTime - server.ServerSettings.EventRemovalTime);
+            }
+            
+            for (int i = events.Count - 1; i >= 0; i--)
+            {
+                //we already have an identical event that's waiting to be sent
+                // -> no need to add a new one
+                if (events[i].IsDuplicate(newEvent) && !events[i].Sent) return;
+            }
+
+            ID++;
+
+            events.Add(newEvent);
+
+            if (!uniqueEvents.Any(e => e.IsDuplicate(newEvent)))
+            {
+                //create a copy of the event and give it a new ID
+                var uniqueEvent = new ServerEntityEvent(entity, (UInt16)(uniqueEvents.Count + 1));
+                uniqueEvent.SetData(extraData);
+
+                uniqueEvents.Add(uniqueEvent);
+            }
         }
+
         public void Update(List<Client> clients)
         {
-            
             foreach (BufferedEvent bufferedEvent in bufferedEvents)
             {
                 if (bufferedEvent.Character == null || bufferedEvent.Character.IsDead)
@@ -263,7 +208,7 @@ namespace Barotrauma.Networking
             {
                 lastSentToAnyone = inGameClients[0].LastRecvEntityEventID;
                 lastSentToAll = inGameClients[0].LastRecvEntityEventID;
-
+                
                 if (server.OwnerConnection != null)
                 {
                     var owner = clients.Find(c => c.Connection == server.OwnerConnection);
@@ -279,8 +224,8 @@ namespace Barotrauma.Networking
                 });
                 lastSentToAnyoneTime = events.Find(e => e.ID == lastSentToAnyone)?.CreateTime ?? Timing.TotalTime;
 
-                if (Timing.TotalTime - lastWarningTime > 5.0 &&
-                    Timing.TotalTime - lastSentToAnyoneTime > 10.0 &&
+                if (Timing.TotalTime - lastWarningTime > 5.0 && 
+                    Timing.TotalTime - lastSentToAnyoneTime > 10.0 && 
                     GameMain.GameSession.RoundDuration > server.ServerSettings.RoundStartSyncDuration)
                 {
                     lastWarningTime = Timing.TotalTime;
@@ -290,7 +235,7 @@ namespace Barotrauma.Networking
                     events.ForEach(e => e.ResetCreateTime());
                     //TODO: reset clients if this happens, maybe do it if a majority are behind rather than all of them?
                 }
-
+                
                 clients.Where(c => c.NeedsMidRoundSync).ForEach(c => { if (NetIdUtils.IdMoreRecent(lastSentToAll, c.FirstNewEventID)) lastSentToAll = (ushort)(c.FirstNewEventID - 1); });
 
                 ServerEntityEvent firstEventToResend = events.Find(e => e.ID == (ushort)(lastSentToAll + 1));
@@ -302,19 +247,19 @@ namespace Barotrauma.Networking
                     //  kick everyone that hasn't received it yet, this is way too old
                     //  UNLESS the event was created when the client was still midround syncing,
                     //  in which case we'll wait until the timeout runs out before kicking the client
-                    List<Client> toKick = inGameClients.FindAll(c =>
+                    List<Client> toKick = inGameClients.FindAll(c => 
                         NetIdUtils.IdMoreRecent((UInt16)(lastSentToAll + 1), c.LastRecvEntityEventID) &&
                         (firstEventToResend.CreateTime > c.MidRoundSyncTimeOut || lastSentToAnyoneTime > c.MidRoundSyncTimeOut || Timing.TotalTime > c.MidRoundSyncTimeOut + 10.0));
                     toKick.ForEach(c =>
-                    {
-                        DebugConsole.NewMessage(c.Name + " was kicked because they were expecting a very old network event (" + (c.LastRecvEntityEventID + 1).ToString() + ")", Color.Red);
-                        GameServer.Log(GameServer.ClientLogName(c) + " was kicked because they were expecting a very old network event ("
-                            + (c.LastRecvEntityEventID + 1).ToString() +
-                            " (created " + (Timing.TotalTime - firstEventToResend.CreateTime).ToString("0.##") + " s ago, " +
-                            (lastSentToAnyoneTime - firstEventToResend.CreateTime).ToString("0.##") + " s older than last event sent to anyone)" +
-                            " Events queued: " + events.Count + ", last sent to all: " + lastSentToAll, ServerLog.MessageType.Error);
-                        server.DisconnectClient(c, PeerDisconnectPacket.WithReason(DisconnectReason.ExcessiveDesyncOldEvent));
-                    }
+                        {
+                            DebugConsole.NewMessage(c.Name + " was kicked because they were expecting a very old network event (" + (c.LastRecvEntityEventID + 1).ToString() + ")", Color.Red);
+                            GameServer.Log(GameServer.ClientLogName(c) + " was kicked because they were expecting a very old network event ("
+                                + (c.LastRecvEntityEventID + 1).ToString() +
+                                " (created " + (Timing.TotalTime - firstEventToResend.CreateTime).ToString("0.##") + " s ago, " +
+                                (lastSentToAnyoneTime - firstEventToResend.CreateTime).ToString("0.##") + " s older than last event sent to anyone)" +
+                                " Events queued: " + events.Count + ", last sent to all: " + lastSentToAll, ServerLog.MessageType.Error);
+                            server.DisconnectClient(c, PeerDisconnectPacket.WithReason(DisconnectReason.ExcessiveDesyncOldEvent));
+                        }
                     );
                 }
 
@@ -401,7 +346,7 @@ namespace Barotrauma.Networking
 
             if (client.NeedsMidRoundSync)
             {
-                segmentTable.StartNewSegment(ServerNetSegment.EntityEventInitial);
+                segmentTable.StartNewSegment(ServerNetSegment.EntityEventInitial);                
                 msg.WriteUInt16(client.UnreceivedEntityEventCount);
                 msg.WriteUInt16(client.FirstNewEventID);
 
@@ -608,10 +553,10 @@ namespace Barotrauma.Networking
         {
             var clientEntity = entity as IClientSerializable;
             if (clientEntity == null) return;
-
+            
             clientEntity.ServerEventRead(buffer, sender);
         }
-
+        
         public void Clear()
         {
             ID = 0;
