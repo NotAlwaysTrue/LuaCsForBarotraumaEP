@@ -1218,17 +1218,24 @@ namespace Barotrauma.Networking
 
             errorLines.Add("");
             errorLines.Add("EntitySpawner events:");
-            foreach (var entityEvent in entityEventManager.UniqueEvents.ToList())
+            try
             {
-                if (entityEvent.Entity is EntitySpawner)
+                foreach (var entityEvent in entityEventManager.UniqueEvents.ToList())
                 {
-                    var spawnData = entityEvent.Data as EntitySpawner.SpawnOrRemove;
-                    errorLines.Add(
-                        entityEvent.ID + ": " +
-                        (spawnData is EntitySpawner.RemoveEntity ? "Remove " : "Create ") +
-                        spawnData.Entity.ToString() +
-                        " (" + spawnData.ID + ", " + spawnData.Entity.ID + ")");
+                    if (entityEvent.Entity is EntitySpawner)
+                    {
+                        var spawnData = entityEvent.Data as EntitySpawner.SpawnOrRemove;
+                        errorLines.Add(
+                            entityEvent.ID + ": " +
+                            (spawnData is EntitySpawner.RemoveEntity ? "Remove " : "Create ") +
+                            spawnData.Entity.ToString() +
+                            " (" + spawnData.ID + ", " + spawnData.Entity.ID + ")");
+                    }
                 }
+            }
+            finally
+            {
+                errorLines.Add("Catch event snapshot failed.");
             }
 
             errorLines.Add("");
