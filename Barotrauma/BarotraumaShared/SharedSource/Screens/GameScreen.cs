@@ -24,7 +24,7 @@ namespace Barotrauma
 
         private static readonly ParallelOptions parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = 32
+            MaxDegreeOfParallelism = 16
         };
 
 #if CLIENT
