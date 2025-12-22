@@ -2769,6 +2769,12 @@ namespace Barotrauma
                 }
             );
 
+            commands.Add(new Command("ShowServerPerf", "Immediately log server performance info in ServerMessage", (string[] args) =>
+            {
+                GameServer.Log(PerformenceMonitor.PM.ToString(), ServerLog.MessageType.ServerMessage);
+                NewMessage(PerformenceMonitor.PM.ToString(), Color.Green);
+            }));
+
 #if DEBUG
             commands.Add(new Command("spamevents", "A debug command that creates a ton of entity events.", (string[] args) =>
             {

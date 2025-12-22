@@ -77,7 +77,6 @@ namespace Barotrauma
 
             MapEntity.ClearHighlightedEntities();
 
-            Task PhysicsTask = Task.Factory.StartNew(() => ExecutePhysics());
 #if RUN_PHYSICS_IN_SEPARATE_THREAD
             var physicsThread = new Thread(ExecutePhysics)
             {
@@ -277,10 +276,10 @@ namespace Barotrauma
             MapEntity.UpdateAll((float)deltaTime, cam);
 #elif SERVER
 
-            Parallel.Invoke(parallelOptions,
-                () => MapEntity.UpdateAll((float)deltaTime, Camera.Instance),
-                () => StatusEffect.UpdateAll((float)deltaTime)
-            );
+            // TODO: Move both UpdateAll() method to this file
+            MapEntity.UpdateAll((float)deltaTime, Camera.Instance);
+            StatusEffect.UpdateAll((float)deltaTime);
+
 #endif
 
 #if CLIENT

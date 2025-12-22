@@ -135,9 +135,7 @@ namespace Barotrauma
             }
             if (TotalTimeElapsed - 60000 >= tickrate60stimer)
             {
-#if !DEBUG
                 GameServer.Log(PM.ToString(), ServerLog.MessageType.ServerMessage);
-#endif
                 TickRateLow = 60;
                 TickRateHigh = 60;
                 tickrate60stimer = TotalTimeElapsed;
@@ -159,10 +157,7 @@ namespace Barotrauma
         }
         override public string ToString()
         {
-            return
-#if !DEBUG
-                   $"Server Performence Info \n" +
-#endif
+            return $"Server Performence Info \n" +
                    $"Item Count: {ItemCount}\n" +
                    $"Character Count: {CharacterCount}\n" +
                    $"PhysicsBody Count: {PhysicsBodyCount}\n" +
