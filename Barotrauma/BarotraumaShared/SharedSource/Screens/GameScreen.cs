@@ -1,4 +1,4 @@
-﻿#define RUN_PHYSICS_IN_SEPARATE_THREAD
+﻿//#define RUN_PHYSICS_IN_SEPARATE_THREAD
 
 using Microsoft.Xna.Framework;
 using System.Threading;
@@ -6,10 +6,10 @@ using FarseerPhysics.Dynamics;
 using FarseerPhysics;
 using System.Threading.Tasks;
 using System.Linq;
-using System;
 
 
 #if DEBUG && CLIENT
+using System;
 using Barotrauma.Sounds;
 using Microsoft.Xna.Framework.Input;
 #endif
@@ -18,14 +18,8 @@ namespace Barotrauma
 {
     partial class GameScreen : Screen
     {
-        private readonly object updateLock = new object();
+        private object updateLock = new object();
         private double physicsTime;
-
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-        private CancellationTokenSource physicsCancellation;
-        private readonly AutoResetEvent physicsEvent = new AutoResetEvent(false);
-        private const int PHYSICS_WAIT_TIMEOUT_MS = 2;
-#endif
 
 #if CLIENT
         private readonly Camera cam;
@@ -77,13 +71,12 @@ namespace Barotrauma
 
             MapEntity.ClearHighlightedEntities();
 
+            Task PhysicsTask = Task.Factory.StartNew(() => ExecutePhysics());
 #if RUN_PHYSICS_IN_SEPARATE_THREAD
-            physicsCancellation = new CancellationTokenSource();
             var physicsThread = new Thread(ExecutePhysics)
             {
                 Name = "Physics thread",
-                IsBackground = true,
-                Priority = ThreadPriority.AboveNormal
+                IsBackground = true
             };
             physicsThread.Start();
 #endif
@@ -92,12 +85,6 @@ namespace Barotrauma
         public override void Deselect()
         {
             base.Deselect();
-
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-            physicsCancellation?.Cancel();
-            physicsEvent?.Set();
-#endif
-
 #if CLIENT
             var config = GameSettings.CurrentConfig;
             config.CrewMenuOpen = CrewManager.PreferCrewMenuOpen;
@@ -114,7 +101,6 @@ namespace Barotrauma
 #endif
 #endif
         }
-
         /// <summary>
         /// Allows the game to run logic such as updating the world,
         /// checking for collisions, gathering input, and playing audio.
@@ -125,11 +111,9 @@ namespace Barotrauma
 #warning For now CL side performence counter is partly useless bucz multiple changes on such things. Need time to take care of it
 
 #if RUN_PHYSICS_IN_SEPARATE_THREAD
+            physicsTime += deltaTime;
             lock (updateLock)
-            {
-                physicsTime += deltaTime;
-            }
-            physicsEvent?.Set();
+            { 
 #endif
 
 
@@ -351,78 +335,27 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Physics", sw.ElapsedTicks);
 #endif
             UpdateProjSpecific(deltaTime);
+
+#if RUN_PHYSICS_IN_SEPARATE_THREAD
+            }
+#endif
         }
 
         partial void UpdateProjSpecific(double deltaTime);
 
         private void ExecutePhysics()
         {
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-            var token = physicsCancellation.Token;
-            
-            try
+            while (true)
             {
-                while (!token.IsCancellationRequested)
+                while (physicsTime >= Timing.Step)
                 {
-                    bool hasWork = false;
-                    
                     lock (updateLock)
                     {
-                        while (physicsTime >= Timing.Step)
-                        {
-                            try
-                            {
-                                GameMain.World.Step((float)Timing.Step);
-                                physicsTime -= Timing.Step;
-                                hasWork = true;
-                            }
-                            catch (WorldLockedException e)
-                            {
-                                string errorMsg = $"Physics thread WorldLockedException: {e.Message}\n{e.StackTrace}";
-                                DebugConsole.ThrowError(errorMsg, e);
-                                GameAnalyticsManager.AddErrorEventOnce(
-                                    "GameScreen.ExecutePhysics:WorldLockedException" + e.Message,
-                                    GameAnalyticsManager.ErrorSeverity.Error,
-                                    errorMsg);
-                                break;
-                            }
-                            catch (Exception e)
-                            {
-                                string errorMsg = $"Physics step error: {e.Message}\n{e.StackTrace}";
-                                DebugConsole.ThrowError(errorMsg, e);
-                                GameAnalyticsManager.AddErrorEventOnce(
-                                    "GameScreen.ExecutePhysics:PhysicsStepError" + e.GetType().Name,
-                                    GameAnalyticsManager.ErrorSeverity.Error,
-                                    errorMsg);
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (!hasWork)
-                    {
-                        physicsEvent.WaitOne(PHYSICS_WAIT_TIMEOUT_MS);
+                        GameMain.World.Step((float)Timing.Step);
+                        physicsTime -= Timing.Step;
                     }
                 }
             }
-            catch (ThreadAbortException)
-            {
-                DebugConsole.Log("Physics thread aborted.");
-            }
-            catch (Exception e)
-            {
-                string errorMsg = $"Fatal error in physics thread: {e.Message}\n{e.StackTrace}";
-                DebugConsole.ThrowError(errorMsg, e);
-                GameAnalyticsManager.AddErrorEventOnce(
-                    "GameScreen.ExecutePhysics:FatalError",
-                    GameAnalyticsManager.ErrorSeverity.Critical,
-                    errorMsg);
-            }
-            finally
-            {
-                DebugConsole.Log("Physics thread terminated.");
-            }
-#endif
         }
     }
 }
