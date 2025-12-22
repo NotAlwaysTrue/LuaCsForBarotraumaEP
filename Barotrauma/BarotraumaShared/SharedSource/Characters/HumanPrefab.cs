@@ -295,7 +295,9 @@ namespace Barotrauma
                 }
                 catch
                 {
-                    GameServer.Log("Try making UniqueEvents snapshot failed", ServerLog.MessageType.Warning);
+#if SERVER
+                    Networking.GameServer.Log("Try making UniqueEvents snapshot failed", Networking.ServerLog.MessageType.Error);
+#endif
                 }
                 finally
                 {
