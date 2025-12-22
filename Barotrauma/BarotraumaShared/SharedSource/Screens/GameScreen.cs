@@ -1,4 +1,4 @@
-﻿#define RUN_PHYSICS_IN_SEPARATE_THREAD
+﻿//#define RUN_PHYSICS_IN_SEPARATE_THREAD
 
 using Microsoft.Xna.Framework;
 using System.Threading;
