@@ -426,7 +426,7 @@ namespace Barotrauma
                         if (points[0].Y > Body.SimPosition.Y &&
                             !Character.CharacterList.Any(c => c.Submarine == otherSubmarine && !c.IsIncapacitated && c.TeamID == otherSubmarine.TeamID))
                         {
-                            otherSubmarine.GetConnectedSubs().ForEach(s => s.SubBody.forceUpwardsTimer += deltaTime);
+                            otherSubmarine.GetConnectedSubs().ToList().ForEach(s => s.SubBody.forceUpwardsTimer += deltaTime);
                             break;
                         }
                     }

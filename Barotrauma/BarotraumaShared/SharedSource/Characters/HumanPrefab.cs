@@ -282,16 +282,21 @@ namespace Barotrauma
 #if SERVER
             if (GameMain.Server != null && Entity.Spawner != null && createNetworkEvents)
             {
-                if (GameMain.Server.EntityEventManager.UniqueEvents.ToList().Any(ev => ev.Entity == item))
+                try
                 {
-                    string errorMsg = $"Error while spawning job items. Item {item.Name} created network events before the spawn event had been created.";
-                    DebugConsole.ThrowError(errorMsg);
-                    GameAnalyticsManager.AddErrorEventOnce("Job.InitializeJobItem:EventsBeforeSpawning", GameAnalyticsManager.ErrorSeverity.Error, errorMsg);
-                    GameMain.Server.EntityEventManager.UniqueEvents.RemoveAll(ev => ev.Entity == item);
-                    GameMain.Server.EntityEventManager.Events.RemoveAll(ev => ev.Entity == item);
+                    if (GameMain.Server.EntityEventManager.UniqueEvents.ToList().Any(ev => ev.Entity == item))
+                    {
+                        string errorMsg = $"Error while spawning job items. Item {item.Name} created network events before the spawn event had been created.";
+                        DebugConsole.ThrowError(errorMsg);
+                        GameAnalyticsManager.AddErrorEventOnce("Job.InitializeJobItem:EventsBeforeSpawning", GameAnalyticsManager.ErrorSeverity.Error, errorMsg);
+                        GameMain.Server.EntityEventManager.UniqueEvents.RemoveAll(ev => ev.Entity == item);
+                        GameMain.Server.EntityEventManager.Events.RemoveAll(ev => ev.Entity == item);
+                    }
                 }
-
-                Entity.Spawner.CreateNetworkEvent(new EntitySpawner.SpawnEntity(item));
+                finally
+                {
+                    Entity.Spawner.CreateNetworkEvent(new EntitySpawner.SpawnEntity(item));
+                }
             }
 #endif
             if (itemElement.GetAttributeBool("equip", false))
