@@ -638,7 +638,7 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// Call Update() on every object in Entity.list - 完全并行版本
+        /// Call Update() on every object in Entity.list
         /// </summary>
         public static void UpdateAll(float deltaTime, Camera cam , ParallelOptions parallelOptions)
         {

@@ -276,8 +276,9 @@ namespace Barotrauma
             MapEntity.UpdateAll((float)deltaTime, cam, parallelOptions);
 #elif SERVER
 
-            // TODO: Move both UpdateAll() method to this file
+            
             MapEntity.UpdateAll((float)deltaTime, Camera.Instance, parallelOptions);
+            //StatusEffect.UpdateAll is not thread-safe and must be executed on the main thread
             StatusEffect.UpdateAll((float)deltaTime);
 
 #endif
@@ -287,7 +288,7 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity", sw.ElapsedTicks);
             sw.Restart(); 
 #endif
-
+            //Character.UpdateAnimAll is not thread-safe and must be executed on the main thread
             Character.UpdateAnimAll((float)deltaTime);
 
 #if CLIENT
