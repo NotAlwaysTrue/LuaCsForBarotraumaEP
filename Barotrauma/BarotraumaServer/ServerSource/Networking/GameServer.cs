@@ -1233,9 +1233,9 @@ namespace Barotrauma.Networking
                     }
                 }
             }
-            finally
+            catch
             {
-                errorLines.Add("Catch event snapshot failed.");
+                errorLines.Add("Failed to write EntitySpawner events.");
             }
 
             errorLines.Add("");

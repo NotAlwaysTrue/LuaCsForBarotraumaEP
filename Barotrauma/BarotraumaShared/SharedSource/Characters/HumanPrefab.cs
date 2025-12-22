@@ -293,6 +293,10 @@ namespace Barotrauma
                         GameMain.Server.EntityEventManager.Events.RemoveAll(ev => ev.Entity == item);
                     }
                 }
+                catch
+                {
+                    GameServer.Log("Try making UniqueEvents snapshot failed", ServerLog.MessageType.Warning);
+                }
                 finally
                 {
                     Entity.Spawner.CreateNetworkEvent(new EntitySpawner.SpawnEntity(item));
