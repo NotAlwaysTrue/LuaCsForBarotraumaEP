@@ -335,9 +335,6 @@ namespace Barotrauma
             long prevTicks = stopwatch.ElapsedTicks;
             while (ShouldRun)
             {
-#if DEBUG
-                Console.WriteLine(PM.ToString());
-#endif
                 long currTicks = stopwatch.ElapsedTicks;
                 double elapsedTime = Math.Max(currTicks - prevTicks, 0) / frequency;
                 Timing.Accumulator += elapsedTime;
