@@ -11,11 +11,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Xml.Linq;
-using System.Threading.Tasks;
 using MoonSharp.Interpreter;
 using System.Net;
 using Barotrauma.PerkBehaviors;
-using System.Collections.Concurrent;
 
 namespace Barotrauma.Networking
 {
@@ -35,11 +33,6 @@ namespace Barotrauma.Networking
                 ServerSettings.ServerName = value;
             }
         }
-
-        private static readonly ParallelOptions parallelOptions = new ParallelOptions
-        {
-            MaxDegreeOfParallelism = 16
-        };
 
         public bool SubmarineSwitchLoad = false;
 
@@ -735,7 +728,7 @@ namespace Barotrauma.Networking
             {
                 if (ConnectedClients.Count > 0)
                 {
-                    Parallel.ForEach(ConnectedClients, parallelOptions, c =>
+                    foreach (Client c in ConnectedClients)
                     {
                         try
                         {
@@ -757,7 +750,7 @@ namespace Barotrauma.Networking
                                 GameAnalyticsManager.ErrorSeverity.Error,
                                 errorMsg);
                         }
-                    });
+                    }
 
                     foreach (Character character in Character.CharacterList)
                     {
@@ -2108,7 +2101,6 @@ namespace Barotrauma.Networking
             if (!c.NeedsMidRoundSync)
             {
                 Character clientCharacter = c.Character;
-                var CharactersToUpdate = new ConcurrentQueue<Character>();
                 foreach (Character otherCharacter in Character.CharacterList)
                 {
                     if (!otherCharacter.Enabled) { continue; }
@@ -2158,7 +2150,6 @@ namespace Barotrauma.Networking
                     if (!c.PendingPositionUpdates.Contains(otherCharacter)) { c.PendingPositionUpdates.Enqueue(otherCharacter); }
                 }
 
-
                 foreach (Submarine sub in Submarine.Loaded)
                 {
                     //if docked to a sub with a smaller ID, don't send an update
@@ -2168,27 +2159,21 @@ namespace Barotrauma.Networking
                     if (!c.PendingPositionUpdates.Contains(sub)) { c.PendingPositionUpdates.Enqueue(sub); }
                 }
 
-
-                var itemsToUpdate = new ConcurrentQueue<Item>();
-                var pendingSet = new ConcurrentDictionary<Entity, byte>(c.PendingPositionUpdates.Select(e => new KeyValuePair<Entity, byte>(e, 0)));
-                Parallel.ForEach(Item.ItemList, parallelOptions, item =>
+                foreach (Item item in Item.ItemList)
                 {
-                    if (item.PositionUpdateInterval == float.PositiveInfinity) { return; }
+                    if (item.PositionUpdateInterval == float.PositiveInfinity) { continue; }
                     float updateInterval = item.GetPositionUpdateInterval(c);
                     c.PositionUpdateLastSent.TryGetValue(item, out float lastSent);
                     if (lastSent > NetTime.Now)
                     {
+                        //sent in the future -> can't be right, remove
                         c.PositionUpdateLastSent.Remove(item);
                     }
                     else
                     {
-                        if (lastSent > NetTime.Now - updateInterval) { return; }
+                        if (lastSent > NetTime.Now - updateInterval) { continue; }
                     }
-                    if (pendingSet.TryAdd(item, 0)) { itemsToUpdate.Enqueue(item); }
-                });
-                while (itemsToUpdate.TryDequeue(out var item))
-                {
-                    c.PendingPositionUpdates.Enqueue(item);
+                    if (!c.PendingPositionUpdates.Contains(item)) { c.PendingPositionUpdates.Enqueue(item); }
                 }
             }
 

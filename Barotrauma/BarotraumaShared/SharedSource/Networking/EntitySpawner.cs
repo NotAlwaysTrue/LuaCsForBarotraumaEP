@@ -3,11 +3,8 @@ using Barotrauma.Items.Components;
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Threading.Tasks;
 
 namespace Barotrauma
 {
@@ -15,12 +12,6 @@ namespace Barotrauma
     {
         private enum SpawnableType { Item, Character };
         
-        private static readonly ParallelOptions parallelOptions = new ParallelOptions
-        {
-            MaxDegreeOfParallelism = 16
-        };
-
-
         public interface IEntitySpawnInfo
         {
             Entity Spawn();
@@ -441,81 +432,35 @@ namespace Barotrauma
         public void Update(bool createNetworkEvents = true)
         {
             if (GameMain.NetworkMember is { IsClient: true }) { return; }
-
-            if (spawnOrRemoveQueue.Count == 0) { return; }
-
-            var entitiesToRemove = new List<Entity>();
-            var entitiesToSpawn = new List<IEntitySpawnInfo>();
-
             while (spawnOrRemoveQueue.Count > 0)
             {
                 var spawnOrRemove = spawnOrRemoveQueue.Dequeue();
                 if (spawnOrRemove.TryGet(out Entity entityToRemove))
                 {
-                    entitiesToRemove.Add(entityToRemove);
-                }
-                else if (spawnOrRemove.TryGet(out IEntitySpawnInfo spawnInfo))
-                {
-                    entitiesToSpawn.Add(spawnInfo);
-                }
-            }
-
-            var removeEvents = new ConcurrentBag<RemoveEntity>();
-            var spawnResults = new ConcurrentBag<(IEntitySpawnInfo info, Entity entity)>();
-
-            if (entitiesToRemove.Count > 0)
-            {
-                Parallel.ForEach(entitiesToRemove, parallelOptions, entity =>
-                {
-                    if (entity is Item item)
+                    if (entityToRemove is Item item)
                     {
                         item.SendPendingNetworkUpdates();
                     }
                     if (createNetworkEvents)
                     {
-                        removeEvents.Add(new RemoveEntity(entity));
+                        CreateNetworkEventProjSpecific(new RemoveEntity(entityToRemove));
                     }
-                });
-
-                foreach (var removeEvent in removeEvents)
-                {
-                    CreateNetworkEventProjSpecific(removeEvent);
+                    entityToRemove.Remove();
                 }
-                foreach (var entity in entitiesToRemove)
-                {
-                    entity.Remove();
+                else if (spawnOrRemove.TryGet(out IEntitySpawnInfo spawnInfo))
+                { 
+                    var spawnedEntity = spawnInfo.Spawn();
+                    if (spawnedEntity == null) { continue; }
+                    if (createNetworkEvents) 
+                    { 
+                        CreateNetworkEventProjSpecific(new SpawnEntity(spawnedEntity)); 
+                    }
+                    spawnInfo.OnSpawned(spawnedEntity);
+                    GameMain.GameSession?.EventManager?.EntitySpawned(spawnedEntity);
                 }
-            }
-
-            foreach (var spawnInfo in entitiesToSpawn)
-            {
-                ProcessEntitySpawn(spawnInfo, createNetworkEvents);
             }
         }
 
-        private void ProcessEntitySpawn(IEntitySpawnInfo spawnInfo, bool createNetworkEvents)
-        {
-            try
-            {
-                var spawnedEntity = spawnInfo.Spawn();
-                if (spawnedEntity == null) { return; }
-        
-                if (createNetworkEvents)
-                {
-                    CreateNetworkEventProjSpecific(new SpawnEntity(spawnedEntity));
-                }
-        
-                spawnInfo.OnSpawned(spawnedEntity);
-                GameMain.GameSession?.EventManager?.EntitySpawned(spawnedEntity);
-            }
-            catch (Exception e)
-            {
-                string errorMsg = $"Error while spawning entity in EntitySpawner.ProcessEntitySpawn: {e.Message}\n{e.StackTrace.CleanupStackTrace()}";
-                DebugConsole.ThrowError(errorMsg);
-                GameAnalyticsManager.AddErrorEventOnce("EntitySpawner.ProcessEntitySpawn", GameAnalyticsManager.ErrorSeverity.Error, errorMsg);
-            }
-        }
-        
         partial void CreateNetworkEventProjSpecific(SpawnOrRemove spawnOrRemove);
 
         public void Reset()

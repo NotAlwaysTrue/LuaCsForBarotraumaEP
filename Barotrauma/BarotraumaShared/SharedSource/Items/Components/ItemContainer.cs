@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Xml.Linq;
 
 namespace Barotrauma.Items.Components
@@ -17,11 +16,6 @@ namespace Barotrauma.Items.Components
         readonly record struct ActiveContainedItem(Item Item, StatusEffect StatusEffect, bool ExcludeBroken, bool ExcludeFullCondition, bool BlameEquipperForDeath);
 
         readonly record struct ContainedItem(Item Item, bool Hide, Vector2? ItemPos, float Rotation);
-
-        private static readonly ParallelOptions parallelOptions = new ParallelOptions
-        {
-            MaxDegreeOfParallelism = 8
-        };
 
         class SlotRestrictions
         {
@@ -697,88 +691,43 @@ namespace Barotrauma.Items.Components
                 return;
             }
 
-            Parallel.ForEach(activeContainedItems, parallelOptions, activeContainedItem =>
+            foreach (ActiveContainedItem activeContainedItem in activeContainedItems)
             {
-                var localTargets = new List<ISerializableEntity>();
-                try
+                if (!ShouldApplyEffects(activeContainedItem)) { continue; }
+
+                StatusEffect effect = activeContainedItem.StatusEffect;
+                effect.Apply(ActionType.OnActive, deltaTime, item, targets);
+                effect.Apply(ActionType.OnContaining, deltaTime, item, targets);
+                if (item.GetComponent<Wearable>() is Wearable { IsActive: true })
                 {
-                    if (!ShouldApplyEffects(activeContainedItem, localTargets)) { return; }
-
-                    StatusEffect effect = activeContainedItem.StatusEffect;
-                    try
-                    {
-                        effect.Apply(ActionType.OnActive, deltaTime, item, localTargets);
-                    }
-                    catch (Exception e)
-                    {
-                        DebugConsole.Log($"ItemContainer.Update: exception applying OnActive ({item.Name} / {activeContainedItem.Item?.Name}): {e.Message}");
-                        GameAnalyticsManager.AddErrorEventOnce("ItemContainer.Update.OnActiveException:" + item.Name,
-                            GameAnalyticsManager.ErrorSeverity.Error,
-                            $"Exception applying OnActive: {e.Message}\n{e.StackTrace.CleanupStackTrace()}");
-                    }
-
-                    try
-                    {
-                        effect.Apply(ActionType.OnContaining, deltaTime, item, localTargets);
-                    }
-                    catch (Exception e)
-                    {
-                        DebugConsole.Log($"ItemContainer.Update: exception applying OnContaining ({item.Name} / {activeContainedItem.Item?.Name}): {e.Message}");
-                        GameAnalyticsManager.AddErrorEventOnce("ItemContainer.Update.OnContainingException:" + item.Name,
-                            GameAnalyticsManager.ErrorSeverity.Error,
-                            $"Exception applying OnContaining: {e.Message}\n{e.StackTrace.CleanupStackTrace()}");
-                    }
-
-                    if (item.GetComponent<Wearable>() is Wearable { IsActive: true })
-                    {
-                        try
-                        {
-                            effect.Apply(ActionType.OnWearing, deltaTime, item, localTargets);
-                        }
-                        catch (Exception e)
-                        {
-                            DebugConsole.Log($"ItemContainer.Update: exception applying OnWearing ({item.Name} / {activeContainedItem.Item?.Name}): {e.Message}");
-                            GameAnalyticsManager.AddErrorEventOnce("ItemContainer.Update.OnWearingException:" + item.Name,
-                                GameAnalyticsManager.ErrorSeverity.Error,
-                                $"Exception applying OnWearing: {e.Message}\n{e.StackTrace.CleanupStackTrace()}");
-                        }
-                    }
+                    effect.Apply(ActionType.OnWearing, deltaTime, item, targets);
                 }
-                catch (Exception e)
-                {
-                    DebugConsole.Log($"ItemContainer.Update: unexpected exception in parallel loop ({item.Name}): {e.Message}");
-                    GameAnalyticsManager.AddErrorEventOnce("ItemContainer.Update.ParallelLoopException:" + item.Name,
-                        GameAnalyticsManager.ErrorSeverity.Error,
-                        $"Unexpected exception in parallel loop: {e.Message}\n{e.StackTrace.CleanupStackTrace()}");
-                }
-            });
+            }
         }
 
-        private bool ShouldApplyEffects(ActiveContainedItem activeContainedItem, List<ISerializableEntity> targetsList = null)
+        private bool ShouldApplyEffects(ActiveContainedItem activeContainedItem)
         {
             Item contained = activeContainedItem.Item;
             if (activeContainedItem.ExcludeBroken && contained.Condition <= 0) { return false; }
             if (activeContainedItem.ExcludeFullCondition && contained.IsFullCondition) { return false; }
             StatusEffect effect = activeContainedItem.StatusEffect;
 
-            // 使用传入的 targetsList（线程局部）或回退到实例字段（旧行为）
-            var targetCollector = targetsList ?? targets;
-            targetCollector.Clear();
+            targets.Clear();
             if (effect.HasTargetType(StatusEffect.TargetType.This))
             {
-                targetCollector.AddRange(item.AllPropertyObjects);
+                targets.AddRange(item.AllPropertyObjects);
             }
             if (effect.HasTargetType(StatusEffect.TargetType.Contained))
             {
-                targetCollector.AddRange(contained.AllPropertyObjects);
+                targets.AddRange(contained.AllPropertyObjects);
             }
             if (effect.HasTargetType(StatusEffect.TargetType.Character) && item.ParentInventory?.Owner is Character character)
             {
-                targetCollector.Add(character);
+                targets.Add(character);
             }
             if (effect.HasTargetType(StatusEffect.TargetType.NearbyItems) || effect.HasTargetType(StatusEffect.TargetType.NearbyCharacters))
             {
-                effect.AddNearbyTargets(item.WorldPosition, targetCollector);
+                effect.AddNearbyTargets(item.WorldPosition, targets);
             }
             return true;
         }
