@@ -20,6 +20,12 @@ This is a LuaCsForBarotrauma modification that adds Multi-Thread and Multi-Core 
 - [EvilFactory](https://github.com/evilfactory) - Moonsharp fork maintainer
 - [FakeFish Ltd](https://www.barotraumagame.com/) - Barotrauma developers
 
+This is a LuaCsForBarotrauma modification that adds Multi-Thread and Multi-Core support.
+
+### This project uses a fork of Moonsharp from EvilFactory: https://github.com/evilfactory/moonsharp
+### This project WILL heavily modify original LuaCsForBarotrauma/Barotrauma code.
+
+
 # Barotrauma
 
 Copyright © FakeFish Ltd 2017-2024
