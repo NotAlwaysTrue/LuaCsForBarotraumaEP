@@ -38,7 +38,7 @@ namespace Barotrauma.Networking
 
         private static readonly ParallelOptions parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = 4
+            MaxDegreeOfParallelism = 16
         };
 
         public bool SubmarineSwitchLoad = false;
@@ -2170,7 +2170,7 @@ namespace Barotrauma.Networking
 
 
                 var itemsToUpdate = new ConcurrentQueue<Item>();
-                var pendingSet = new HashSet<Item>((IEnumerable<Item>)c.PendingPositionUpdates); // 只初始化一次
+                var pendingSet = new ConcurrentDictionary<Entity, byte>(c.PendingPositionUpdates.Select(e => new KeyValuePair<Entity, byte>(e, 0)));
                 Parallel.ForEach(Item.ItemList, parallelOptions, item =>
                 {
                     if (item.PositionUpdateInterval == float.PositiveInfinity) { return; }
@@ -2184,7 +2184,7 @@ namespace Barotrauma.Networking
                     {
                         if (lastSent > NetTime.Now - updateInterval) { return; }
                     }
-                    if (pendingSet.Add(item)) { itemsToUpdate.Enqueue(item); }
+                    if (pendingSet.TryAdd(item, 0)) { itemsToUpdate.Enqueue(item); }
                 });
                 while (itemsToUpdate.TryDequeue(out var item))
                 {
