@@ -1,5 +1,6 @@
 # LuaCsForBarotrauma Enhanced Performence Project
 
+
 > ⚠ **Warning：** This release is only available for server-side use and is not recommended to run on the client. Make sure that compatibility is adequately tested before deployment.
 
 This is a LuaCsForBarotrauma modification that adds Multi-Thread and Multi-Core support.
@@ -19,6 +20,12 @@ This is a LuaCsForBarotrauma modification that adds Multi-Thread and Multi-Core 
 - [LuaCsForBarotrauma](https://github.com/evilfactory/LuaCsForBarotrauma) - Original Lua/C# modding framework
 - [EvilFactory](https://github.com/evilfactory) - Moonsharp fork maintainer
 - [FakeFish Ltd](https://www.barotraumagame.com/) - Barotrauma developers
+
+This is a LuaCsForBarotrauma modification that adds Multi-Thread and Multi-Core support.
+
+### This project uses a fork of Moonsharp from EvilFactory: https://github.com/evilfactory/moonsharp
+### This project WILL heavily modify original LuaCsForBarotrauma/Barotrauma code.
+
 
 # Barotrauma
 

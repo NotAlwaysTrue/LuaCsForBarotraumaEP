@@ -19,7 +19,7 @@ jobs:
         run: |
           echo "result=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> "$GITHUB_OUTPUT"
       - name: Sanity checks
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.extract-branch-name.outputs.result != 'develop' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.extract-branch-name.outputs.result != 'Dev' }}
         run: |
           echo "::error::this workflow can only be run on the \"develop\" branch"
           exit 1
