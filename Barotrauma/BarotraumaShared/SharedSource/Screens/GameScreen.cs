@@ -159,6 +159,7 @@ namespace Barotrauma
                         body.Update(); 
                     }
                 });
+
             GameMain.GameSession?.Update((float)deltaTime);
 
             foreach (PhysicsBody body in physicsBodies)
