@@ -3225,7 +3225,7 @@ namespace Barotrauma
                 if (args.Length > spawnLocationIndex + 1)
                 {
                     if (!int.TryParse(args[spawnLocationIndex + 1], NumberStyles.Any, CultureInfo.InvariantCulture, out amount)) { amount = 1; }
-                    amount = Math.Min(amount, 100);
+                    amount = Math.Min(amount, 10000);
                 }
                 
                 if (args.Length > spawnLocationIndex + 2)
