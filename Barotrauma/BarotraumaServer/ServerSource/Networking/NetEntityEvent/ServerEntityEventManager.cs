@@ -8,6 +8,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using static Barotrauma.EosInterface.Ownership;
 
+// Before blaming me for my abuse use of try-catch structure, please be advised:
+
+// events/uniquEevents is access intensive, and was used in many different places. We can say this is all over the game.
+// Replacing them with thread-safe collections is possible but will require a lot of work and time.
+// Considering the possiblity of these issues and our TPS,using try-catch structure to skip them and jump to next update is
+// more easire than refactoring everything.
+
+// NotAlwaysTrue, 2025/12/23
+
 namespace Barotrauma.Networking
 {
     class ServerEntityEvent : NetEntityEvent
@@ -324,7 +333,15 @@ namespace Barotrauma.Networking
                         lastSentToAnyone = c.LastRecvEntityEventID; 
                     }
                 }
-                lastSentToAnyoneTime = events.Find(e => e.ID == lastSentToAnyone)?.CreateTime ?? Timing.TotalTime;
+
+                try
+                {
+                    lastSentToAnyoneTime = events.ToList().Find(e => e.ID == lastSentToAnyone)?.CreateTime ?? Timing.TotalTime;
+                }
+                catch
+                {
+                    lastSentToAnyoneTime = Timing.TotalTime;
+                }
 
                 if (Timing.TotalTime - lastWarningTime > 5.0 &&
                     Timing.TotalTime - lastSentToAnyoneTime > 10.0 &&
@@ -334,13 +351,22 @@ namespace Barotrauma.Networking
                     string warningMsg = $"WARNING: ServerEntityEventManager is lagging behind! Last sent id: {lastSentToAnyone}, latest create id: {ID}";
                     warningMsg += "\n" + GetHighEventCountsWarning(events, maxEventsToList: 3);
                     GameServer.Log(warningMsg, ServerLog.MessageType.ServerMessage);
-                    events.ForEach(e => e.ResetCreateTime());
+                    events.ToList().ForEach(e => e.ResetCreateTime());
                     //TODO: reset clients if this happens, maybe do it if a majority are behind rather than all of them?
                 }
 
                 clients.Where(c => c.NeedsMidRoundSync).ForEach(c => { if (NetIdUtils.IdMoreRecent(lastSentToAll, c.FirstNewEventID)) lastSentToAll = (ushort)(c.FirstNewEventID - 1); });
 
-                ServerEntityEvent firstEventToResend = events.Find(e => e.ID == (ushort)(lastSentToAll + 1));
+                ServerEntityEvent firstEventToResend;
+                try
+                {
+                    firstEventToResend = events.ToList().Find(e => e.ID == (ushort)(lastSentToAll + 1));
+                }
+                catch
+                {
+                    firstEventToResend = null;
+                }
+
                 if (firstEventToResend != null &&
                     GameMain.GameSession.RoundDuration > server.ServerSettings.RoundStartSyncDuration &&
                     ((lastSentToAnyoneTime - firstEventToResend.CreateTime) > server.ServerSettings.OldReceivedEventKickTime || (Timing.TotalTime - firstEventToResend.CreateTime) > server.ServerSettings.OldEventKickTime))
@@ -369,7 +395,15 @@ namespace Barotrauma.Networking
                 {
                     //the client is waiting for an event that we don't have anymore
                     //(the ID they're expecting is smaller than the ID of the first event in our list)
-                    List<Client> toKick = inGameClients.FindAll(c => NetIdUtils.IdMoreRecent(events[0].ID, (UInt16)(c.LastRecvEntityEventID + 1)));
+                    List<Client> toKick;
+                    try 
+                    {
+                        toKick = inGameClients.FindAll(c => NetIdUtils.IdMoreRecent(events.ToList()[0].ID, (UInt16)(c.LastRecvEntityEventID + 1)));
+                    }
+                    catch
+                    {
+                        toKick = new List<Client>();
+                    }
                     toKick.ForEach(c =>
                     {
                         DebugConsole.NewMessage(c.Name + " was kicked because they were expecting a removed network event (" + (c.LastRecvEntityEventID + 1).ToString() + ", last available is " + events[0].ID.ToString() + ")", Color.Red);
