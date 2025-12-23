@@ -238,6 +238,7 @@ namespace Barotrauma.Networking
             }
         }
 
+        // Due to intensive access demend and time it takes to refactor, we use try-catch when facing thread-safety issue to skip to next update :(
         public void Update(List<Client> clients)
         {
             foreach (BufferedEvent bufferedEvent in bufferedEvents)
@@ -324,7 +325,16 @@ namespace Barotrauma.Networking
                         lastSentToAnyone = c.LastRecvEntityEventID; 
                     }
                 }
-                lastSentToAnyoneTime = events.Find(e => e.ID == lastSentToAnyone)?.CreateTime ?? Timing.TotalTime;
+
+                try
+                {
+                    lastSentToAnyoneTime = events.ToList().Find(e => e.ID == lastSentToAnyone)?.CreateTime ?? Timing.TotalTime;
+                }
+                catch
+                {
+                    lastSentToAnyoneTime = Timing.TotalTime;
+                }
+
 
                 if (Timing.TotalTime - lastWarningTime > 5.0 &&
                     Timing.TotalTime - lastSentToAnyoneTime > 10.0 &&
@@ -340,7 +350,16 @@ namespace Barotrauma.Networking
 
                 clients.Where(c => c.NeedsMidRoundSync).ForEach(c => { if (NetIdUtils.IdMoreRecent(lastSentToAll, c.FirstNewEventID)) lastSentToAll = (ushort)(c.FirstNewEventID - 1); });
 
-                ServerEntityEvent firstEventToResend = events.Find(e => e.ID == (ushort)(lastSentToAll + 1));
+                ServerEntityEvent firstEventToResend;
+                try
+                {
+                    firstEventToResend = events.Find(e => e.ID == (ushort)(lastSentToAll + 1));
+                }
+                catch
+                {
+                    firstEventToResend = null;
+                }
+                 
                 if (firstEventToResend != null &&
                     GameMain.GameSession.RoundDuration > server.ServerSettings.RoundStartSyncDuration &&
                     ((lastSentToAnyoneTime - firstEventToResend.CreateTime) > server.ServerSettings.OldReceivedEventKickTime || (Timing.TotalTime - firstEventToResend.CreateTime) > server.ServerSettings.OldEventKickTime))
