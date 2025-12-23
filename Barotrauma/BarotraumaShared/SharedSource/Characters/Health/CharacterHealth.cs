@@ -503,17 +503,19 @@ namespace Barotrauma
         /// </summary>
         public float GetResistance(AfflictionPrefab afflictionPrefab, LimbType limbType)
         {
-            // This is a % resistance (0 to 1.0)
-            float resistance = 0.0f;
-            foreach (KeyValuePair<Affliction, LimbHealth> kvp in afflictions)
-            {
-                var affliction = kvp.Key;
-                resistance += affliction.GetResistance(afflictionPrefab.Identifier, limbType);
+            lock (afflictions) {
+                // This is a % resistance (0 to 1.0)
+                float resistance = 0.0f;
+                foreach (KeyValuePair<Affliction, LimbHealth> kvp in afflictions)
+                {
+                    var affliction = kvp.Key;
+                    resistance += affliction.GetResistance(afflictionPrefab.Identifier, limbType);
+                }
+                // This is a multiplier, ie. 0.0 = 100% resistance and 1.0 = 0% resistance
+                float abilityResistanceMultiplier = Character.GetAbilityResistance(afflictionPrefab);
+                // The returned value is calculated to be a % resistance again
+                return 1 - ((1 - resistance) * abilityResistanceMultiplier);
             }
-            // This is a multiplier, ie. 0.0 = 100% resistance and 1.0 = 0% resistance
-            float abilityResistanceMultiplier = Character.GetAbilityResistance(afflictionPrefab);
-            // The returned value is calculated to be a % resistance again
-            return 1 - ((1 - resistance) * abilityResistanceMultiplier);
         }
 
         public float GetStatValue(StatTypes statType)

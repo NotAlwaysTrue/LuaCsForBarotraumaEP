@@ -174,7 +174,9 @@ namespace Barotrauma.Networking
                     exceptionMsg += " Child process has not exited.";
                 }
 #endif
+#if !DEBUG
                 throw new Exception(exceptionMsg);
+#endif
             }
         }
 

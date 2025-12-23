@@ -1317,11 +1317,12 @@ namespace Barotrauma
                 GameMain.LuaCs.ToggleDebugger(port);
             }));
 
+#if DEBUG
             commands.Add(new Command("install_cl_lua|install_cl|install_cl_cs|install_cl_luacs", "Installs Client-Side LuaCs into your client.", (string[] args) =>
             {
                 LuaCsInstaller.Install();
             }));
-
+#endif
             commands.Add(new Command("randomizeseed", "randomizeseed: Toggles level seed randomization on/off.", (string[] args) =>
             {
                 GameMain.Server.ServerSettings.RandomizeSeed = !GameMain.Server.ServerSettings.RandomizeSeed;
@@ -2768,6 +2769,19 @@ namespace Barotrauma
                     GameMain.Server.SendConsoleMessage("Ready checks cannot be commenced in the lobby.", senderClient);
                 }
             );
+
+            commands.Add(new Command("ShowServerPerf", "Immediately log server performance info in ServerMessage", (string[] args) =>
+            {
+                GameServer.Log(PerformenceMonitor.PM.ToString(), ServerLog.MessageType.ServerMessage);
+            }));
+
+            AssignOnClientRequestExecute(
+                "ShowServerPerf",
+                (c,_,_) =>
+                {
+                    GameServer.Log(PerformenceMonitor.PM.ToString(), ServerLog.MessageType.ServerMessage);
+                    GameMain.Server.SendConsoleMessage(PerformenceMonitor.PM.ToString(), c, Color.Green);
+                });
 
 #if DEBUG
             commands.Add(new Command("spamevents", "A debug command that creates a ton of entity events.", (string[] args) =>

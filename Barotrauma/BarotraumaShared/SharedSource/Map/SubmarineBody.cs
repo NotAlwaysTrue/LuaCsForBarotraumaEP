@@ -1,5 +1,6 @@
 ﻿using Barotrauma.Extensions;
 using Barotrauma.Items.Components;
+using Barotrauma.Networking;
 using FarseerPhysics;
 using FarseerPhysics.Common;
 using FarseerPhysics.Dynamics;
@@ -426,7 +427,17 @@ namespace Barotrauma
                         if (points[0].Y > Body.SimPosition.Y &&
                             !Character.CharacterList.Any(c => c.Submarine == otherSubmarine && !c.IsIncapacitated && c.TeamID == otherSubmarine.TeamID))
                         {
-                            otherSubmarine.GetConnectedSubs().ForEach(s => s.SubBody.forceUpwardsTimer += deltaTime);
+                            try
+                            {
+                                otherSubmarine.GetConnectedSubs().ToList().ForEach(s => s.SubBody.forceUpwardsTimer += deltaTime);
+                            }
+                            catch 
+                            {
+#if SERVER
+                                GameServer.Log("Try making UniqueEvents snapshot failed", ServerLog.MessageType.Error);
+#endif
+                            }
+                            
                             break;
                         }
                     }
