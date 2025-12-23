@@ -81,7 +81,7 @@ jobs:
 
   publish-release:
     needs: [check-if-release-needed]
-    if: ${{ needs.check-if-release-needed.outputs.has-new-commits == 'true' }}
+    if: true
     uses: ./.github/workflows/publish-release.yml
     with:
       target: ${{ needs.check-if-release-needed.outputs.latest-commit-sha }}
