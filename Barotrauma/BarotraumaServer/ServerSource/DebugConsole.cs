@@ -1317,11 +1317,12 @@ namespace Barotrauma
                 GameMain.LuaCs.ToggleDebugger(port);
             }));
 
+#if DEBUG
             commands.Add(new Command("install_cl_lua|install_cl|install_cl_cs|install_cl_luacs", "Installs Client-Side LuaCs into your client.", (string[] args) =>
             {
                 LuaCsInstaller.Install();
             }));
-
+#endif
             commands.Add(new Command("randomizeseed", "randomizeseed: Toggles level seed randomization on/off.", (string[] args) =>
             {
                 GameMain.Server.ServerSettings.RandomizeSeed = !GameMain.Server.ServerSettings.RandomizeSeed;
