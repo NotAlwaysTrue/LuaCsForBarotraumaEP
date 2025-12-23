@@ -151,23 +151,15 @@ namespace Barotrauma
 
             var physicsBodies = PhysicsBody.List.ToList();
 
-            Parallel.Invoke(parallelOptions,
-                () =>
+            Parallel.ForEach(physicsBodies, parallelOptions, body =>
                 {
-                    Parallel.ForEach(physicsBodies, parallelOptions, body =>
-                    {
-                        if ((body.Enabled || body.UserData is Character) && 
-                            body.BodyType != BodyType.Static) 
-                        { 
-                            body.Update(); 
-                        }
-                    });
-                },
-                () =>
-                {
-                    GameMain.GameSession?.Update((float)deltaTime);
-                }
-            );
+                    if ((body.Enabled || body.UserData is Character) && 
+                        body.BodyType != BodyType.Static) 
+                    { 
+                        body.Update(); 
+                    }
+                });
+            GameMain.GameSession?.Update((float)deltaTime);
 
             foreach (PhysicsBody body in physicsBodies)
             {
