@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
+using System.Threading.Tasks;
 
 namespace Barotrauma
 {
@@ -34,6 +35,10 @@ namespace Barotrauma
             Identifier ParentObjectiveId,
             bool CanBeCompleted) : INetSerializableStruct;
 
+        private static readonly ParallelOptions parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = 4
+        };
 
         const float IntensityUpdateInterval = 5.0f;
 
@@ -978,13 +983,13 @@ namespace Barotrauma
 
         public void EntitySpawned(Entity entity)
         {
-            foreach (var ev in activeEvents)
+            Parallel.ForEach (activeEvents, parallelOptions, ev =>
             {
                 if (ev is ScriptedEvent scriptedEvent)
                 {
                     scriptedEvent.EntitySpawned(entity);
                 }
-            }
+            });
         }
 
         private void CalculateCurrentIntensity(float deltaTime)
