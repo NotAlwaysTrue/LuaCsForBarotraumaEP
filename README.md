@@ -1,4 +1,7 @@
 # LuaCsForBarotrauma Enhanced Performence Project
+
+> ⚠ **Warning：** This release is only available for server-side use and is not recommended to run on the client. Make sure that compatibility is adequately tested before deployment.
+
 This is a LuaCsForBarotrauma modification that adds Multi-Thread and Multi-Core support.
 
 ### This project uses a fork of Moonsharp from EvilFactory: https://github.com/evilfactory/moonsharp
@@ -46,6 +49,8 @@ If you're interested in working on the code, either to develop mods or to contri
 - [Visual Studio 2022 for Mac](https://visualstudio.microsoft.com/vs/mac/)
 
 # LuaCsForBarotrauma 性能增强项目
+
+> ⚠ **重要警告：** 本版本仅适用于服务器端使用，不建议在客户端运行。请确保在部署前已充分测试兼容性。
 
 这是一个 LuaCsForBarotrauma 的修改版本，添加了多线程和多核支持。
 
