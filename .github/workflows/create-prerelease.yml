@@ -19,9 +19,9 @@ jobs:
         run: |
           echo "result=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> "$GITHUB_OUTPUT"
       - name: Sanity checks
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.extract-branch-name.outputs.result != 'develop' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.extract-branch-name.outputs.result != 'OBT-Release' }}
         run: |
-          echo "::error::this workflow can only be run on the \"develop\" branch"
+          echo "::error::this workflow can only be run on the \"OBT-Release\" branch"
           exit 1
 
       - name: Get latest nightly-tagged commit
@@ -53,7 +53,7 @@ jobs:
             const ref = await github.rest.git.getRef({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              ref: "heads/develop",
+              ref: "heads/OBT-Release",
             });
             return ref.data.object.sha;
 
