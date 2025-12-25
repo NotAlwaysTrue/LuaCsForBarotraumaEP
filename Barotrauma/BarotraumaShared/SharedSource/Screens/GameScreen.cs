@@ -151,23 +151,16 @@ namespace Barotrauma
 
             var physicsBodies = PhysicsBody.List.ToList();
 
-            Parallel.Invoke(parallelOptions,
-                () =>
+            Parallel.ForEach(physicsBodies, parallelOptions, body =>
                 {
-                    Parallel.ForEach(physicsBodies, parallelOptions, body =>
-                    {
-                        if ((body.Enabled || body.UserData is Character) && 
-                            body.BodyType != BodyType.Static) 
-                        { 
-                            body.Update(); 
-                        }
-                    });
-                },
-                () =>
-                {
-                    GameMain.GameSession?.Update((float)deltaTime);
-                }
-            );
+                    if ((body.Enabled || body.UserData is Character) && 
+                        body.BodyType != BodyType.Static) 
+                    { 
+                        body.Update(); 
+                    }
+                });
+
+            GameMain.GameSession?.Update((float)deltaTime);
 
             foreach (PhysicsBody body in physicsBodies)
             {
@@ -183,10 +176,8 @@ namespace Barotrauma
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
 
-            Parallel.Invoke(parallelOptions,
-                () => GameMain.ParticleManager.Update((float)deltaTime),
-                () => { if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, cam); }
-            );
+            GameMain.ParticleManager.Update((float)deltaTime);
+            if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, cam);
             
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Particles+Level", sw.ElapsedTicks);
@@ -252,25 +243,25 @@ namespace Barotrauma
             Character.Controlled?.UpdateLocalCursor(cam);
 
 #elif SERVER
-            Parallel.Invoke(parallelOptions,
-                () => { if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance); },
-                () => Character.UpdateAll((float)deltaTime, Camera.Instance)
-            );
+            if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance);
+
+            Character.UpdateAll((float)deltaTime, Camera.Instance);
 #endif
 
             var submarines = Submarine.Loaded.ToList();
-            Parallel.ForEach(submarines, parallelOptions, sub =>
+            foreach(Submarine sub in submarines)
             {
                 sub.SetPrevTransform(sub.Position);
-            });
+            }
 
-            Parallel.ForEach(physicsBodies, parallelOptions, body =>
+            // 
+            foreach (PhysicsBody body in physicsBodies)
             {
                 if (body.Enabled && body.BodyType != FarseerPhysics.BodyType.Static) 
-                { 
-                    body.SetPrevTransform(body.SimPosition, body.Rotation); 
+            { 
+                body.SetPrevTransform(body.SimPosition, body.Rotation); 
                 }
-            });
+            }
 
 #if CLIENT
             MapEntity.UpdateAll((float)deltaTime, cam, parallelOptions);
@@ -302,11 +293,10 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Ragdolls", sw.ElapsedTicks);
             sw.Restart(); 
 #endif
-
-            Parallel.ForEach(submarines, parallelOptions, sub =>
+            foreach (var sub in submarines) 
             {
                 sub.Update((float)deltaTime);
-            });
+            }
 
 #if CLIENT
             sw.Stop();
