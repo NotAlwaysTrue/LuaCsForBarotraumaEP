@@ -304,10 +304,10 @@ namespace Barotrauma
             sw.Restart(); 
 #endif
 
-            Parallel.ForEach(submarines, parallelOptions, sub =>
+            foreach(Submarine sub in submarines)
             {
                 sub.Update((float)deltaTime);
-            });
+            }
 
 #if CLIENT
             sw.Stop();
