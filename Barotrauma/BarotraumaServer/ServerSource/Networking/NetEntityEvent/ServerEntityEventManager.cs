@@ -8,6 +8,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using static Barotrauma.EosInterface.Ownership;
 
+
+// DO NOT TOUCH ANYTHING HERE
+// OR EVERYTHING WILL FAIL
 namespace Barotrauma.Networking
 {
     class ServerEntityEvent : NetEntityEvent

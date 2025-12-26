@@ -252,10 +252,11 @@ namespace Barotrauma
             Character.Controlled?.UpdateLocalCursor(cam);
 
 #elif SERVER
-            Parallel.Invoke(parallelOptions,
-                () => { if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance); },
-                () => Character.UpdateAll((float)deltaTime, Camera.Instance)
-            );
+            if (Level.Loaded != null) 
+            {
+                Level.Loaded.Update((float)deltaTime, Camera.Instance); 
+            }
+            Character.UpdateAll((float)deltaTime, Camera.Instance);
 #endif
 
             var submarines = Submarine.Loaded.ToList();
