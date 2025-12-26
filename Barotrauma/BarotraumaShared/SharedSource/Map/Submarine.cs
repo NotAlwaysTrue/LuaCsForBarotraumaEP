@@ -2,16 +2,17 @@
 using Barotrauma.IO;
 using Barotrauma.Items.Components;
 using Barotrauma.Networking;
+using Barotrauma.PerkBehaviors;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Xml.Linq;
-using Barotrauma.PerkBehaviors;
 using Voronoi2;
 
 namespace Barotrauma
@@ -484,9 +485,9 @@ namespace Barotrauma
         {
             Rectangle dockedBorders = Borders;
             checkSubmarineBorders.Add(this);
-            var connectedSubs = DockedTo.Where(s => 
-                !checkSubmarineBorders.Contains(s) && 
-                !s.Info.IsOutpost && 
+            var connectedSubs = DockedTo.Where(s =>
+                !checkSubmarineBorders.Contains(s) &&
+                !s.Info.IsOutpost &&
                 (allowDifferentTeam || s.TeamID == TeamID));
             foreach (Submarine dockedSub in connectedSubs)
             {
@@ -508,23 +509,16 @@ namespace Barotrauma
             return dockedBorders;
         }
 
-        private readonly HashSet<Submarine> connectedSubs;
+        private readonly ConcurrentBag<Submarine> connectedSubs;
         /// <summary>
         /// Returns a list of all submarines that are connected to this one via docking ports, including this sub.
         /// </summary>
-        public IEnumerable<Submarine> GetConnectedSubs()
+        public ConcurrentBag<Submarine> GetConnectedSubs()
         {
             return connectedSubs;
         }
 
-        public void RefreshConnectedSubs()
-        {
-            connectedSubs.Clear();
-            connectedSubs.Add(this);
-            GetConnectedSubsRecursive(connectedSubs);
-        }
-
-        private void GetConnectedSubsRecursive(HashSet<Submarine> subs)
+        private void GetConnectedSubsRecursive(ConcurrentBag<Submarine> subs)
         {
             foreach (Submarine dockedSub in DockedTo)
             {
@@ -534,6 +528,12 @@ namespace Barotrauma
             }
         }
 
+        public void RefreshConnectedSubs()
+        {
+            connectedSubs.Clear();
+            connectedSubs.Add(this);
+            GetConnectedSubsRecursive(connectedSubs);
+        }
         /// <summary>
         /// Attempt to find a spawn position close to the specified position where the sub doesn't collide with walls/ruins
         /// </summary>
@@ -551,7 +551,7 @@ namespace Barotrauma
             minWidth += padding;
             minHeight += padding;
 
-            int iterations = 0;            
+            int iterations = 0;
             const int maxIterations = 5;
             do
             {
@@ -580,9 +580,9 @@ namespace Barotrauma
                             //if the raycast hit a wall, attempt to place the spawnpos there
                             int offsetFromWall = 10 * -verticalMoveDir;
                             float pickedPos = ConvertUnits.ToDisplayUnits(LastPickedPosition.Y) + offsetFromWall;
-                            closestPickedPos.Y = 
-                                    verticalMoveDir > 0 ? 
-                                    Math.Min(closestPickedPos.Y, pickedPos) : 
+                            closestPickedPos.Y =
+                                    verticalMoveDir > 0 ?
+                                    Math.Min(closestPickedPos.Y, pickedPos) :
                                     Math.Max(closestPickedPos.Y, pickedPos);
                         }
                     }
@@ -597,7 +597,7 @@ namespace Barotrauma
                     bool couldMoveInVerticalMoveDir = Math.Sign(newSpawnPos.Y - spawnPos.Y) == Math.Sign(verticalMoveDir);
                     if (!couldMoveInVerticalMoveDir) { break; }
                     spawnPos = ClampToHorizontalLimits(newSpawnPos, limits);
-                }                
+                }
 
                 iterations++;
             } while (iterations < maxIterations);
@@ -1001,7 +1001,7 @@ namespace Barotrauma
         /// <param name="ignoreBranches">Should plants' branches be ignored?</param>
         /// <param name="blocksVisibilityPredicate">If the predicate returns false, the fixture is ignored even if it would normally block visibility.</param>
         /// <returns>A physics body that was between the points (or null)</returns>
-        public static Body CheckVisibility(Vector2 rayStart, Vector2 rayEnd, bool ignoreLevel = false, bool ignoreSubs = false, bool ignoreSensors = true, bool ignoreDisabledWalls = true, bool ignoreBranches = true, 
+        public static Body CheckVisibility(Vector2 rayStart, Vector2 rayEnd, bool ignoreLevel = false, bool ignoreSubs = false, bool ignoreSensors = true, bool ignoreDisabledWalls = true, bool ignoreBranches = true,
             Predicate<Fixture> blocksVisibilityPredicate = null)
         {
             Body closestBody = null;
@@ -1160,10 +1160,10 @@ namespace Barotrauma
             {
                 //a little hacky: undock and redock to ensure the hulls and gaps between docking ports are correct
                 //after all the parts of the submarine have been flipped and moved to correct places.
-                if (dockingPort.DockingTarget is { } dockingTarget) 
+                if (dockingPort.DockingTarget is { } dockingTarget)
                 {
-                    dockingPort.Undock(); 
-                    dockingPort.Dock(dockingTarget); 
+                    dockingPort.Undock();
+                    dockingPort.Dock(dockingTarget);
                 }
             }
 
@@ -1487,7 +1487,7 @@ namespace Barotrauma
             {
                 if (ignoreOutposts && sub.Info.IsOutpost) { continue; }
                 if (ignoreOutsideLevel && Level.Loaded != null && sub.IsAboveLevel) { continue; }
-                if (ignoreRespawnShuttle && sub.IsRespawnShuttle) { continue; }                
+                if (ignoreRespawnShuttle && sub.IsRespawnShuttle) { continue; }
                 if (teamType.HasValue && sub.TeamID != teamType) { continue; }
                 float dist = Vector2.DistanceSquared(worldPosition, sub.WorldPosition);
                 if (closest == null || dist < closestDist)
@@ -1551,6 +1551,7 @@ namespace Barotrauma
             if (includingConnectedSubs)
             {
                 // Performance-sensitive code -> implemented without Linq.
+
                 foreach (Submarine s in connectedSubs)
                 {
                     if (s == entity.Submarine && (allowDifferentTeam || entity.Submarine.TeamID == TeamID) && (allowDifferentType || entity.Submarine.Info.Type == Info.Type))
@@ -1600,7 +1601,7 @@ namespace Barotrauma
             Vector4 bounds = new Vector4(float.MaxValue, float.MinValue, float.MinValue, float.MaxValue);
             foreach (XElement element in submarineElement.Elements())
             {
-                if (element.Name == "Structure") 
+                if (element.Name == "Structure")
                 {
                     string name = element.GetAttributeString("name", "");
                     Identifier identifier = element.GetAttributeIdentifier("identifier", "");
@@ -1642,7 +1643,7 @@ namespace Barotrauma
         {
             Stopwatch sw = Stopwatch.StartNew();
 
-            connectedSubs = new HashSet<Submarine>(2)
+            connectedSubs = new ConcurrentBag<Submarine>
             {
                 this
             };
@@ -1829,7 +1830,7 @@ namespace Barotrauma
                     }
                 }
 
-                if (Screen.Selected is { IsEditor : false })
+                if (Screen.Selected is { IsEditor: false })
                 {
                     foreach (Identifier layer in Info.LayersHiddenByDefault)
                     {
@@ -2011,7 +2012,7 @@ namespace Barotrauma
                     Item itemToSwap = kvp.Key;
                     ItemPrefab swapTo = kvp.Value;
                     itemToSwap.PurchasedNewSwap = item.PurchasedNewSwap;
-                    if (itemToSwap.Prefab != swapTo) { itemToSwap.PendingItemSwap = swapTo; }                    
+                    if (itemToSwap.Prefab != swapTo) { itemToSwap.PendingItemSwap = swapTo; }
                 }
             }
 
@@ -2101,8 +2102,8 @@ namespace Barotrauma
 
         public static void Unload()
         {
-            if (Unloading) 
-            { 
+            if (Unloading)
+            {
                 DebugConsole.AddWarning($"Called {nameof(Submarine.Unload)} when already unloading.");
                 return;
             }
@@ -2152,7 +2153,7 @@ namespace Barotrauma
 
                 Ragdoll.RemoveAll();
                 PhysicsBody.RemoveAll();
-                StatusEffect.StopAll();       
+                StatusEffect.StopAll();
                 GameMain.World = null;
 
                 Powered.Grids.Clear();
@@ -2348,10 +2349,10 @@ namespace Barotrauma
                 if (potentialContainer.Submarine == this && !isSecondary)
                 {
                     //valid primary container in the same sub -> perfect, let's use that one
-                    return potentialContainer;               
+                    return potentialContainer;
                 }
                 selectedContainer = potentialContainer;
-                
+
             }
             return selectedContainer;
         }
