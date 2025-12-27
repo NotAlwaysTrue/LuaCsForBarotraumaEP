@@ -3,11 +3,12 @@ using Barotrauma.Items.Components;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
+using MoonSharp.Interpreter;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
-using MoonSharp.Interpreter;
 
 namespace Barotrauma
 {
@@ -745,7 +746,7 @@ namespace Barotrauma
             waterFlowThisFrame = 0.0f;
         }
 
-        private static readonly HashSet<Hull> checkedHulls = new HashSet<Hull>();
+        private static readonly ConcurrentBag<Hull> checkedHulls = new ConcurrentBag<Hull>();
 
         /// <summary>
         /// Simulates water flow from the source to all the hulls it's connected to across the sub, as if the water was coming directly from outside.
@@ -764,7 +765,7 @@ namespace Barotrauma
             }
         }
 
-        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, HashSet<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
+        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, ConcurrentBag<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
         {
             const float decay = 0.95f;
 
