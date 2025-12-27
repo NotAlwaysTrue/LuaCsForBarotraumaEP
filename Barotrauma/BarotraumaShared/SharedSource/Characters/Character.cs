@@ -2761,10 +2761,11 @@ namespace Barotrauma
             }
             int itemsPerFrame = IsOnPlayerTeam ? 100 : 10;
             int checkedItemCount = 0;
-            for (int i = 0; i < itemsPerFrame && itemIndex < Item.ItemList.Count; i++, itemIndex++)
+            var cachedItems = Item.GetCachedItemList();
+            for (int i = 0; i < itemsPerFrame && itemIndex < cachedItems.Count; i++, itemIndex++)
             {
                 checkedItemCount++;
-                var item = Item.ItemList[itemIndex];
+                var item = cachedItems[itemIndex];
                 if (!item.IsInteractable(this)) { continue; }
                 if (ignoredItems != null && ignoredItems.Contains(item)) { continue; }
                 if (item.Submarine == null) { continue; }
@@ -2800,10 +2801,10 @@ namespace Barotrauma
                 }
             }
             targetItem = _foundItem;
-            bool completed = itemIndex >= Item.ItemList.Count - 1;
+            bool completed = itemIndex >= cachedItems.Count - 1;
             if (HumanAIController.DebugAI && checkedItemCount > 0 && targetItem != null && StopWatch.ElapsedMilliseconds > 1)
             {
-                var msg = $"Went through {checkedItemCount} of total {Item.ItemList.Count} items. Found item {targetItem.Name} in {StopWatch.ElapsedMilliseconds} ms. Completed: {completed}";
+                var msg = $"Went through {checkedItemCount} of total {cachedItems.Count} items. Found item {targetItem.Name} in {StopWatch.ElapsedMilliseconds} ms. Completed: {completed}";
                 if (StopWatch.ElapsedMilliseconds > 5)
                 {
                     DebugConsole.ThrowError(msg);

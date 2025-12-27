@@ -1077,7 +1077,7 @@ namespace Barotrauma
 
             Item.UpdateHulls();
 
-            List<Item> bodyItems = Item.ItemList.FindAll(it => it.Submarine == this && it.body != null);
+            List<Item> bodyItems = Item.ItemList.Where(it => it.Submarine == this && it.body != null).ToList();
             List<MapEntity> subEntities = MapEntity.MapEntityList.FindAll(me => me.Submarine == this);
 
             foreach (MapEntity e in subEntities)
@@ -1507,7 +1507,7 @@ namespace Barotrauma
 
         public List<Hull> GetHulls(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Hull.HullList);
         public List<Gap> GetGaps(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Gap.GapList);
-        public List<Item> GetItems(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Item.ItemList);
+        public List<Item> GetItems(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Item.ItemList).ToList();
         public List<WayPoint> GetWaypoints(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, WayPoint.WayPointList);
         public List<Structure> GetWalls(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Structure.WallList);
 
@@ -2148,7 +2148,7 @@ namespace Barotrauma
                             DebugConsole.ThrowError("Error while removing \"" + item.Name + "\"!", e);
                         }
                     }
-                    Item.ItemList.Clear();
+                    Item.ClearAllItemCollections();
                 }
 
                 Ragdoll.RemoveAll();

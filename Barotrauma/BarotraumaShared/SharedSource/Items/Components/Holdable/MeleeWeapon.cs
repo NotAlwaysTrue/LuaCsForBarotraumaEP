@@ -3,6 +3,7 @@ using FarseerPhysics.Dynamics;
 using FarseerPhysics.Dynamics.Contacts;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -24,7 +25,7 @@ namespace Barotrauma.Items.Components
 
         private readonly HashSet<Entity> hitTargets = new HashSet<Entity>();
 
-        private readonly Queue<Fixture> impactQueue = new Queue<Fixture>();
+        private readonly ConcurrentQueue<Fixture> impactQueue = new ConcurrentQueue<Fixture>();
 
         public Character User { get; private set; }
 
@@ -190,17 +191,16 @@ namespace Barotrauma.Items.Components
         {
             if (!item.body.Enabled)
             {
-                impactQueue.Clear();
+                while (impactQueue.TryDequeue(out _)) { } // Clear queue
                 return;
             }
             if (picker == null || !picker.HeldItems.Contains(item))
             {
-                impactQueue.Clear();
+                while (impactQueue.TryDequeue(out _)) { } // Clear queue
                 IsActive = false;
             }
-            while (impactQueue.Count > 0)
+            while (impactQueue.TryDequeue(out var impact))
             {
-                var impact = impactQueue.Dequeue();
                 HandleImpact(impact);
             }
             //in case handling the impact does something to the picker
@@ -300,7 +300,7 @@ namespace Barotrauma.Items.Components
 
         private void RestoreCollision()
         {
-            impactQueue.Clear();
+            while (impactQueue.TryDequeue(out _)) { } // Clear queue
             item.body.FarseerBody.OnCollision -= OnCollision;
             item.body.CollisionCategories = Physics.CollisionItem;
             item.body.CollidesWith = Physics.DefaultItemCollidesWith;

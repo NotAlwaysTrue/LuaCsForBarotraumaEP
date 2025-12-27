@@ -1478,7 +1478,7 @@ namespace Barotrauma
                     newItemName = args[2];
                 }
 
-                var oldItem = Item.ItemList.FindAll(it => it.Name == args[0]).ElementAtOrDefault(itemIndex);
+                var oldItem = Item.ItemList.Where(it => it.Name == args[0]).ElementAtOrDefault(itemIndex);
                 if (oldItem == null)
                 {
                     ThrowError($"Could not find an item with the name {args[0]} (index {itemIndex}).");
@@ -1852,7 +1852,7 @@ namespace Barotrauma
 
             commands.Add(new Command("power", "power: Immediately powers up the submarine's nuclear reactor.", (string[] args) =>
             {
-                Item reactorItem = Item.ItemList.Find(i => i.GetComponent<Reactor>() != null);
+                Item reactorItem = Item.ItemList.FirstOrDefault(i => i.GetComponent<Reactor>() != null);
                 if (reactorItem == null) { return; }
 
                 var reactor = reactorItem.GetComponent<Reactor>();

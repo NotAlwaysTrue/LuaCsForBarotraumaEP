@@ -261,7 +261,7 @@ namespace Barotrauma
                         DebugConsole.ThrowError($"Error while removing item \"{item}\"", exception);
                     }
                 }
-                Item.ItemList.Clear();
+                Item.ClearAllItemCollections();
             }
             if (Character.CharacterList.Count > 0)
             {

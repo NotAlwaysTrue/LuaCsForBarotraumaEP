@@ -440,7 +440,7 @@ namespace Barotrauma
 
             if (Identifier == Tags.DeconstructThis && item.AllowDeconstruct)
             {
-                if (item.AllowDeconstruct && !Item.DeconstructItems.Contains(item) &&
+                if (item.AllowDeconstruct && !Item.IsMarkedForDeconstruction(item) &&
                     //only allow deconstructing if there are no deconstruction recipes (= deconstructing yields nothing), or deconstruction recipes that
                     (item.Prefab.DeconstructItems.None() ||
                     item.Prefab.DeconstructItems.Any(deconstructItem =>
@@ -454,7 +454,7 @@ namespace Barotrauma
             }
             else if (Identifier == Tags.DontDeconstructThis)
             {
-                if (Item.DeconstructItems.Contains(item)) { return true; }
+                if (Item.IsMarkedForDeconstruction(item)) { return true; }
             }
 
             ImmutableArray<Identifier> targetItems = GetTargetItems(option);
