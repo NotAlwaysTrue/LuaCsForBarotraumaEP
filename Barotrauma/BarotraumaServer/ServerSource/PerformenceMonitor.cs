@@ -11,9 +11,9 @@ using System.Threading.Tasks;
 
 namespace Barotrauma
 {
-    public class PerformenceMonitor
+    public class PerformanceMonitor
     {
-        static public PerformenceMonitor PM;
+        static public PerformanceMonitor PM;
 
         private Stopwatch PMStopwatch = new Stopwatch();
 
@@ -111,7 +111,7 @@ namespace Barotrauma
             get; set;
         }
 
-        public PerformenceMonitor() 
+        public PerformanceMonitor() 
         {
             PM = this;
             RealTickRate = 60;
@@ -161,7 +161,7 @@ namespace Barotrauma
         }
         override public string ToString()
         {
-            return $"Server Performence Info \n" +
+            return $"Server Performance Info \n" +
                    $"Item Count: {ItemCount}\n" +
                    $"Character Count: {CharacterCount}\n" +
                    $"Clients Count {ConnectClients}\n " +
