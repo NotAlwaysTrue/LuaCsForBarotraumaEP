@@ -114,7 +114,7 @@ namespace Barotrauma
         public override void Update(double deltaTime)
         {
 
-#warning For now CL side performence counter is partly useless bucz multiple changes on such things. Need time to take care of it
+#warning For now CL side performance counter is partly useless bucz multiple changes on such things. Need time to take care of it
 
 #if RUN_PHYSICS_IN_SEPARATE_THREAD
             physicsTime += deltaTime;

@@ -330,7 +330,7 @@ namespace Barotrauma
             Stopwatch performanceCounterTimer = Stopwatch.StartNew();
             stopwatch = Stopwatch.StartNew();
 
-            PerformenceMonitor PM = new PerformenceMonitor();
+            PerformanceMonitor PM = new PerformanceMonitor();
 
             long prevTicks = stopwatch.ElapsedTicks;
             while (ShouldRun)
@@ -426,7 +426,7 @@ namespace Barotrauma
                 }
             }
 
-            PerformenceMonitor.PM.Dispose();
+            PerformanceMonitor.PM.Dispose();
 
             stopwatch.Stop();
 
