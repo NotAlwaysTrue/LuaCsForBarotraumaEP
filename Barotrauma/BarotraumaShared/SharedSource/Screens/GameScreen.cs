@@ -7,6 +7,7 @@ using FarseerPhysics;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
+using System;
 
 
 #if DEBUG && CLIENT
@@ -24,7 +25,7 @@ namespace Barotrauma
 
         private static readonly ParallelOptions parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = 16
+            MaxDegreeOfParallelism = Environment.ProcessorCount * 2,
         };
 
 #if CLIENT
@@ -151,31 +152,23 @@ namespace Barotrauma
 
             var physicsBodies = PhysicsBody.List.ToList();
 
-            Parallel.Invoke(parallelOptions,
-                () =>
+            Parallel.ForEach(physicsBodies, parallelOptions, body =>
+            {
+                if ((body.Enabled || body.UserData is Character) &&
+                     body.BodyType != BodyType.Static)
                 {
-                    Parallel.ForEach(physicsBodies, parallelOptions, body =>
-                    {
-                        if ((body.Enabled || body.UserData is Character) && 
-                            body.BodyType != BodyType.Static) 
-                        { 
-                            body.Update(); 
-                        }
-                    });
-                },
-                () =>
-                {
-                    GameMain.GameSession?.Update((float)deltaTime);
+                    body.Update();
                 }
-            );
+            });
+            GameMain.GameSession?.Update((float)deltaTime);
 
-            foreach (PhysicsBody body in physicsBodies)
+            Parallel.ForEach(physicsBodies, parallelOptions, body =>
             {
                 if (body.Enabled && body.BodyType != BodyType.Static)
                 {
                     body.SetPrevTransform(body.SimPosition, body.Rotation);
                 }
-            }
+            });
 
             MapEntity.ClearHighlightedEntities();
 
@@ -259,6 +252,7 @@ namespace Barotrauma
 #endif
 
             var submarines = Submarine.Loaded.ToList();
+
             Parallel.ForEach(submarines, parallelOptions, sub =>
             {
                 sub.SetPrevTransform(sub.Position);
@@ -276,8 +270,8 @@ namespace Barotrauma
             MapEntity.UpdateAll((float)deltaTime, cam, parallelOptions);
 #elif SERVER
 
-            
             MapEntity.UpdateAll((float)deltaTime, Camera.Instance, parallelOptions);
+
             //StatusEffect.UpdateAll is not thread-safe and must be executed on the main thread
             StatusEffect.UpdateAll((float)deltaTime);
 

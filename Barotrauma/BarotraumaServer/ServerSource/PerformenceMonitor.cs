@@ -37,6 +37,10 @@ namespace Barotrauma
         {
             get { return PhysicsBody.List.Count; }
         }
+        public int ConnectClients
+        {
+            get { return Client.ClientList.Count; }
+        }
 
         public double RealTickRate
         {
@@ -160,6 +164,7 @@ namespace Barotrauma
             return $"Server Performence Info \n" +
                    $"Item Count: {ItemCount}\n" +
                    $"Character Count: {CharacterCount}\n" +
+                   $"Clients Count {ConnectClients}\n " +
                    $"PhysicsBody Count: {PhysicsBodyCount}\n" +
                    $"Tick Rate: {RealTickRate}\n" +
                    $"Min Tick Rate: {TickRateLow}\n" +

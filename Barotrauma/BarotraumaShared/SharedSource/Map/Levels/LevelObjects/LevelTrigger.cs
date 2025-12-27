@@ -479,7 +479,7 @@ namespace Barotrauma
         {
             foreach (Fixture fixture in triggerBody.FarseerBody.FixtureList)
             {
-                ContactEdge contactEdge = fixture.Body.ContactList;
+                ContactEdge contactEdge = fixture.Body.ContactList == null ? null: fixture.Body.ContactList.CreateCopy();
                 while (contactEdge != null)
                 {
                     if (contactEdge.Contact != null &&
