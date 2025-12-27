@@ -2771,8 +2771,8 @@ namespace Barotrauma
 
             commands.Add(new Command("ShowServerPerf", "Immediately log server performance info in ServerMessage", (string[] args) =>
             {
-                GameServer.Log(PerformenceMonitor.PM.ToString(), ServerLog.MessageType.ServerMessage);
-                NewMessage(PerformenceMonitor.PM.ToString(), Color.Green);
+                GameServer.Log(PerformanceMonitor.PM.ToString(), ServerLog.MessageType.ServerMessage);
+                NewMessage(PerformanceMonitor.PM.ToString(), Color.Green);
             }));
 
 #if DEBUG
