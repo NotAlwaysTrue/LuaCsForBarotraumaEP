@@ -642,34 +642,44 @@ namespace Barotrauma
         /// </summary>
         public static void UpdateAll(float deltaTime, Camera cam , ParallelOptions parallelOptions)
         {
+            mapEntityUpdateTick++;
 #if CLIENT
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
 #endif
 
+            bool shouldUpdateMapEntities = mapEntityUpdateTick % MapEntityUpdateInterval == 0;
+            bool shouldUpdatePower = mapEntityUpdateTick % PoweredUpdateInterval == 0;
+
             // Buffer lists to avoid repeated allocations
-            var hullList = Hull.HullList.ToList();
-            var structureList = Structure.WallList.ToList();
+            var hullList = shouldUpdateMapEntities ? Hull.HullList.ToList() : null;
+            var structureList = shouldUpdateMapEntities ? Structure.WallList.ToList() : null;
             var gapList = Gap.GapList.ToList();
-            var itemList = Item.ItemList.ToList();
+            var itemList = shouldUpdateMapEntities ? Item.ItemList.ToList() : null;
 
             // First phase: parallel updates that have no order dependencies
             Parallel.Invoke(parallelOptions,
                 // Hull parallel update
                 () =>
                 {
-                    Parallel.ForEach(hullList, parallelOptions, hull =>
+                    if (shouldUpdateMapEntities && hullList != null)
                     {
-                        hull.Update(deltaTime, cam);
-                    });
+                        Parallel.ForEach(hullList, parallelOptions, hull =>
+                        {
+                            hull.Update(deltaTime * MapEntityUpdateInterval, cam);
+                        });
+                    }
                 },
                 // Structure parallel update
                 () =>
                 {
-                    Parallel.ForEach(structureList, parallelOptions, structure =>
+                    if (shouldUpdateMapEntities && structureList != null)
                     {
-                        structure.Update(deltaTime, cam);
-                    });
+                        Parallel.ForEach(structureList, parallelOptions, structure =>
+                        {
+                            structure.Update(deltaTime * MapEntityUpdateInterval, cam);
+                        });
+                    }
                 },
                 // Gap reset (must be done before update)
                 () =>
@@ -682,21 +692,27 @@ namespace Barotrauma
                 // Powered components update
                 () =>
                 {
-                    Powered.UpdatePower(deltaTime);
+                    if (shouldUpdatePower)
+                    {
+                        Powered.UpdatePower(deltaTime * PoweredUpdateInterval);
+                    }
                 }
             );
 
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
-            Hull.UpdateCheats(deltaTime, cam);
+            if (shouldUpdateMapEntities)
+            {
+                Hull.UpdateCheats(deltaTime * MapEntityUpdateInterval, cam);
+            }
 #endif
 
             // Gap update (has order dependencies, keep random order but execute sequentially)
             var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
-            Parallel.ForEach(gapList, parallelOptions, gap =>
+            foreach (Gap gap in shuffledGaps)
             {
                 gap.Update(deltaTime, cam);
-            });
+            }
 
 #if CLIENT
             sw.Stop();
@@ -705,30 +721,33 @@ namespace Barotrauma
 #endif
 
             // Item update (Item.Update() is not thread-safe and must be executed on the main thread)
-            Item.UpdatePendingConditionUpdates(deltaTime);
-
-            float scaledDeltaTime = deltaTime * MapEntityUpdateInterval;
-            Item lastUpdatedItem = null;
-
-            try
+            if (shouldUpdateMapEntities && itemList != null)
             {
-                foreach (Item item in itemList)
+                Item.UpdatePendingConditionUpdates(deltaTime);
+
+                float scaledDeltaTime = deltaTime * MapEntityUpdateInterval;
+                Item lastUpdatedItem = null;
+                
+                try
                 {
-                    lastUpdatedItem = item;
-                    item.Update(scaledDeltaTime, cam);
+                    foreach (Item item in itemList)
+                    {
+                        lastUpdatedItem = item;
+                        item.Update(scaledDeltaTime, cam);
+                    }
                 }
-            }
-            catch (InvalidOperationException e)
-            {
-                GameAnalyticsManager.AddErrorEventOnce(
-                    "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
-                    GameAnalyticsManager.ErrorSeverity.Critical,
-                    $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
-                throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
-            }
+                catch (InvalidOperationException e)
+                {
+                    GameAnalyticsManager.AddErrorEventOnce(
+                        "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
+                        GameAnalyticsManager.ErrorSeverity.Critical,
+                        $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
+                    throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
+                }
 
-            UpdateAllProjSpecific(scaledDeltaTime);
-            Spawner?.Update();
+                UpdateAllProjSpecific(scaledDeltaTime);
+                Spawner?.Update();
+            }
 
 #if CLIENT
             sw.Stop();
