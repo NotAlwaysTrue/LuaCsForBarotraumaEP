@@ -250,7 +250,8 @@ namespace Barotrauma.Items.Components
             {
                 if (connections[0] != null && connections[1] != null)
                 {
-                    foreach (ItemComponent ic in item.Components)
+                    // Use ToArray() snapshot for thread-safe iteration
+                    foreach (ItemComponent ic in item.Components.ToArray())
                     {
                         if (ic == this) { continue; }
 

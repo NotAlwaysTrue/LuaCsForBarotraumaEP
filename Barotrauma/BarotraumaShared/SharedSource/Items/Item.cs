@@ -2441,10 +2441,11 @@ namespace Barotrauma
                 {
                     if (c.IsPower)
                     {
-                        Powered.ChangedConnections.Add(c);
-                        foreach (Connection conn in c.Recipients)
+                        Powered.MarkConnectionChanged(c);
+                        // Use ToList() snapshot for thread-safe iteration
+                        foreach (Connection conn in c.Recipients.ToList())
                         {
-                            Powered.ChangedConnections.Add(conn);
+                            Powered.MarkConnectionChanged(conn);
                         }
                     }
                 }
@@ -2980,7 +2981,8 @@ namespace Barotrauma
             foreach (Connection c in connectionPanel.Connections)
             {
                 if (connectionFilter != null && !connectionFilter(c)) { continue; }
-                foreach (Connection recipient in c.Recipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (Connection recipient in c.Recipients.ToList())
                 {
                     var component = recipient.Item.GetComponent<T>();
                     if (component != null)
@@ -3013,7 +3015,8 @@ namespace Barotrauma
             foreach (Connection c in connectionPanel.Connections)
             {
                 if (connectionFilter != null && !connectionFilter(c)) { continue; }
-                foreach (Connection recipient in c.Recipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (Connection recipient in c.Recipients.ToList())
                 {
                     var component = recipient.Item.GetComponent<T>();
                     if (component != null && !connectedComponents.Contains(component))
@@ -3067,12 +3070,13 @@ namespace Barotrauma
             alreadySearched.Add(c);
             static IEnumerable<Connection> GetRecipients(Connection c)
             {
-                foreach (Connection recipient in c.Recipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (Connection recipient in c.Recipients.ToList())
                 {
                     yield return recipient;
                 }
                 //check circuit box inputs/outputs this connection is connected to
-                foreach (var circuitBoxConnection in c.CircuitBoxConnections)
+                foreach (var circuitBoxConnection in c.CircuitBoxConnections.ToArray())
                 {
                     yield return circuitBoxConnection.Connection;
                 }
@@ -3212,7 +3216,8 @@ namespace Barotrauma
             if (signal.stepsTaken > 5 && signal.source != null)
             {
                 int duplicateRecipients = 0;
-                foreach (var recipient in signal.source.LastSentSignalRecipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (var recipient in signal.source.LastSentSignalRecipients.ToList())
                 {
                     if (recipient == connection)
                     {

@@ -2157,7 +2157,7 @@ namespace Barotrauma
                 GameMain.World = null;
 
                 Powered.Grids.Clear();
-                Powered.ChangedConnections.Clear();
+                Powered.ClearChangedConnections();
 
                 GC.Collect();
 
@@ -2197,7 +2197,7 @@ namespace Barotrauma
 
             ConnectedDockingPorts?.Clear();
 
-            Powered.ChangedConnections.Clear();
+            Powered.ClearChangedConnections();
             Powered.Grids.Clear();
 
             loaded.Remove(this);

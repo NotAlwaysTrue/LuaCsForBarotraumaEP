@@ -1094,7 +1094,7 @@ namespace Barotrauma
 #endif
             //Clear the grids to allow for garbage collection
             Powered.Grids.Clear();
-            Powered.ChangedConnections.Clear();
+            Powered.ClearChangedConnections();
 
             try
             {

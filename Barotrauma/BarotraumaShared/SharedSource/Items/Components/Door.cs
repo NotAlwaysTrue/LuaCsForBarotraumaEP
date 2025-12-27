@@ -2,6 +2,7 @@
 using FarseerPhysics;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using FarseerPhysics.Dynamics;
@@ -14,9 +15,9 @@ namespace Barotrauma.Items.Components
 {
     partial class Door : Pickable, IDrawableComponent, IServerSerializable
     {
-        private static readonly HashSet<Door> doorList = new HashSet<Door>();
+        private static readonly ConcurrentDictionary<Door, byte> _doorDict = new ConcurrentDictionary<Door, byte>();
 
-        public static IReadOnlyCollection<Door> DoorList { get { return doorList; } }
+        public static ICollection<Door> DoorList => _doorDict.Keys;
 
         private Gap linkedGap;
         private bool isOpen;
@@ -277,7 +278,7 @@ namespace Barotrauma.Items.Components
             }
                         
             IsActive = true;
-            doorList.Add(this);
+            _doorDict.TryAdd(this, 0);
         }
 
         public override void OnItemLoaded()
@@ -669,7 +670,7 @@ namespace Barotrauma.Items.Components
             convexHull2?.Remove();
 #endif
 
-            doorList.Remove(this);
+            _doorDict.TryRemove(this, out _);
         }
 
         private bool CheckSubmarinesInDoorWay()

@@ -884,7 +884,8 @@ namespace Barotrauma.Items.Components
                 RelatedItem containableItem = FindContainableItem(containedItem);
                 if (containableItem != null && containableItem.SetActive)
                 {
-                    foreach (var ic in containedItem.Components)
+                    // Use ToArray() snapshot for thread-safe iteration
+                    foreach (var ic in containedItem.Components.ToArray())
                     {
                         ic.IsActive = active;
                     }

@@ -712,11 +712,11 @@ namespace Barotrauma
 
             try
             {
-                foreach (Item item in itemList)
+                Parallel.ForEach(itemList, parallelOptions, item =>
                 {
                     lastUpdatedItem = item;
                     item.Update(scaledDeltaTime, cam);
-                }
+                });
             }
             catch (InvalidOperationException e)
             {
