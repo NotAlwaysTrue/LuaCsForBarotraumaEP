@@ -64,7 +64,7 @@ namespace Barotrauma
                 GameMain.ShouldRun = false;
             };
 #endif
-            Console.WriteLine("Barotrauma Dedicated Server " + GameMain.Version +
+            Console.WriteLine("Barotrauma Dedicated Server(EP) " + GameMain.Version +
                 " (" + AssemblyInfo.BuildString + ", branch " + AssemblyInfo.GitBranch + ", revision " + AssemblyInfo.GitRevision + ")");
             if (Console.IsOutputRedirected)
             {
