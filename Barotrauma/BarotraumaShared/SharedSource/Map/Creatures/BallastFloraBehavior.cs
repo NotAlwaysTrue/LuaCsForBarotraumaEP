@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 using Barotrauma.Extensions;
 using Barotrauma.Items.Components;
@@ -14,6 +15,55 @@ using Microsoft.Xna.Framework;
 
 namespace Barotrauma.MapCreatures.Behavior
 {
+    /// <summary>
+    /// Thread-safe wrapper for BallastFloraBehavior list operations.
+    /// Uses copy-on-write pattern for lock-free reads.
+    /// </summary>
+    internal class ThreadSafeBallastFloraList : IEnumerable<BallastFloraBehavior>
+    {
+        private volatile List<BallastFloraBehavior> _list = new List<BallastFloraBehavior>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(BallastFloraBehavior entity)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<BallastFloraBehavior>(_list) { entity };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(BallastFloraBehavior entity)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<BallastFloraBehavior>(_list);
+                bool removed = newList.Remove(entity);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<BallastFloraBehavior>());
+        }
+
+        public IEnumerator<BallastFloraBehavior> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        // LINQ-friendly methods
+        public List<BallastFloraBehavior> ToList() => new List<BallastFloraBehavior>(_list);
+        public bool Any() => _list.Any();
+        public bool Any(Func<BallastFloraBehavior, bool> predicate) => _list.Any(predicate);
+        public IEnumerable<BallastFloraBehavior> Where(Func<BallastFloraBehavior, bool> predicate) => _list.Where(predicate);
+    }
+
     class BallastFloraBranch : VineTile
     {
         public readonly BallastFloraBehavior? ParentBallastFlora;
@@ -132,7 +182,7 @@ namespace Barotrauma.MapCreatures.Behavior
         public List<Tuple<Vector2, Vector2>> debugSearchLines = new List<Tuple<Vector2, Vector2>>();
 #endif
 
-        private readonly static List<BallastFloraBehavior> _entityList = new List<BallastFloraBehavior>();
+        private readonly static ThreadSafeBallastFloraList _entityList = new ThreadSafeBallastFloraList();
         public static IEnumerable<BallastFloraBehavior> EntityList => _entityList;
 
         public enum NetworkHeader

@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 using System.Collections.Immutable;
 using Barotrauma.Abilities;
@@ -18,6 +19,63 @@ using Barotrauma.Lights;
 
 namespace Barotrauma
 {
+    /// <summary>
+    /// Thread-safe wrapper for Structure list operations.
+    /// Uses copy-on-write pattern for lock-free reads.
+    /// </summary>
+    internal class ThreadSafeStructureList : IEnumerable<Structure>
+    {
+        private volatile List<Structure> _list = new List<Structure>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(Structure structure)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<Structure>(_list) { structure };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(Structure structure)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<Structure>(_list);
+                bool removed = newList.Remove(structure);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<Structure>());
+        }
+
+        public bool Contains(Structure structure) => _list.Contains(structure);
+
+        public Structure this[int index] => _list[index];
+
+        public IEnumerator<Structure> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        // LINQ-friendly methods
+        public List<Structure> ToList() => new List<Structure>(_list);
+        public Structure FirstOrDefault(Func<Structure, bool> predicate) => _list.FirstOrDefault(predicate);
+        public Structure Find(Predicate<Structure> predicate) => _list.Find(predicate);
+        public List<Structure> FindAll(Predicate<Structure> predicate) => _list.FindAll(predicate);
+        public IEnumerable<Structure> Where(Func<Structure, bool> predicate) => _list.Where(predicate);
+        public bool Any() => _list.Any();
+        public bool Any(Func<Structure, bool> predicate) => _list.Any(predicate);
+        public void ForEach(Action<Structure> action) => _list.ForEach(action);
+    }
+
     partial class WallSection : IIgnorable
     {
         public Rectangle rect;
@@ -48,7 +106,7 @@ namespace Barotrauma
     partial class Structure : MapEntity, IDamageable, IServerSerializable, ISerializableEntity
     {
         public const int WallSectionSize = 96;
-        public static List<Structure> WallList = new List<Structure>();
+        public static ThreadSafeStructureList WallList = new ThreadSafeStructureList();
 
         const float LeakThreshold = 0.1f;
         const float BigGapThreshold = 0.7f;

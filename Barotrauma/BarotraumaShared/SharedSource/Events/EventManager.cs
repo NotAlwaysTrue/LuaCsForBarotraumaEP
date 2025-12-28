@@ -160,7 +160,7 @@ namespace Barotrauma
             MissionAction.ResetMissionsUnlockedThisRound();
             UnlockPathAction.ResetPathsUnlockedThisRound();
 #endif
-            pathFinder = new PathFinder(WayPoint.WayPointList, false);
+            pathFinder = new PathFinder(WayPoint.WayPointList.ToList(), false);
             totalPathLength = 0.0f;
             if (level != null)
             {

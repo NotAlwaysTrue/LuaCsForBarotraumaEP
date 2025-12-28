@@ -18,6 +18,64 @@ using Voronoi2;
 
 namespace Barotrauma
 {
+    /// <summary>
+    /// Thread-safe wrapper for Submarine list operations.
+    /// Uses copy-on-write pattern for lock-free reads.
+    /// </summary>
+    internal class ThreadSafeSubmarineList : IEnumerable<Submarine>
+    {
+        private volatile List<Submarine> _list = new List<Submarine>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(Submarine submarine)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<Submarine>(_list) { submarine };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(Submarine submarine)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<Submarine>(_list);
+                bool removed = newList.Remove(submarine);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<Submarine>());
+        }
+
+        public bool Contains(Submarine submarine) => _list.Contains(submarine);
+
+        public Submarine this[int index] => _list[index];
+
+        public IEnumerator<Submarine> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        // LINQ-friendly methods
+        public List<Submarine> ToList() => new List<Submarine>(_list);
+        public Submarine FirstOrDefault(Func<Submarine, bool> predicate) => _list.FirstOrDefault(predicate);
+        public Submarine Find(Predicate<Submarine> predicate) => _list.Find(predicate);
+        public List<Submarine> FindAll(Predicate<Submarine> predicate) => _list.FindAll(predicate);
+        public IEnumerable<Submarine> Where(Func<Submarine, bool> predicate) => _list.Where(predicate);
+        public bool Any() => _list.Any();
+        public bool Any(Func<Submarine, bool> predicate) => _list.Any(predicate);
+        public float Sum(Func<Submarine, float> selector) => _list.Sum(selector);
+        public IEnumerable<TResult> Select<TResult>(Func<Submarine, TResult> selector) => _list.Select(selector);
+    }
+
     public enum Direction : byte
     {
         None = 0, Left = 1, Right = 2
@@ -73,7 +131,7 @@ namespace Barotrauma
             get { return MainSubs[0]; }
             set { MainSubs[0] = value; }
         }
-        private static readonly List<Submarine> loaded = new List<Submarine>();
+        private static readonly ThreadSafeSubmarineList loaded = new ThreadSafeSubmarineList();
 
         private readonly Identifier upgradeEventIdentifier;
 
@@ -148,7 +206,7 @@ namespace Barotrauma
 
         public List<WayPoint> ForcedOutpostModuleWayPoints = new List<WayPoint>();
 
-        public static List<Submarine> Loaded
+        public static ThreadSafeSubmarineList Loaded
         {
             get { return loaded; }
         }
@@ -1515,13 +1573,13 @@ namespace Barotrauma
 
         public List<Hull> GetHulls(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Hull.HullList);
         public List<Gap> GetGaps(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Gap.GapList);
-        public List<Item> GetItems(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Item.ItemList).ToList();
+        public List<Item> GetItems(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Item.ItemList);
         public List<WayPoint> GetWaypoints(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, WayPoint.WayPointList);
         public List<Structure> GetWalls(bool alsoFromConnectedSubs) => GetEntities(alsoFromConnectedSubs, Structure.WallList);
 
-        public List<T> GetEntities<T>(bool includingConnectedSubs, List<T> list) where T : MapEntity
+        public List<T> GetEntities<T>(bool includingConnectedSubs, IEnumerable<T> list) where T : MapEntity
         {
-            return list.FindAll(e => IsEntityFoundOnThisSub(e, includingConnectedSubs));
+            return list.Where(e => IsEntityFoundOnThisSub(e, includingConnectedSubs)).ToList();
         }
 
         public List<(ItemContainer container, int freeSlots)> GetCargoContainers()
@@ -1544,11 +1602,6 @@ namespace Barotrauma
                 containers.Add((itemContainer, emptySlots));
             }
             return containers;
-        }
-
-        public IEnumerable<T> GetEntities<T>(bool includingConnectedSubs, IEnumerable<T> list) where T : MapEntity
-        {
-            return list.Where(e => IsEntityFoundOnThisSub(e, includingConnectedSubs));
         }
 
         public bool IsEntityFoundOnThisSub(MapEntity entity, bool includingConnectedSubs, bool allowDifferentTeam = false, bool allowDifferentType = false)
@@ -1674,9 +1727,8 @@ namespace Barotrauma
                     HiddenSubPosition += Vector2.UnitY * GameMain.GameSession.LevelData.Size.Y;
                 }
 
-                for (int i = 0; i < loaded.Count; i++)
+                foreach (Submarine sub in loaded)
                 {
-                    Submarine sub = loaded[i];
                     HiddenSubPosition =
                         new Vector2(
                             //1st sub on the left side, 2nd on the right, etc
@@ -1808,10 +1860,9 @@ namespace Barotrauma
                 }
                 entityGrid = Hull.GenerateEntityGrid(this);
 
-                for (int i = 0; i < MapEntity.MapEntityList.Count; i++)
+                foreach (MapEntity me in MapEntity.MapEntityList.Where(e => e.Submarine == this))
                 {
-                    if (MapEntity.MapEntityList[i].Submarine != this) { continue; }
-                    MapEntity.MapEntityList[i].Move(HiddenSubPosition, ignoreContacts: true);
+                    me.Move(HiddenSubPosition, ignoreContacts: true);
                 }
 
                 Loading = false;

@@ -14,6 +14,116 @@ using Barotrauma.Extensions;
 
 namespace Barotrauma
 {
+    /// <summary>
+    /// Thread-safe wrapper for Hull list operations.
+    /// Uses copy-on-write pattern for lock-free reads.
+    /// </summary>
+    internal class ThreadSafeHullList : IEnumerable<Hull>
+    {
+        private volatile List<Hull> _list = new List<Hull>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(Hull hull)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<Hull>(_list) { hull };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(Hull hull)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<Hull>(_list);
+                bool removed = newList.Remove(hull);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<Hull>());
+        }
+
+        public bool Contains(Hull hull) => _list.Contains(hull);
+
+        public Hull this[int index] => _list[index];
+
+        public IEnumerator<Hull> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        // LINQ-friendly methods
+        public List<Hull> ToList() => new List<Hull>(_list);
+        public Hull FirstOrDefault(Func<Hull, bool> predicate) => _list.FirstOrDefault(predicate);
+        public Hull Find(Predicate<Hull> predicate) => _list.Find(predicate);
+        public List<Hull> FindAll(Predicate<Hull> predicate) => _list.FindAll(predicate);
+        public IEnumerable<Hull> Where(Func<Hull, bool> predicate) => _list.Where(predicate);
+        public bool Any() => _list.Any();
+        public bool Any(Func<Hull, bool> predicate) => _list.Any(predicate);
+        public bool Exists(Predicate<Hull> predicate) => _list.Exists(predicate);
+        public void ForEach(Action<Hull> action) => _list.ForEach(action);
+    }
+
+    /// <summary>
+    /// Thread-safe wrapper for EntityGrid list operations.
+    /// Uses copy-on-write pattern for lock-free reads.
+    /// </summary>
+    internal class ThreadSafeEntityGridList : IEnumerable<EntityGrid>
+    {
+        private volatile List<EntityGrid> _list = new List<EntityGrid>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(EntityGrid grid)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<EntityGrid>(_list) { grid };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(EntityGrid grid)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<EntityGrid>(_list);
+                bool removed = newList.Remove(grid);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<EntityGrid>());
+        }
+
+        public EntityGrid this[int index] => _list[index];
+
+        public IEnumerator<EntityGrid> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        // LINQ-friendly methods
+        public List<EntityGrid> ToList() => new List<EntityGrid>(_list);
+        public EntityGrid FirstOrDefault(Func<EntityGrid, bool> predicate) => _list.FirstOrDefault(predicate);
+        public EntityGrid Find(Predicate<EntityGrid> predicate) => _list.Find(predicate);
+        public IEnumerable<EntityGrid> Where(Func<EntityGrid, bool> predicate) => _list.Where(predicate);
+        public bool Any() => _list.Any();
+    }
+
     partial class BackgroundSection
     {
         public Rectangle Rect;
@@ -114,8 +224,8 @@ namespace Barotrauma
 
     partial class Hull : MapEntity, ISerializableEntity, IServerSerializable
     {
-        public readonly static List<Hull> HullList = new List<Hull>();
-        public readonly static List<EntityGrid> EntityGrids = new List<EntityGrid>();
+        public readonly static ThreadSafeHullList HullList = new ThreadSafeHullList();
+        public readonly static ThreadSafeEntityGridList EntityGrids = new ThreadSafeEntityGridList();
 
         public static bool ShowHulls = true;
 

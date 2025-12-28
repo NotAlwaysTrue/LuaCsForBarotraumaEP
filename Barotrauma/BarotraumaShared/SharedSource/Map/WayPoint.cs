@@ -5,17 +5,75 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 using Barotrauma.Extensions;
 
 namespace Barotrauma
 {
+    /// <summary>
+    /// Thread-safe wrapper for WayPoint list operations.
+    /// Uses copy-on-write pattern for lock-free reads.
+    /// </summary>
+    internal class ThreadSafeWayPointList : IEnumerable<WayPoint>
+    {
+        private volatile List<WayPoint> _list = new List<WayPoint>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(WayPoint waypoint)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<WayPoint>(_list) { waypoint };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(WayPoint waypoint)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<WayPoint>(_list);
+                bool removed = newList.Remove(waypoint);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<WayPoint>());
+        }
+
+        public bool Contains(WayPoint waypoint) => _list.Contains(waypoint);
+
+        public WayPoint this[int index] => _list[index];
+
+        public IEnumerator<WayPoint> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        // LINQ-friendly methods
+        public List<WayPoint> ToList() => new List<WayPoint>(_list);
+        public WayPoint FirstOrDefault(Func<WayPoint, bool> predicate) => _list.FirstOrDefault(predicate);
+        public WayPoint Find(Predicate<WayPoint> predicate) => _list.Find(predicate);
+        public List<WayPoint> FindAll(Predicate<WayPoint> predicate) => _list.FindAll(predicate);
+        public IEnumerable<WayPoint> Where(Func<WayPoint, bool> predicate) => _list.Where(predicate);
+        public bool Any() => _list.Any();
+        public bool Any(Func<WayPoint, bool> predicate) => _list.Any(predicate);
+        public bool Exists(Predicate<WayPoint> predicate) => _list.Exists(predicate);
+    }
+
     [Flags]
     public enum SpawnType { Path = 0, Human = 1, Enemy = 2, Cargo = 4, Corpse = 8, Submarine = 16, ExitPoint = 32, Disabled = 64 };
 
     partial class WayPoint : MapEntity
     {
-        public static List<WayPoint> WayPointList = new List<WayPoint>();
+        public static ThreadSafeWayPointList WayPointList = new ThreadSafeWayPointList();
 
         public static bool ShowWayPoints = true, ShowSpawnPoints = true;
 
@@ -932,7 +990,7 @@ namespace Barotrauma
 
         public static WayPoint GetRandom(SpawnType spawnType = SpawnType.Human, JobPrefab assignedJob = null, Submarine sub = null, bool useSyncedRand = false, string spawnPointTag = null, bool ignoreSubmarine = false)
         {
-            return WayPointList.GetRandom(wp =>
+            return WayPointList.ToList().GetRandom(wp =>
                 (ignoreSubmarine || wp.Submarine == sub) && 
                 //checking for the disabled flag is not strictly necessary because we check for equality of the spawn type,
                 //but lets do that anyway in case we change the handling of the spawn type at some point
