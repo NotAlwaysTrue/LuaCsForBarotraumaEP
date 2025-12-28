@@ -746,7 +746,6 @@ namespace Barotrauma
             waterFlowThisFrame = 0.0f;
         }
 
-        private static readonly ConcurrentBag<Hull> checkedHulls = new ConcurrentBag<Hull>();
 
         /// <summary>
         /// Simulates water flow from the source to all the hulls it's connected to across the sub, as if the water was coming directly from outside.
@@ -754,7 +753,7 @@ namespace Barotrauma
         /// </summary>
         void SimulateWaterFlowFromOutsideToConnectedHulls(Hull hull, float maxFlow, float deltaTime)
         {
-            checkedHulls.Clear();
+            List<Hull> checkedHulls = new List<Hull>();
             checkedHulls.Add(hull);
             foreach (var connectedGap in hull.ConnectedGaps)
             {
@@ -765,7 +764,7 @@ namespace Barotrauma
             }
         }
 
-        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, ConcurrentBag<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
+        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, List<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
         {
             const float decay = 0.95f;
 
@@ -995,8 +994,6 @@ namespace Barotrauma
         {
             base.Remove();
             GapList.Remove(this);
-
-            checkedHulls.Clear();
 
             foreach (Hull hull in Hull.HullList)
             {
