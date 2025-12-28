@@ -162,13 +162,13 @@ namespace Barotrauma
             });
             GameMain.GameSession?.Update((float)deltaTime);
 
-            foreach (PhysicsBody body in physicsBodies)
+            Parallel.ForEach(physicsBodies, parallelOptions, body =>
             {
                 if (body.Enabled && body.BodyType != BodyType.Static)
                 {
                     body.SetPrevTransform(body.SimPosition, body.Rotation);
                 }
-            }
+            });
 
             MapEntity.ClearHighlightedEntities();
 
