@@ -249,6 +249,9 @@ namespace Barotrauma
                 () => { if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance); },
                 () => Character.UpdateAll((float)deltaTime, Camera.Instance)
             );
+
+            //StatusEffect.UpdateAll is not thread-safe and must be executed on the main thread
+            StatusEffect.UpdateAll((float)deltaTime);
 #endif
 
             var submarines = Submarine.Loaded.ToList();
@@ -271,10 +274,7 @@ namespace Barotrauma
 #elif SERVER
 
             MapEntity.UpdateAll((float)deltaTime, Camera.Instance, parallelOptions);
-
-            //StatusEffect.UpdateAll is not thread-safe and must be executed on the main thread
-            StatusEffect.UpdateAll((float)deltaTime);
-
+            
 #endif
 
 #if CLIENT
