@@ -314,13 +314,21 @@ namespace Barotrauma.Items.Components
 
         public override void Move(Vector2 amount, bool ignoreContacts = false)
         {
-            if (ignoreContacts)
+            // Defer physics operation if in parallel context (Farseer is not thread-safe)
+            if (Body != null)
             {
-                Body?.SetTransformIgnoreContacts(Body.SimPosition + ConvertUnits.ToSimUnits(amount), 0.0f);
-            }
-            else
-            {
-                Body?.SetTransform(Body.SimPosition + ConvertUnits.ToSimUnits(amount), 0.0f);
+                var capturedBody = Body;
+                var capturedNewPos = Body.SimPosition + ConvertUnits.ToSimUnits(amount);
+                if (ignoreContacts)
+                {
+                    PhysicsBodyQueue.ExecuteOrDefer(() => 
+                        capturedBody.SetTransformIgnoreContacts(capturedNewPos, 0.0f));
+                }
+                else
+                {
+                    PhysicsBodyQueue.ExecuteOrDefer(() => 
+                        capturedBody.SetTransform(capturedNewPos, 0.0f));
+                }
             }
 #if CLIENT
             UpdateConvexHulls();
@@ -786,13 +794,19 @@ namespace Barotrauma.Items.Components
             //immediately teleport it to the correct side
             if (Math.Sign(diff) != dir)
             {
+                // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                var capturedBody = body;
                 if (IsHorizontal)
                 {
-                    body.SetTransformIgnoreContacts(new Vector2(body.SimPosition.X, item.SimPosition.Y + dir * doorRectSimSize.Y * 2.0f), body.Rotation);
+                    Vector2 newPos = new Vector2(body.SimPosition.X, item.SimPosition.Y + dir * doorRectSimSize.Y * 2.0f);
+                    float rotation = body.Rotation;
+                    PhysicsBodyQueue.ExecuteOrDefer(() => capturedBody.SetTransformIgnoreContacts(newPos, rotation));
                 }
                 else
                 {
-                    body.SetTransformIgnoreContacts(new Vector2(item.SimPosition.X + dir * doorRectSimSize.X * 1.2f, body.SimPosition.Y), body.Rotation);
+                    Vector2 newPos = new Vector2(item.SimPosition.X + dir * doorRectSimSize.X * 1.2f, body.SimPosition.Y);
+                    float rotation = body.Rotation;
+                    PhysicsBodyQueue.ExecuteOrDefer(() => capturedBody.SetTransformIgnoreContacts(newPos, rotation));
                 }
             }
 

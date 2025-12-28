@@ -1822,7 +1822,13 @@ namespace Barotrauma
                 try
                 {
 #endif
-                    body.SetTransformIgnoreContacts(simPosition, rotation, setPrevTransform);
+                    // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                    var capturedBody = body;
+                    var capturedSimPos = simPosition;
+                    var capturedRotation = rotation;
+                    var capturedSetPrevTransform = setPrevTransform;
+                    PhysicsBodyQueue.ExecuteOrDefer(() => 
+                        capturedBody.SetTransformIgnoreContacts(capturedSimPos, capturedRotation, capturedSetPrevTransform));
 #if DEBUG
                 }
                 catch (Exception e)
@@ -1899,13 +1905,19 @@ namespace Barotrauma
 
             if (ItemList != null && body != null)
             {
+                // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                var capturedBody = body;
+                var capturedNewPos = body.SimPosition + ConvertUnits.ToSimUnits(amount);
+                var capturedRotation = body.Rotation;
                 if (ignoreContacts)
                 {
-                    body.SetTransformIgnoreContacts(body.SimPosition + ConvertUnits.ToSimUnits(amount), body.Rotation);
+                    PhysicsBodyQueue.ExecuteOrDefer(() => 
+                        capturedBody.SetTransformIgnoreContacts(capturedNewPos, capturedRotation));
                 }
                 else
                 {
-                    body.SetTransform(body.SimPosition + ConvertUnits.ToSimUnits(amount), body.Rotation);
+                    PhysicsBodyQueue.ExecuteOrDefer(() => 
+                        capturedBody.SetTransform(capturedNewPos, capturedRotation));
                 }
             }
             foreach (ItemComponent ic in components)
@@ -2563,7 +2575,12 @@ namespace Barotrauma
                     if (item != this) 
                     {
                         item.body.Enabled = false;
-                        item.body.SetTransformIgnoreContacts(this.SimPosition, body.Rotation); 
+                        // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                        var capturedItemBody = item.body;
+                        var capturedSimPos = this.SimPosition;
+                        var capturedRotation = body.Rotation;
+                        PhysicsBodyQueue.ExecuteOrDefer(() => 
+                            capturedItemBody.SetTransformIgnoreContacts(capturedSimPos, capturedRotation));
                     }
                 }
             }
@@ -2755,17 +2772,25 @@ namespace Barotrauma
                 FindHull();
             }
 
+            // Defer physics transform operations if in parallel context.
+            // Farseer's DynamicTree is not thread-safe.
             if (Submarine == null && prevSub != null)
             {
-                body.SetTransformIgnoreContacts(body.SimPosition + prevSub.SimPosition, body.Rotation);
+                Vector2 newPos = body.SimPosition + prevSub.SimPosition;
+                float rotation = body.Rotation;
+                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
             }
             else if (Submarine != null && prevSub == null)
             {
-                body.SetTransformIgnoreContacts(body.SimPosition - Submarine.SimPosition, body.Rotation);
+                Vector2 newPos = body.SimPosition - Submarine.SimPosition;
+                float rotation = body.Rotation;
+                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
             }
             else if (Submarine != null && prevSub != null && Submarine != prevSub)
             {
-                body.SetTransformIgnoreContacts(body.SimPosition + prevSub.SimPosition - Submarine.SimPosition, body.Rotation);
+                Vector2 newPos = body.SimPosition + prevSub.SimPosition - Submarine.SimPosition;
+                float rotation = body.Rotation;
+                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
             }
 
             if (Submarine != prevSub)

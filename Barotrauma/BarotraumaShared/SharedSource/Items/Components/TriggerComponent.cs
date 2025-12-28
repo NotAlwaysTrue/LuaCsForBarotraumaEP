@@ -312,13 +312,18 @@ namespace Barotrauma.Items.Components
                 Matrix transform = Matrix.CreateRotationZ(-item.RotationRad);
                 offset = Vector2.Transform(offset, transform);
             }
+            
+            // Defer physics operations if in parallel context (Farseer is not thread-safe)
+            var capturedBody = PhysicsBody;
+            var capturedPos = item.SimPosition + offset;
+            var capturedRot = -item.RotationRad;
             if (ignoreContacts)
             {
-                PhysicsBody.SetTransformIgnoreContacts(item.SimPosition + offset, -item.RotationRad);
+                PhysicsBodyQueue.ExecuteOrDefer(() => capturedBody.SetTransformIgnoreContacts(capturedPos, capturedRot));
             }
             else
             {
-                PhysicsBody.SetTransform(item.SimPosition + offset, -item.RotationRad);
+                PhysicsBodyQueue.ExecuteOrDefer(() => capturedBody.SetTransform(capturedPos, capturedRot));
             }
             PhysicsBody.UpdateDrawPosition();
         }

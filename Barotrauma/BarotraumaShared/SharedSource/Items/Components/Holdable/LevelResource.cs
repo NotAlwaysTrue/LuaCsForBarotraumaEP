@@ -92,13 +92,16 @@ namespace Barotrauma.Items.Components
         {
             if (trigger != null && amount.LengthSquared() > 0.00001f)
             {
+                // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                var capturedTrigger = trigger;
+                var capturedPos = item.SimPosition;
                 if (ignoreContacts)
                 {
-                    trigger.SetTransformIgnoreContacts(item.SimPosition, 0.0f);
+                    PhysicsBodyQueue.ExecuteOrDefer(() => capturedTrigger.SetTransformIgnoreContacts(capturedPos, 0.0f));
                 }
                 else
                 {
-                    trigger.SetTransform(item.SimPosition, 0.0f);
+                    PhysicsBodyQueue.ExecuteOrDefer(() => capturedTrigger.SetTransform(capturedPos, 0.0f));
                 }
             }
         }
@@ -134,7 +137,10 @@ namespace Barotrauma.Items.Components
                 }
                 if (trigger != null && Vector2.DistanceSquared(item.SimPosition, trigger.SimPosition) > 0.01f)
                 {
-                    trigger.SetTransform(item.SimPosition, 0.0f);
+                    // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                    var capturedTrigger = trigger;
+                    var capturedPos = item.SimPosition;
+                    PhysicsBodyQueue.ExecuteOrDefer(() => capturedTrigger.SetTransform(capturedPos, 0.0f));
                 }
                 IsActive = false;
             }
