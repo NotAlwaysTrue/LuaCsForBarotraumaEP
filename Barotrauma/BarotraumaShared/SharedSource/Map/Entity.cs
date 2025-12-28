@@ -147,7 +147,6 @@ namespace Barotrauma
                 CreationStackTrace += $"{fileName}@{fileLineNumber}; ";
             }
 #endif
-            #warning TODO: consider removing this mutex, entity creation probably shouldn't be multithreaded
             lock (creationCounterMutex)
             {
                 CreationIndex = creationCounter;

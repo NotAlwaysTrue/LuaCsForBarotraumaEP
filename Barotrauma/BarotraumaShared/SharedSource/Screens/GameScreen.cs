@@ -286,7 +286,6 @@ namespace Barotrauma
                 }
             );
             
-            // Process any physics operations queued during parallel updates
             PhysicsBodyQueue.ProcessPendingOperations();
 #endif
 
@@ -311,7 +310,6 @@ namespace Barotrauma
 
             MapEntity.UpdateAll((float)deltaTime, Camera.Instance, parallelOptions);
 
-            //StatusEffect.UpdateAll is not thread-safe and must be executed on the main thread
             StatusEffect.UpdateAll((float)deltaTime);
 
 #endif
