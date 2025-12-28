@@ -686,6 +686,10 @@ namespace Barotrauma
                 }
             );
 
+            // Process any physics body creation operations queued during Hull/Structure updates.
+            // BallastFlora growth (from Hull.Update) may queue physics body creations.
+            PhysicsBodyQueue.ProcessPendingCreations();
+
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
             Hull.UpdateCheats(deltaTime, cam);
@@ -726,6 +730,10 @@ namespace Barotrauma
                     $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
                 throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
             }
+
+            // Process any physics body creation operations that were queued during the parallel update.
+            // This must be done on the main thread because Farseer Physics is not thread-safe.
+            PhysicsBodyQueue.ProcessPendingCreations();
 
             UpdateAllProjSpecific(scaledDeltaTime);
             Spawner?.Update();

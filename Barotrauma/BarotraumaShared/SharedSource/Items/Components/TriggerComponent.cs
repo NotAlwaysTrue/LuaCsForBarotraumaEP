@@ -73,6 +73,11 @@ namespace Barotrauma.Items.Components
 
         public PhysicsBody PhysicsBody { get; private set; }
 
+        /// <summary>
+        /// Flag to prevent multiple queued refresh requests.
+        /// </summary>
+        private volatile bool physicsBodyRefreshQueued;
+
         private float radius;
         [Editable, Serialize(0.0f, IsPropertySaveable.Yes)]
         public float Radius
@@ -83,7 +88,7 @@ namespace Barotrauma.Items.Components
             {
                 if (radius == value) { return; }
                 radius = value;
-                if (PhysicsBody != null) { RefreshPhysicsBodySize(); }
+                if (PhysicsBody != null) { QueuePhysicsBodyRefresh(); }
             }
         }
 
@@ -97,7 +102,7 @@ namespace Barotrauma.Items.Components
             {
                 if (width == value) { return; }
                 width = value;
-                if (PhysicsBody != null) { RefreshPhysicsBodySize(); }
+                if (PhysicsBody != null) { QueuePhysicsBodyRefresh(); }
             }
         }
 
@@ -111,8 +116,26 @@ namespace Barotrauma.Items.Components
             {
                 if (height == value) { return; }
                 height = value;
-                if (PhysicsBody != null) { RefreshPhysicsBodySize(); }
+                if (PhysicsBody != null) { QueuePhysicsBodyRefresh(); }
             }
+        }
+
+        /// <summary>
+        /// Queue the physics body refresh to be executed on the main thread.
+        /// This is necessary because physics body operations are not thread-safe.
+        /// </summary>
+        private void QueuePhysicsBodyRefresh()
+        {
+            if (physicsBodyRefreshQueued) { return; }
+            physicsBodyRefreshQueued = true;
+            PhysicsBodyQueue.EnqueueCreation(() =>
+            {
+                if (!item.Removed)
+                {
+                    RefreshPhysicsBodySize();
+                }
+                physicsBodyRefreshQueued = false;
+            });
         }
 
         private float currentRadius, currentWidth, currentHeight;

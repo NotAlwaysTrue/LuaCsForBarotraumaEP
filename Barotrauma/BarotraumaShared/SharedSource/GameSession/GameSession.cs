@@ -1153,6 +1153,7 @@ namespace Barotrauma
                 EventManager?.EndRound();
                 StatusEffect.StopAll();
                 AfflictionPrefab.ClearAllEffects();
+                PhysicsBodyQueue.Clear();
                 IsRunning = false;
 
 #if CLIENT

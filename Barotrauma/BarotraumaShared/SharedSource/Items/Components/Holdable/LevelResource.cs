@@ -13,6 +13,12 @@ namespace Barotrauma.Items.Components
         private Holdable holdable;
 
         private float deattachTimer;
+        
+        /// <summary>
+        /// Flag to prevent multiple queued creation requests.
+        /// Uses volatile to ensure visibility across threads.
+        /// </summary>
+        private volatile bool triggerBodyCreationQueued;
 
         [Serialize(1.0f, IsPropertySaveable.No, description: "How long it takes to deattach the item from the level walls (in seconds).")]
         public float DeattachDuration
@@ -109,9 +115,22 @@ namespace Barotrauma.Items.Components
             }
             else
             {
-                if (trigger == null) 
+                if (trigger == null && !triggerBodyCreationQueued) 
                 { 
-                    CreateTriggerBody(); 
+                    // Queue the physics body creation to be processed on the main thread.
+                    // This is necessary because physics body creation is not thread-safe
+                    // and Update() may be called from a parallel loop.
+                    triggerBodyCreationQueued = true;
+                    PhysicsBodyQueue.EnqueueCreation(() =>
+                    {
+                        // Double-check that trigger hasn't been created yet
+                        // (in case this was called multiple times before queue processing)
+                        if (trigger == null && !item.Removed)
+                        {
+                            CreateTriggerBody();
+                        }
+                        triggerBodyCreationQueued = false;
+                    });
                 }
                 if (trigger != null && Vector2.DistanceSquared(item.SimPosition, trigger.SimPosition) > 0.01f)
                 {

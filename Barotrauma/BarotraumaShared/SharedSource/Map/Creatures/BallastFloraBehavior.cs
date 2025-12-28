@@ -307,6 +307,12 @@ namespace Barotrauma.MapCreatures.Behavior
         public readonly List<BallastFloraBranch> Branches = new List<BallastFloraBranch>();
         private BallastFloraBranch? root;
         private readonly List<Body> bodies = new List<Body>();
+        
+        /// <summary>
+        /// Branches that need physics bodies created on the main thread.
+        /// </summary>
+        private readonly List<BallastFloraBranch> pendingBodyCreations = new List<BallastFloraBranch>();
+        private readonly object pendingBodyCreationsLock = new object();
 
         private bool isDead;
 
@@ -347,7 +353,8 @@ namespace Barotrauma.MapCreatures.Behavior
                     }
                 }
                 UpdateConnections(branch);
-                CreateBody(branch);
+                // OnMapLoaded runs on the main thread, so we can create bodies immediately
+                CreateBody(branch, immediate: true);
             }
         }
 
@@ -998,10 +1005,52 @@ namespace Barotrauma.MapCreatures.Behavior
         }
 
         /// <summary>
-        /// Create a body for a branch which works as the hitbox for flamer
+        /// Queue a physics body creation for a branch.
+        /// The actual body will be created on the main thread to ensure thread safety.
         /// </summary>
-        /// <param name="branch"></param>
-        private void CreateBody(BallastFloraBranch branch)
+        /// <param name="branch">The branch to create a body for</param>
+        /// <param name="immediate">If true, create the body immediately (only safe when called from main thread)</param>
+        private void CreateBody(BallastFloraBranch branch, bool immediate = false)
+        {
+            if (immediate)
+            {
+                CreateBodyImmediate(branch);
+                return;
+            }
+            
+            lock (pendingBodyCreationsLock)
+            {
+                pendingBodyCreations.Add(branch);
+            }
+            PhysicsBodyQueue.EnqueueCreation(() => ProcessPendingBodyCreations());
+        }
+
+        /// <summary>
+        /// Process all pending body creations on the main thread.
+        /// This ensures Farseer Physics operations are thread-safe.
+        /// </summary>
+        private void ProcessPendingBodyCreations()
+        {
+            List<BallastFloraBranch> branchesToProcess;
+            lock (pendingBodyCreationsLock)
+            {
+                if (pendingBodyCreations.Count == 0) { return; }
+                branchesToProcess = new List<BallastFloraBranch>(pendingBodyCreations);
+                pendingBodyCreations.Clear();
+            }
+
+            foreach (var branch in branchesToProcess)
+            {
+                if (branch.Removed) { continue; }
+                CreateBodyImmediate(branch);
+            }
+        }
+
+        /// <summary>
+        /// Actually create the physics body for a branch.
+        /// Must be called on the main thread.
+        /// </summary>
+        private void CreateBodyImmediate(BallastFloraBranch branch)
         {
             Rectangle rect = branch.Rect;
             Vector2 pos = Parent.Position + Offset + branch.Position;
