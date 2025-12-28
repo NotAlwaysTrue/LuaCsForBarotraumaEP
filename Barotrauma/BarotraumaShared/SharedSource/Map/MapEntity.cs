@@ -655,13 +655,13 @@ namespace Barotrauma
 
             // First phase: parallel updates that have no order dependencies
             Parallel.Invoke(parallelOptions,
-                // Hull parallel update
                 () =>
                 {
-                    Parallel.ForEach(hullList, parallelOptions, hull =>
+                    // basically nothing here is thread-safe so
+                    foreach(var hull in hullList)
                     {
                         hull.Update(deltaTime, cam);
-                    });
+                    }
                 },
                 // Structure parallel update
                 () =>
