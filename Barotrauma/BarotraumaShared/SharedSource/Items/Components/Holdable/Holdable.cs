@@ -486,7 +486,10 @@ namespace Barotrauma.Items.Components
                 }
                 else
                 {
-                    item.body.ResetDynamics();
+                    // Calculate target position
+                    Vector2 targetPos;
+                    Submarine forceSubmarine = picker.Submarine;
+                    
                     Limb heldHand, arm;
                     if (picker.Inventory.IsInLimbSlot(item, InvSlotType.LeftHand))
                     {
@@ -504,17 +507,42 @@ namespace Barotrauma.Items.Components
                         Vector2 diff = new Vector2(
                             (heldHand.SimPosition.X - arm.SimPosition.X) / 2f,
                             (heldHand.SimPosition.Y - arm.SimPosition.Y) / 2.5f);
+                        targetPos = heldHand.SimPosition + diff;
+                    }
+                    else
+                    {
+                        targetPos = picker.SimPosition;
+                    }
 
+                    // Defer physics operations if in parallel context
+                    if (PhysicsBodyQueue.IsInParallelContext)
+                    {
+                        var capturedBody = item.body;
+                        var capturedItem = item;
+                        var capturedTargetPos = targetPos;
+                        var capturedForceSubmarine = forceSubmarine;
+                        
+                        PhysicsBodyQueue.Enqueue(() =>
+                        {
+                            if (capturedBody.Removed || capturedItem.Removed) { return; }
+                            capturedBody.ResetDynamics();
+                            //we have forced the item to be in the same sub as the dropper above,
+                            //and are placing it to the position of the hands in "local" coordinates
+                            //which may be outside the sub if the character is e.g. standing half-way through the airlock
+                            // -> let's use the forceSubmarine argument ensure the item is still considered to be in the sub's coordinate space,
+                            //    or it will end up in a weird state and seemingly disappear
+                            capturedItem.SetTransform(capturedTargetPos, 0.0f, forceSubmarine: capturedForceSubmarine);
+                        });
+                    }
+                    else
+                    {
+                        item.body.ResetDynamics();
                         //we have forced the item to be in the same sub as the dropper above,
                         //and are placing it to the position of the hands in "local" coordinates
                         //which may be outside the sub if the character is e.g. standing half-way through the airlock
                         // -> let's use the forceSubmarine argument ensure the item is still considered to be in the sub's coordinate space,
                         //    or it will end up in a weird state and seemingly disappear
-                        item.SetTransform(heldHand.SimPosition + diff, 0.0f, forceSubmarine: picker.Submarine);
-                    }
-                    else
-                    {
-                        item.SetTransform(picker.SimPosition, 0.0f, forceSubmarine: picker.Submarine);
+                        item.SetTransform(targetPos, 0.0f, forceSubmarine: forceSubmarine);
                     }
                 }
             }

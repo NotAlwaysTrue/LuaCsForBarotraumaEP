@@ -3669,20 +3669,45 @@ namespace Barotrauma
             if (body != null)
             {
                 IsActive = true;
-                body.Enabled = true;
-                body.PhysEnabled = true;
-                body.ResetDynamics();
-                if (dropper != null)
+                
+                // Physics body operations must be deferred if we're in a parallel update context,
+                // because Farseer Physics is not thread-safe.
+                if (PhysicsBodyQueue.IsInParallelContext)
                 {
-                    if (body.Removed)
+                    // Capture the values we need for the deferred operation
+                    var capturedBody = body;
+                    var capturedDropperSimPos = dropper?.SimPosition ?? Microsoft.Xna.Framework.Vector2.Zero;
+                    var capturedSetTransform = setTransform && dropper != null;
+                    
+                    PhysicsBodyQueue.Enqueue(() =>
                     {
-                        DebugConsole.ThrowError(
-                            "Failed to drop the item \"" + Name + "\" (body has been removed"
-                            + (Removed ? ", item has been removed)" : ")"));
-                    }
-                    else if (setTransform)
+                        if (capturedBody.Removed || Removed) { return; }
+                        capturedBody.Enabled = true;
+                        capturedBody.PhysEnabled = true;
+                        capturedBody.ResetDynamics();
+                        if (capturedSetTransform)
+                        {
+                            capturedBody.SetTransformIgnoreContacts(capturedDropperSimPos, 0.0f);
+                        }
+                    });
+                }
+                else
+                {
+                    body.Enabled = true;
+                    body.PhysEnabled = true;
+                    body.ResetDynamics();
+                    if (dropper != null)
                     {
-                        body.SetTransformIgnoreContacts(dropper.SimPosition, 0.0f);
+                        if (body.Removed)
+                        {
+                            DebugConsole.ThrowError(
+                                "Failed to drop the item \"" + Name + "\" (body has been removed"
+                                + (Removed ? ", item has been removed)" : ")"));
+                        }
+                        else if (setTransform)
+                        {
+                            body.SetTransformIgnoreContacts(dropper.SimPosition, 0.0f);
+                        }
                     }
                 }
             }
@@ -3693,7 +3718,22 @@ namespace Barotrauma
             {
                 if (setTransform)
                 {
-                    SetTransform(Container.SimPosition, 0.0f);
+                    // Defer SetTransform if in parallel context
+                    if (PhysicsBodyQueue.IsInParallelContext)
+                    {
+                        var capturedContainerSimPos = Container.SimPosition;
+                        PhysicsBodyQueue.Enqueue(() =>
+                        {
+                            if (!Removed)
+                            {
+                                SetTransform(capturedContainerSimPos, 0.0f);
+                            }
+                        });
+                    }
+                    else
+                    {
+                        SetTransform(Container.SimPosition, 0.0f);
+                    }
                 }
                 Container.RemoveContained(this);
                 Container = null;

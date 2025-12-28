@@ -178,8 +178,22 @@ namespace Barotrauma
 
             Parallel.Invoke(parallelOptions,
                 () => GameMain.ParticleManager.Update((float)deltaTime),
-                () => { if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, cam); }
+                () => 
+                { 
+                    PhysicsBodyQueue.IsInParallelContext = true;
+                    try
+                    {
+                        if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, cam);
+                    }
+                    finally
+                    {
+                        PhysicsBodyQueue.IsInParallelContext = false;
+                    }
+                }
             );
+            
+            // Process any physics operations queued during Level update
+            PhysicsBodyQueue.ProcessPendingOperations();
             
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Particles+Level", sw.ElapsedTicks);
@@ -246,9 +260,34 @@ namespace Barotrauma
 
 #elif SERVER
             Parallel.Invoke(parallelOptions,
-                () => { if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance); },
-                () => Character.UpdateAll((float)deltaTime, Camera.Instance)
+                () => 
+                { 
+                    PhysicsBodyQueue.IsInParallelContext = true;
+                    try
+                    {
+                        if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance);
+                    }
+                    finally
+                    {
+                        PhysicsBodyQueue.IsInParallelContext = false;
+                    }
+                },
+                () => 
+                {
+                    PhysicsBodyQueue.IsInParallelContext = true;
+                    try
+                    {
+                        Character.UpdateAll((float)deltaTime, Camera.Instance);
+                    }
+                    finally
+                    {
+                        PhysicsBodyQueue.IsInParallelContext = false;
+                    }
+                }
             );
+            
+            // Process any physics operations queued during parallel updates
+            PhysicsBodyQueue.ProcessPendingOperations();
 #endif
 
             var submarines = Submarine.Loaded.ToList();

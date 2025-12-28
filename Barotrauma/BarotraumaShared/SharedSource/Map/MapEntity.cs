@@ -660,7 +660,15 @@ namespace Barotrauma
                 {
                     Parallel.ForEach(hullList, parallelOptions, hull =>
                     {
-                        hull.Update(deltaTime, cam);
+                        PhysicsBodyQueue.IsInParallelContext = true;
+                        try
+                        {
+                            hull.Update(deltaTime, cam);
+                        }
+                        finally
+                        {
+                            PhysicsBodyQueue.IsInParallelContext = false;
+                        }
                     });
                 },
                 // Structure parallel update
@@ -668,7 +676,15 @@ namespace Barotrauma
                 {
                     Parallel.ForEach(structureList, parallelOptions, structure =>
                     {
-                        structure.Update(deltaTime, cam);
+                        PhysicsBodyQueue.IsInParallelContext = true;
+                        try
+                        {
+                            structure.Update(deltaTime, cam);
+                        }
+                        finally
+                        {
+                            PhysicsBodyQueue.IsInParallelContext = false;
+                        }
                     });
                 },
                 // Gap reset (must be done before update)
@@ -686,9 +702,9 @@ namespace Barotrauma
                 }
             );
 
-            // Process any physics body creation operations queued during Hull/Structure updates.
-            // BallastFlora growth (from Hull.Update) may queue physics body creations.
-            PhysicsBodyQueue.ProcessPendingCreations();
+            // Process any physics operations queued during Hull/Structure updates.
+            // BallastFlora growth (from Hull.Update) may queue physics body creations/transforms.
+            PhysicsBodyQueue.ProcessPendingOperations();
 
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
@@ -699,8 +715,19 @@ namespace Barotrauma
             var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
             Parallel.ForEach(gapList, parallelOptions, gap =>
             {
-                gap.Update(deltaTime, cam);
+                PhysicsBodyQueue.IsInParallelContext = true;
+                try
+                {
+                    gap.Update(deltaTime, cam);
+                }
+                finally
+                {
+                    PhysicsBodyQueue.IsInParallelContext = false;
+                }
             });
+            
+            // Process any physics operations queued during Gap updates.
+            PhysicsBodyQueue.ProcessPendingOperations();
 
 #if CLIENT
             sw.Stop();
@@ -718,8 +745,16 @@ namespace Barotrauma
             {
                 Parallel.ForEach(itemList, parallelOptions, item =>
                 {
-                    lastUpdatedItem = item;
-                    item.Update(scaledDeltaTime, cam);
+                    PhysicsBodyQueue.IsInParallelContext = true;
+                    try
+                    {
+                        lastUpdatedItem = item;
+                        item.Update(scaledDeltaTime, cam);
+                    }
+                    finally
+                    {
+                        PhysicsBodyQueue.IsInParallelContext = false;
+                    }
                 });
             }
             catch (InvalidOperationException e)
@@ -731,9 +766,9 @@ namespace Barotrauma
                 throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
             }
 
-            // Process any physics body creation operations that were queued during the parallel update.
+            // Process any physics operations that were queued during the parallel update.
             // This must be done on the main thread because Farseer Physics is not thread-safe.
-            PhysicsBodyQueue.ProcessPendingCreations();
+            PhysicsBodyQueue.ProcessPendingOperations();
 
             UpdateAllProjSpecific(scaledDeltaTime);
             Spawner?.Update();
