@@ -4880,7 +4880,11 @@ namespace Barotrauma
             HealthUpdateInterval = 0.0f;
         }
 
-        private readonly List<ISerializableEntity> targets = new List<ISerializableEntity>();
+        // Thread-static to avoid concurrent modification in parallel item updates
+        [ThreadStatic]
+        private static List<ISerializableEntity> t_statusEffectTargets;
+        private static List<ISerializableEntity> StatusEffectTargets => t_statusEffectTargets ??= new List<ISerializableEntity>();
+
         public void ApplyStatusEffects(ActionType actionType, float deltaTime)
         {
             if (actionType == ActionType.OnEating)
@@ -4909,6 +4913,7 @@ namespace Barotrauma
                     if (statusEffect.HasTargetType(StatusEffect.TargetType.NearbyItems) ||
                         statusEffect.HasTargetType(StatusEffect.TargetType.NearbyCharacters))
                     {
+                        var targets = StatusEffectTargets;
                         targets.Clear();
                         statusEffect.AddNearbyTargets(WorldPosition, targets);
                         statusEffect.Apply(actionType, deltaTime, this, targets);

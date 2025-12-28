@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 using Barotrauma.MapCreatures.Behavior;
 using Barotrauma.Items.Components;
@@ -1133,13 +1134,18 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// Used in <see cref="GetApproximateDistance"/>
+        /// Used in <see cref="GetApproximateDistance"/> - ThreadLocal for thread safety
         /// </summary>
-        private static readonly Dictionary<Hull, float> cachedDistances = [];
+        private static readonly ThreadLocal<Dictionary<Hull, float>> cachedDistancesLocal = 
+            new ThreadLocal<Dictionary<Hull, float>>(() => new Dictionary<Hull, float>());
         /// <summary>
-        /// Used in <see cref="GetApproximateDistance"/>
+        /// Used in <see cref="GetApproximateDistance"/> - ThreadLocal for thread safety
         /// </summary>
-        private static readonly PriorityQueue<(Hull hull, Vector2 pos), float> priorityQueue = new PriorityQueue<(Hull hull, Vector2 pos), float>();
+        private static readonly ThreadLocal<PriorityQueue<(Hull hull, Vector2 pos), float>> priorityQueueLocal = 
+            new ThreadLocal<PriorityQueue<(Hull hull, Vector2 pos), float>>(() => new PriorityQueue<(Hull hull, Vector2 pos), float>());
+        
+        private static Dictionary<Hull, float> cachedDistances => cachedDistancesLocal.Value;
+        private static PriorityQueue<(Hull hull, Vector2 pos), float> priorityQueue => priorityQueueLocal.Value;
 
         /// <summary>
         /// Approximate distance from this hull to the target hull, moving through open gaps without passing through walls.

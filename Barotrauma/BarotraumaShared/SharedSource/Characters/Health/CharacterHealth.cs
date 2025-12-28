@@ -537,20 +537,25 @@ namespace Barotrauma
             return false;
         }
 
-        private readonly List<Affliction> matchingAfflictions = new List<Affliction>();
+        // Thread-static to avoid concurrent modification in parallel item updates
+        [ThreadStatic]
+        private static List<Affliction> t_matchingAfflictions;
+        private static List<Affliction> MatchingAfflictions => t_matchingAfflictions ??= new List<Affliction>();
 
         public void ReduceAllAfflictionsOnAllLimbs(float amount, ActionType? treatmentAction = null)
         {
+            var matchingAfflictions = MatchingAfflictions;
             matchingAfflictions.Clear();
             matchingAfflictions.AddRange(afflictions.Keys);
 
-            ReduceMatchingAfflictions(amount, treatmentAction);
+            ReduceMatchingAfflictions(matchingAfflictions, amount, treatmentAction);
         }
         
         public void ReduceAfflictionOnAllLimbs(Identifier afflictionIdOrType, float amount, ActionType? treatmentAction = null, Character attacker = null)
         {
             if (afflictionIdOrType.IsEmpty) { throw new ArgumentException($"{nameof(afflictionIdOrType)} is empty"); }
 
+            var matchingAfflictions = MatchingAfflictions;
             matchingAfflictions.Clear();
             foreach (var affliction in afflictions)
             {
@@ -560,7 +565,7 @@ namespace Barotrauma
                 }
             }
 
-            ReduceMatchingAfflictions(amount, treatmentAction, attacker);
+            ReduceMatchingAfflictions(matchingAfflictions, amount, treatmentAction, attacker);
         }
 
         private IEnumerable<Affliction> GetAfflictionsForLimb(Limb targetLimb)
@@ -570,10 +575,11 @@ namespace Barotrauma
         {
             if (targetLimb is null) { throw new ArgumentNullException(nameof(targetLimb)); }
 
+            var matchingAfflictions = MatchingAfflictions;
             matchingAfflictions.Clear();
             matchingAfflictions.AddRange(GetAfflictionsForLimb(targetLimb));
 
-            ReduceMatchingAfflictions(amount, treatmentAction);
+            ReduceMatchingAfflictions(matchingAfflictions, amount, treatmentAction);
         }
 
         public void ReduceAfflictionOnLimb(Limb targetLimb, Identifier afflictionIdOrType, float amount, ActionType? treatmentAction = null, Character attacker = null)
@@ -581,6 +587,7 @@ namespace Barotrauma
             if (afflictionIdOrType.IsEmpty) { throw new ArgumentException($"{nameof(afflictionIdOrType)} is empty"); }
             if (targetLimb is null) { throw new ArgumentNullException(nameof(targetLimb)); }
 
+            var matchingAfflictions = MatchingAfflictions;
             matchingAfflictions.Clear();
             var targetLimbHealth = limbHealths[targetLimb.HealthIndex];
             foreach (var affliction in afflictions)
@@ -591,10 +598,10 @@ namespace Barotrauma
                     matchingAfflictions.Add(affliction.Key);
                 }
             }
-            ReduceMatchingAfflictions(amount, treatmentAction, attacker);
+            ReduceMatchingAfflictions(matchingAfflictions, amount, treatmentAction, attacker);
         }
 
-        private void ReduceMatchingAfflictions(float amount, ActionType? treatmentAction, Character attacker = null)
+        private void ReduceMatchingAfflictions(List<Affliction> matchingAfflictions, float amount, ActionType? treatmentAction, Character attacker = null)
         {
             if (matchingAfflictions.Count == 0) { return; }
 
@@ -681,12 +688,19 @@ namespace Barotrauma
             }
         }
 
-        private readonly static List<Affliction> afflictionsToRemove = new List<Affliction>();
-        private readonly static List<KeyValuePair<Affliction, LimbHealth>> afflictionsToUpdate = new List<KeyValuePair<Affliction, LimbHealth>>();
+        // Thread-static to avoid concurrent modification when multiple characters are updated in parallel
+        [ThreadStatic]
+        private static List<Affliction> t_afflictionsToRemove;
+        [ThreadStatic]
+        private static List<KeyValuePair<Affliction, LimbHealth>> t_afflictionsToUpdate;
+        private static List<Affliction> AfflictionsToRemove => t_afflictionsToRemove ??= new List<Affliction>();
+        private static List<KeyValuePair<Affliction, LimbHealth>> AfflictionsToUpdate => t_afflictionsToUpdate ??= new List<KeyValuePair<Affliction, LimbHealth>>();
+
         public void SetAllDamage(float damageAmount, float bleedingDamageAmount, float burnDamageAmount)
         {
             if (Unkillable || Character.GodMode) { return; }
 
+            var afflictionsToRemove = AfflictionsToRemove;
             afflictionsToRemove.Clear();
             afflictionsToRemove.AddRange(afflictions.Keys.Where(a =>
                     a.Prefab.AfflictionType == AfflictionPrefab.InternalDamage.AfflictionType ||
@@ -737,6 +751,7 @@ namespace Barotrauma
 
         public void RemoveAfflictions(Func<Affliction, bool> predicate)
         {
+            var afflictionsToRemove = AfflictionsToRemove;
             afflictionsToRemove.Clear();
             afflictionsToRemove.AddRange(afflictions.Keys.Where(affliction => predicate(affliction)));
             foreach (var affliction in afflictionsToRemove)
@@ -748,6 +763,7 @@ namespace Barotrauma
 
         public void RemoveAllAfflictions()
         {
+            var afflictionsToRemove = AfflictionsToRemove;
             afflictionsToRemove.Clear();
             afflictionsToRemove.AddRange(afflictions.Keys.Where(a => !irremovableAfflictions.ContainsKey(a))); 
             foreach (var affliction in afflictionsToRemove)
@@ -765,6 +781,7 @@ namespace Barotrauma
 
         public void RemoveNegativeAfflictions()
         {
+            var afflictionsToRemove = AfflictionsToRemove;
             afflictionsToRemove.Clear();
             afflictionsToRemove.AddRange(afflictions.Keys.Where(a => 
                 !irremovableAfflictions.ContainsKey(a) && 
@@ -904,6 +921,8 @@ namespace Barotrauma
 
             if (!Character.GodMode) 
             {
+                var afflictionsToRemove = AfflictionsToRemove;
+                var afflictionsToUpdate = AfflictionsToUpdate;
                 afflictionsToRemove.Clear();
                 afflictionsToUpdate.Clear();
                 foreach (KeyValuePair<Affliction, LimbHealth> kvp in afflictions)
@@ -1198,9 +1217,14 @@ namespace Barotrauma
             return (causeOfDeath, strongestAffliction);
         }
 
-        private readonly List<Affliction> allAfflictions = new List<Affliction>();
+        // Thread-static to avoid concurrent modification in parallel item updates
+        [ThreadStatic]
+        private static List<Affliction> t_allAfflictions;
+        private static List<Affliction> AllAfflictionsList => t_allAfflictions ??= new List<Affliction>();
+
         private IEnumerable<Affliction> GetAllAfflictions(bool mergeSameAfflictions, Func<Affliction, bool> predicate = null)
         {
+            var allAfflictions = AllAfflictionsList;
             allAfflictions.Clear();
             if (!mergeSameAfflictions)
             {
@@ -1383,10 +1407,17 @@ namespace Barotrauma
             return MathHelper.Clamp(strength, 0.0f, affliction.Prefab.MaxStrength);
         }
 
-        private readonly List<Affliction> activeAfflictions = new List<Affliction>();
-        private readonly List<(LimbHealth limbHealth, Affliction affliction)> limbAfflictions = new List<(LimbHealth limbHealth, Affliction affliction)>();
+        // Thread-static to avoid concurrent modification in parallel updates
+        [ThreadStatic]
+        private static List<Affliction> t_activeAfflictions;
+        [ThreadStatic]
+        private static List<(LimbHealth limbHealth, Affliction affliction)> t_limbAfflictions;
+        private static List<Affliction> ActiveAfflictionsList => t_activeAfflictions ??= new List<Affliction>();
+        private static List<(LimbHealth limbHealth, Affliction affliction)> LimbAfflictionsList => t_limbAfflictions ??= new List<(LimbHealth limbHealth, Affliction affliction)>();
+
         public void ServerWrite(IWriteMessage msg)
         {
+            var activeAfflictions = ActiveAfflictionsList;
             activeAfflictions.Clear();
             foreach (KeyValuePair<Affliction, LimbHealth> kvp in afflictions)
             {
@@ -1412,6 +1443,7 @@ namespace Barotrauma
                 }
             }
 
+            var limbAfflictions = LimbAfflictionsList;
             limbAfflictions.Clear();
             foreach (KeyValuePair<Affliction, LimbHealth> kvp in afflictions)
             {
@@ -1441,8 +1473,9 @@ namespace Barotrauma
         public void Remove()
         {
             RemoveProjSpecific();
-            afflictionsToRemove.Clear();
-            afflictionsToUpdate.Clear();
+            // Clear thread-static lists to help with garbage collection
+            AfflictionsToRemove.Clear();
+            AfflictionsToUpdate.Clear();
         }
 
         partial void RemoveProjSpecific();

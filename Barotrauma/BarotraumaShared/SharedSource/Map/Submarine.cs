@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 using Voronoi2;
 
@@ -97,10 +98,11 @@ namespace Barotrauma
             }
         }
 
-        private static Vector2 lastPickedPosition;
-        private static float lastPickedFraction;
-        private static Fixture lastPickedFixture;
-        private static Vector2 lastPickedNormal;
+        // ThreadLocal for thread-safe ray casting results
+        private static readonly ThreadLocal<Vector2> lastPickedPositionLocal = new ThreadLocal<Vector2>();
+        private static readonly ThreadLocal<float> lastPickedFractionLocal = new ThreadLocal<float>();
+        private static readonly ThreadLocal<Fixture> lastPickedFixtureLocal = new ThreadLocal<Fixture>();
+        private static readonly ThreadLocal<Vector2> lastPickedNormalLocal = new ThreadLocal<Vector2>();
 
         private Vector2 prevPosition;
 
@@ -114,22 +116,22 @@ namespace Barotrauma
 
         public static Vector2 LastPickedPosition
         {
-            get { return lastPickedPosition; }
+            get { return lastPickedPositionLocal.Value; }
         }
 
         public static float LastPickedFraction
         {
-            get { return lastPickedFraction; }
+            get { return lastPickedFractionLocal.Value; }
         }
 
         public static Fixture LastPickedFixture
         {
-            get { return lastPickedFixture; }
+            get { return lastPickedFixtureLocal.Value; }
         }
 
         public static Vector2 LastPickedNormal
         {
-            get { return lastPickedNormal; }
+            get { return lastPickedNormalLocal.Value; }
         }
 
         public bool Loading
@@ -854,10 +856,10 @@ namespace Barotrauma
                 }, ref aabb);
                 if (closestFraction <= 0.0f)
                 {
-                    lastPickedPosition = rayStart;
-                    lastPickedFraction = closestFraction;
-                    lastPickedFixture = closestFixture;
-                    lastPickedNormal = closestNormal;
+                    lastPickedPositionLocal.Value = rayStart;
+                    lastPickedFractionLocal.Value = closestFraction;
+                    lastPickedFixtureLocal.Value = closestFixture;
+                    lastPickedNormalLocal.Value = closestNormal;
                     return closestBody;
                 }
             }
@@ -876,16 +878,22 @@ namespace Barotrauma
                 return fraction;
             }, rayStart, rayEnd, collisionCategory ?? Category.All);
 
-            lastPickedPosition = rayStart + (rayEnd - rayStart) * closestFraction;
-            lastPickedFraction = closestFraction;
-            lastPickedFixture = closestFixture;
-            lastPickedNormal = closestNormal;
+            lastPickedPositionLocal.Value = rayStart + (rayEnd - rayStart) * closestFraction;
+            lastPickedFractionLocal.Value = closestFraction;
+            lastPickedFixtureLocal.Value = closestFixture;
+            lastPickedNormalLocal.Value = closestNormal;
 
             return closestBody;
         }
 
-        private static readonly Dictionary<Body, float> bodyDist = new Dictionary<Body, float>();
-        private static readonly List<Body> bodies = new List<Body>();
+        // ThreadLocal for thread-safe body picking
+        private static readonly ThreadLocal<Dictionary<Body, float>> bodyDistLocal = 
+            new ThreadLocal<Dictionary<Body, float>>(() => new Dictionary<Body, float>());
+        private static readonly ThreadLocal<List<Body>> bodiesLocal = 
+            new ThreadLocal<List<Body>>(() => new List<Body>());
+        
+        private static Dictionary<Body, float> bodyDist => bodyDistLocal.Value;
+        private static List<Body> bodies => bodiesLocal.Value;
 
         public static float LastPickedBodyDist(Body body)
         {
@@ -919,10 +927,10 @@ namespace Barotrauma
                 }
                 if (fraction < closestFraction)
                 {
-                    lastPickedPosition = rayStart + (rayEnd - rayStart) * fraction;
-                    lastPickedFraction = fraction;
-                    lastPickedNormal = normal;
-                    lastPickedFixture = fixture;
+                    lastPickedPositionLocal.Value = rayStart + (rayEnd - rayStart) * fraction;
+                    lastPickedFractionLocal.Value = fraction;
+                    lastPickedNormalLocal.Value = normal;
+                    lastPickedFixtureLocal.Value = fixture;
                 }
                 //continue
                 return -1;
@@ -940,10 +948,10 @@ namespace Barotrauma
                     if (!fixture.Shape.TestPoint(ref transform, ref rayStart)) { return true; }
 
                     closestFraction = 0.0f;
-                    lastPickedPosition = rayStart;
-                    lastPickedFraction = 0.0f;
-                    lastPickedNormal = Vector2.Normalize(rayEnd - rayStart);
-                    lastPickedFixture = fixture;
+                    lastPickedPositionLocal.Value = rayStart;
+                    lastPickedFractionLocal.Value = 0.0f;
+                    lastPickedNormalLocal.Value = Vector2.Normalize(rayEnd - rayStart);
+                    lastPickedFixtureLocal.Value = fixture;
                     bodies.Add(fixture.Body);
                     bodyDist[fixture.Body] = 0.0f;
                     return false;
@@ -1011,7 +1019,7 @@ namespace Barotrauma
 
             if (Vector2.DistanceSquared(rayStart, rayEnd) < 0.01f)
             {
-                lastPickedPosition = rayEnd;
+                lastPickedPositionLocal.Value = rayEnd;
                 return null;
             }
 
@@ -1053,10 +1061,10 @@ namespace Barotrauma
             , rayStart, rayEnd);
 
 
-            lastPickedPosition = rayStart + (rayEnd - rayStart) * closestFraction;
-            lastPickedFraction = closestFraction;
-            lastPickedFixture = closestFixture;
-            lastPickedNormal = closestNormal;
+            lastPickedPositionLocal.Value = rayStart + (rayEnd - rayStart) * closestFraction;
+            lastPickedFractionLocal.Value = closestFraction;
+            lastPickedFixtureLocal.Value = closestFixture;
+            lastPickedNormalLocal.Value = closestNormal;
             return closestBody;
         }
 
