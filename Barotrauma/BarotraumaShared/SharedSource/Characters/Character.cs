@@ -7,10 +7,12 @@ using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 #if SERVER
 using System.Text;
@@ -28,12 +30,70 @@ namespace Barotrauma
 
     public readonly record struct TalentResistanceIdentifier(Identifier ResistanceIdentifier, Identifier TalentIdentifier);
 
+    /// <summary>
+    /// Thread-safe wrapper for character list operations.
+    /// Provides lock-free read operations and synchronized write operations.
+    /// </summary>
+    class ThreadSafeCharacterList : IEnumerable<Character>
+    {
+        private volatile List<Character> _list = new List<Character>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(Character character)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<Character>(_list) { character };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(Character character)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<Character>(_list);
+                bool removed = newList.Remove(character);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<Character>());
+        }
+
+        public bool Contains(Character character) => _list.Contains(character);
+
+        public Character this[int index] => _list[index];
+
+        public IEnumerator<Character> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        // LINQ-friendly snapshot for complex queries
+        public List<Character> ToList() => new List<Character>(_list);
+        
+        public Character FirstOrDefault(Func<Character, bool> predicate) => _list.FirstOrDefault(predicate);
+        public Character Find(Predicate<Character> predicate) => _list.Find(predicate);
+        public List<Character> FindAll(Predicate<Character> predicate) => _list.FindAll(predicate);
+        public IEnumerable<Character> Where(Func<Character, bool> predicate) => _list.Where(predicate);
+        public bool Any(Func<Character, bool> predicate) => _list.Any(predicate);
+        public bool None(Func<Character, bool> predicate) => !_list.Any(predicate);
+        public int CountWhere(Func<Character, bool> predicate) => _list.Count(predicate);
+    }
+
     partial class Character : Entity, IDamageable, ISerializableEntity, IClientSerializable, IServerPositionSync
     {
-        public static readonly List<Character> CharacterList = new List<Character>();
+        public static readonly ThreadSafeCharacterList CharacterList = new ThreadSafeCharacterList();
 
         public static int CharacterUpdateInterval = 1;
-        private static int characterUpdateTick = 1;
+        private static volatile int characterUpdateTick = 1;
         
         public const float MaxHighlightDistance = 150.0f;
         public const float MaxDragDistance = 200.0f;

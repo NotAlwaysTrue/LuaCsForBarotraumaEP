@@ -3,15 +3,13 @@ using Barotrauma.Extensions;
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
-using Barotrauma.Networking;
-using Barotrauma.Extensions;
-using System.Globalization;
 using MoonSharp.Interpreter;
-using Barotrauma.Abilities;
 
 namespace Barotrauma
 {
@@ -132,8 +130,9 @@ namespace Barotrauma
 
         private readonly List<LimbHealth> limbHealths = new List<LimbHealth>();
 
-        private readonly Dictionary<Affliction, LimbHealth> afflictions = new Dictionary<Affliction, LimbHealth>();
-        private readonly HashSet<Affliction> irremovableAfflictions = new HashSet<Affliction>();
+        // Thread-safe afflictions dictionary for concurrent access
+        private readonly ConcurrentDictionary<Affliction, LimbHealth> afflictions = new ConcurrentDictionary<Affliction, LimbHealth>();
+        private readonly ConcurrentDictionary<Affliction, byte> irremovableAfflictions = new ConcurrentDictionary<Affliction, byte>();
         private Affliction bloodlossAffliction;
         private Affliction oxygenLowAffliction;
         private Affliction pressureAffliction;
@@ -324,13 +323,13 @@ namespace Barotrauma
 
         private void InitIrremovableAfflictions()
         {
-            irremovableAfflictions.Add(bloodlossAffliction = new Affliction(AfflictionPrefab.Bloodloss, 0.0f));
-            irremovableAfflictions.Add(stunAffliction = new Affliction(AfflictionPrefab.Stun, 0.0f));
-            irremovableAfflictions.Add(pressureAffliction = new Affliction(AfflictionPrefab.Pressure, 0.0f));
-            irremovableAfflictions.Add(oxygenLowAffliction = new Affliction(AfflictionPrefab.OxygenLow, 0.0f));
-            foreach (Affliction affliction in irremovableAfflictions)
+            irremovableAfflictions.TryAdd(bloodlossAffliction = new Affliction(AfflictionPrefab.Bloodloss, 0.0f), 0);
+            irremovableAfflictions.TryAdd(stunAffliction = new Affliction(AfflictionPrefab.Stun, 0.0f), 0);
+            irremovableAfflictions.TryAdd(pressureAffliction = new Affliction(AfflictionPrefab.Pressure, 0.0f), 0);
+            irremovableAfflictions.TryAdd(oxygenLowAffliction = new Affliction(AfflictionPrefab.OxygenLow, 0.0f), 0);
+            foreach (Affliction affliction in irremovableAfflictions.Keys)
             {
-                afflictions.Add(affliction, null);
+                afflictions.TryAdd(affliction, null);
             }
         }
 
@@ -338,7 +337,7 @@ namespace Barotrauma
 
         public IReadOnlyCollection<Affliction> GetAllAfflictions()
         {
-            return afflictions.Keys;
+            return afflictions.Keys.ToList();
         }
 
         public IEnumerable<Affliction> GetAllAfflictions(Func<Affliction, bool> limbHealthFilter)
@@ -503,19 +502,18 @@ namespace Barotrauma
         /// </summary>
         public float GetResistance(AfflictionPrefab afflictionPrefab, LimbType limbType)
         {
-            lock (afflictions) {
-                // This is a % resistance (0 to 1.0)
-                float resistance = 0.0f;
-                foreach (KeyValuePair<Affliction, LimbHealth> kvp in afflictions)
-                {
-                    var affliction = kvp.Key;
-                    resistance += affliction.GetResistance(afflictionPrefab.Identifier, limbType);
-                }
-                // This is a multiplier, ie. 0.0 = 100% resistance and 1.0 = 0% resistance
-                float abilityResistanceMultiplier = Character.GetAbilityResistance(afflictionPrefab);
-                // The returned value is calculated to be a % resistance again
-                return 1 - ((1 - resistance) * abilityResistanceMultiplier);
+            // ConcurrentDictionary is thread-safe, no lock needed
+            // This is a % resistance (0 to 1.0)
+            float resistance = 0.0f;
+            foreach (KeyValuePair<Affliction, LimbHealth> kvp in afflictions)
+            {
+                var affliction = kvp.Key;
+                resistance += affliction.GetResistance(afflictionPrefab.Identifier, limbType);
             }
+            // This is a multiplier, ie. 0.0 = 100% resistance and 1.0 = 0% resistance
+            float abilityResistanceMultiplier = Character.GetAbilityResistance(afflictionPrefab);
+            // The returned value is calculated to be a % resistance again
+            return 1 - ((1 - resistance) * abilityResistanceMultiplier);
         }
 
         public float GetStatValue(StatTypes statType)
@@ -696,14 +694,14 @@ namespace Barotrauma
                     a.Prefab.AfflictionType == AfflictionPrefab.Bleeding.AfflictionType));
             foreach (var affliction in afflictionsToRemove)
             {
-                afflictions.Remove(affliction);
+                afflictions.TryRemove(affliction, out _);
             }
 
             foreach (LimbHealth limbHealth in limbHealths)
             {
-                if (damageAmount > 0.0f) { afflictions.Add(AfflictionPrefab.InternalDamage.Instantiate(damageAmount), limbHealth); }
-                if (bleedingDamageAmount > 0.0f && DoesBleed) { afflictions.Add(AfflictionPrefab.Bleeding.Instantiate(bleedingDamageAmount), limbHealth); }
-                if (burnDamageAmount > 0.0f) { afflictions.Add(AfflictionPrefab.Burn.Instantiate(burnDamageAmount), limbHealth); }
+                if (damageAmount > 0.0f) { afflictions.TryAdd(AfflictionPrefab.InternalDamage.Instantiate(damageAmount), limbHealth); }
+                if (bleedingDamageAmount > 0.0f && DoesBleed) { afflictions.TryAdd(AfflictionPrefab.Bleeding.Instantiate(bleedingDamageAmount), limbHealth); }
+                if (burnDamageAmount > 0.0f) { afflictions.TryAdd(AfflictionPrefab.Burn.Instantiate(burnDamageAmount), limbHealth); }
             }
             
             RecalculateVitality();
@@ -743,7 +741,7 @@ namespace Barotrauma
             afflictionsToRemove.AddRange(afflictions.Keys.Where(affliction => predicate(affliction)));
             foreach (var affliction in afflictionsToRemove)
             {
-                afflictions.Remove(affliction);
+                afflictions.TryRemove(affliction, out _);
             }
             CalculateVitality();
         }
@@ -751,14 +749,14 @@ namespace Barotrauma
         public void RemoveAllAfflictions()
         {
             afflictionsToRemove.Clear();
-            afflictionsToRemove.AddRange(afflictions.Keys.Where(a => !irremovableAfflictions.Contains(a))); 
+            afflictionsToRemove.AddRange(afflictions.Keys.Where(a => !irremovableAfflictions.ContainsKey(a))); 
             foreach (var affliction in afflictionsToRemove)
             {
                 //set strength to 0 in case the affliction needs to react to becoming inactive
                 affliction.Strength = 0.0f;
-                afflictions.Remove(affliction);
+                afflictions.TryRemove(affliction, out _);
             }
-            foreach (Affliction affliction in irremovableAfflictions)
+            foreach (Affliction affliction in irremovableAfflictions.Keys)
             {
                 affliction.Strength = 0.0f;
             }
@@ -769,15 +767,15 @@ namespace Barotrauma
         {
             afflictionsToRemove.Clear();
             afflictionsToRemove.AddRange(afflictions.Keys.Where(a => 
-                !irremovableAfflictions.Contains(a) && 
+                !irremovableAfflictions.ContainsKey(a) && 
                 !a.Prefab.IsBuff && 
                 a.Prefab.AfflictionType != "geneticmaterialbuff" && 
                 a.Prefab.AfflictionType != "geneticmaterialdebuff"));
             foreach (var affliction in afflictionsToRemove)
             {
-                afflictions.Remove(affliction);
+                afflictions.TryRemove(affliction, out _);
             }
-            foreach (Affliction affliction in irremovableAfflictions)
+            foreach (Affliction affliction in irremovableAfflictions.Keys)
             {
                 affliction.Strength = 0.0f;
             }
@@ -869,7 +867,7 @@ namespace Barotrauma
             var copyAffliction = newAffliction.Prefab.Instantiate(
                 Math.Min(newAffliction.Prefab.MaxStrength, newAffliction.Strength * (100.0f / MaxVitality) * (1f - GetResistance(newAffliction.Prefab, limbType))),
                 newAffliction.Source);
-            afflictions.Add(copyAffliction, limbHealth);
+            afflictions.TryAdd(copyAffliction, limbHealth);
             AchievementManager.OnAfflictionReceived(copyAffliction, Character);
             MedicalClinic.OnAfflictionCountChanged(Character);
 
@@ -914,7 +912,7 @@ namespace Barotrauma
                     if (affliction.Strength <= 0.0f)
                     {
                         AchievementManager.OnAfflictionRemoved(affliction, Character);
-                        if (!irremovableAfflictions.Contains(affliction)) { afflictionsToRemove.Add(affliction); }
+                        if (!irremovableAfflictions.ContainsKey(affliction)) { afflictionsToRemove.Add(affliction); }
                         continue;
                     }
                     if (affliction.Prefab.Duration > 0.0f)
@@ -952,7 +950,7 @@ namespace Barotrauma
 
                 foreach (var affliction in afflictionsToRemove)
                 {
-                    afflictions.Remove(affliction);
+                    afflictions.TryRemove(affliction, out _);
                 }
 
                 if (afflictionsToRemove.Count is not 0)
@@ -1519,14 +1517,14 @@ namespace Barotrauma
                 }
                 if (afflictionPredicate != null && !afflictionPredicate.Invoke(afflictionPrefab)) { return; }
                 float strength = afflictionElement.GetAttributeFloat("strength", 0.0f);
-                var irremovableAffliction = irremovableAfflictions.FirstOrDefault(a => a.Prefab == afflictionPrefab);
+                var irremovableAffliction = irremovableAfflictions.Keys.FirstOrDefault(a => a.Prefab == afflictionPrefab);
                 if (irremovableAffliction != null)
                 {
                     irremovableAffliction.Strength = strength;
                 }
                 else
                 {
-                    afflictions.Add(afflictionPrefab.Instantiate(strength), limbHealth);
+                    afflictions.TryAdd(afflictionPrefab.Instantiate(strength), limbHealth);
                 }
             }
         }

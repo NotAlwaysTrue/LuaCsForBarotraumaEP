@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace Barotrauma
 {
@@ -21,7 +21,7 @@ namespace Barotrauma
             var npcConversationCollection = new NPCConversationCollection(this, mainElement);
             if (!NPCConversationCollection.Collections.ContainsKey(npcConversationCollection.Language))
             {
-                NPCConversationCollection.Collections.Add(npcConversationCollection.Language, new PrefabCollection<NPCConversationCollection>());
+                NPCConversationCollection.Collections.TryAdd(npcConversationCollection.Language, new PrefabCollection<NPCConversationCollection>());
             }
             NPCConversationCollection.Collections[npcConversationCollection.Language].Add(npcConversationCollection, allowOverriding);
         }
