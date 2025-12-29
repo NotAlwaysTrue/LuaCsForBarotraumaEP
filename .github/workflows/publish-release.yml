@@ -23,16 +23,13 @@ on:
 env:
   CI_DIR: 2049ef39-42a2-46d2-b513-ee6d2e3a7b15
   RELEASES: |
+    windows:client:Windows/Client
     windows:server:Windows/Server
+    linux:client:Linux/Client
     linux:server:Linux/Server
+    mac:client:Mac/Client/Barotrauma.app/Contents/MacOS
     mac:server:Mac/Server
-  ARCHIVE_BASE_NAME: luacsforbarotraumaEP
-
-  # windows:client:Windows/Client
-  # linux:client:Linux/Client
-  # mac:client:Mac/Client/Barotrauma.app/Contents/MacOS
-  # we do not currently provide a CL
-  
+  ARCHIVE_BASE_NAME: luacsforbarotrauma
   # XXX: these file names are subject to shell expansion.
   # Be careful when using special characters.
   ARCHIVE_FILES_SERVER: |

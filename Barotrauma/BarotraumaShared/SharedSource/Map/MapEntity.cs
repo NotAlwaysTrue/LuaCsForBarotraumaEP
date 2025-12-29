@@ -646,12 +646,16 @@ namespace Barotrauma
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
 #endif
-
             // Buffer lists to avoid repeated allocations
             var hullList = Hull.HullList.ToList();
             var structureList = Structure.WallList.ToList();
             var gapList = Gap.GapList.ToList();
             var itemList = Item.ItemList.ToList();
+
+            Parallel.ForEach(gapList, parallelOptions, gap =>
+            {
+                gap.ResetWaterFlowThisFrame();
+            });
 
             // First phase: parallel updates that have no order dependencies
             Parallel.Invoke(parallelOptions,
@@ -674,10 +678,13 @@ namespace Barotrauma
                 // Gap reset (must be done before update)
                 () =>
                 {
-                    Parallel.ForEach(gapList, parallelOptions, gap =>
+                    // Gap update (has order dependencies, keep random order but execute sequentially)
+                    var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
+                    foreach (var gap in shuffledGaps)
                     {
-                        gap.ResetWaterFlowThisFrame();
-                    });
+                        gap.Update(deltaTime, cam);
+                    }
+
                 },
                 // Powered components update
                 () =>
@@ -689,16 +696,6 @@ namespace Barotrauma
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
             Hull.UpdateCheats(deltaTime, cam);
-#endif
-
-            // Gap update (has order dependencies, keep random order but execute sequentially)
-            var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
-            Parallel.ForEach(gapList, parallelOptions, gap =>
-            {
-                gap.Update(deltaTime, cam);
-            });
-
-#if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Misc", sw.ElapsedTicks);
             sw.Restart();
