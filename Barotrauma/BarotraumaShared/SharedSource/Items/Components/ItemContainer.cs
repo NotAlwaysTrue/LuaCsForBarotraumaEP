@@ -884,7 +884,8 @@ namespace Barotrauma.Items.Components
                 RelatedItem containableItem = FindContainableItem(containedItem);
                 if (containableItem != null && containableItem.SetActive)
                 {
-                    foreach (var ic in containedItem.Components)
+                    // Use ToArray() snapshot for thread-safe iteration
+                    foreach (var ic in containedItem.Components.ToArray())
                     {
                         ic.IsActive = active;
                     }
@@ -1010,7 +1011,11 @@ namespace Barotrauma.Items.Components
                             if (flippedX ^ flippedY) { rotation = -rotation; }
                             rotation += -item.RotationRad;
                         }
-                        contained.Item.body.FarseerBody.SetTransformIgnoreContacts(ref simPos, rotation);
+                        // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                        var capturedBody = contained.Item.body.FarseerBody;
+                        var capturedSimPos = simPos;
+                        var capturedRotation = rotation;
+                        PhysicsBodyQueue.ExecuteOrDefer(() => capturedBody.SetTransformIgnoreContacts(ref capturedSimPos, capturedRotation));
                         contained.Item.body.UpdateDrawPosition(interpolate: false);
                     }
                     catch (Exception e)

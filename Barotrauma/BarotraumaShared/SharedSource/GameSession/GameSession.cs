@@ -1094,7 +1094,7 @@ namespace Barotrauma
 #endif
             //Clear the grids to allow for garbage collection
             Powered.Grids.Clear();
-            Powered.ChangedConnections.Clear();
+            Powered.ClearChangedConnections();
 
             try
             {
@@ -1153,6 +1153,7 @@ namespace Barotrauma
                 EventManager?.EndRound();
                 StatusEffect.StopAll();
                 AfflictionPrefab.ClearAllEffects();
+                PhysicsBodyQueue.Clear();
                 IsRunning = false;
 
 #if CLIENT

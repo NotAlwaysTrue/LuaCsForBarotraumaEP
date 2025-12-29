@@ -148,14 +148,16 @@ namespace Barotrauma.Items.Components
             Vector2 wireNodeOffset = item.Submarine == null ? Vector2.Zero : item.Submarine.HiddenSubPosition + amount;
             foreach (Connection c in Connections)
             {
-                foreach (Wire wire in c.Wires)
+                // Use ToArray() snapshot for thread-safe iteration
+                foreach (Wire wire in c.Wires.ToArray())
                 {
                     if (wire == null) { continue; }
                     TryMoveWire(wire);
                 }
             }
 
-            foreach (var wire in DisconnectedWires)
+            // Use ToList() snapshot for thread-safe iteration
+            foreach (var wire in DisconnectedWires.ToList())
             {
                 TryMoveWire(wire);
             }
@@ -387,7 +389,7 @@ namespace Barotrauma.Items.Components
             }
             foreach (var connection in Connections)
             {
-                Powered.ChangedConnections.Remove(connection);
+                Powered.UnmarkConnectionChanged(connection);
                 connection.Recipients.Clear();
             }
             Connections.Clear();
@@ -412,15 +414,19 @@ namespace Barotrauma.Items.Components
             msg.WriteByte((byte)Connections.Count);
             foreach (Connection connection in Connections)
             {
-                msg.WriteVariableUInt32((uint)connection.Wires.Count);
-                foreach (Wire wire in connection.Wires)
+                // Use ToArray() snapshot for thread-safe iteration
+                var wiresSnapshot = connection.Wires.ToArray();
+                msg.WriteVariableUInt32((uint)wiresSnapshot.Length);
+                foreach (Wire wire in wiresSnapshot)
                 {
                     msg.WriteUInt16(wire?.Item == null ? (ushort)0 : wire.Item.ID);
                 }
             }
 
-            msg.WriteUInt16((ushort)DisconnectedWires.Count);
-            foreach (Wire disconnectedWire in DisconnectedWires)
+            // Use ToList() snapshot for thread-safe iteration
+            var disconnectedSnapshot = DisconnectedWires.ToList();
+            msg.WriteUInt16((ushort)disconnectedSnapshot.Count);
+            foreach (Wire disconnectedWire in disconnectedSnapshot)
             {
                 msg.WriteUInt16(disconnectedWire.Item.ID);
             }

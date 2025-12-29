@@ -381,7 +381,8 @@ namespace Barotrauma
 
             if (Owner is not Item it) { return; }
 
-            foreach (var c in it.Components)
+            // Use ToArray() snapshot for thread-safe iteration
+            foreach (var c in it.Components.ToArray())
             {
                 c.OnInventoryChanged();
             }

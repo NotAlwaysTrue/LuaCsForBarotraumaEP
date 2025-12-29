@@ -14,7 +14,9 @@ using Barotrauma.Extensions;
 using Barotrauma.MapCreatures.Behavior;
 using MoonSharp.Interpreter;
 using System.Collections.Immutable;
+using System.Threading;
 using Barotrauma.Abilities;
+using HarmonyLib;
 
 #if CLIENT
 using Microsoft.Xna.Framework.Graphics;
@@ -27,56 +29,171 @@ namespace Barotrauma
         #region Lists
 
         /// <summary>
-        /// A list of every item that exists somewhere in the world. Note that there can be a huge number of items in the list, 
-        /// and you probably shouldn't be enumerating it to find some that match some specific criteria (unless that's done very, very sparsely or during initialization).
+        /// Thread-safe dictionary of all items by ID.
         /// </summary>
-        public static readonly List<Item> ItemList = new List<Item>();
+        private static readonly ConcurrentDictionary<ushort, Item> _itemDictionary = new ConcurrentDictionary<ushort, Item>();
 
-        private static readonly HashSet<Item> _dangerousItems = new HashSet<Item>();
+        /// <summary>
+        /// Provides thread-safe enumeration over all items.
+        /// </summary>
+        public static ICollection<Item> ItemList => _itemDictionary.Values;
+
+        /// <summary>
+        /// Thread-safe item lookup by ID.
+        /// </summary>
+        public static Item GetItemById(ushort id)
+        {
+            _itemDictionary.TryGetValue(id, out var item);
+            return item;
+        }
+
+        // Thread-safe optimized item collections using Immutable + atomic swap pattern
+        private static volatile ImmutableHashSet<Item> _dangerousItems = ImmutableHashSet<Item>.Empty;
+        private static volatile ImmutableHashSet<Item> _repairableItems = ImmutableHashSet<Item>.Empty;
+        private static volatile ImmutableHashSet<Item> _cleanableItems = ImmutableHashSet<Item>.Empty;
+        private static volatile ImmutableHashSet<Item> _sonarVisibleItems = ImmutableHashSet<Item>.Empty;
+        private static volatile ImmutableHashSet<Item> _turretTargetItems = ImmutableHashSet<Item>.Empty;
+        private static volatile ImmutableHashSet<Item> _chairItems = ImmutableHashSet<Item>.Empty;
+
+        // DeconstructItems uses ConcurrentDictionary to simulate a thread-safe HashSet
+        private static readonly ConcurrentDictionary<Item, byte> _deconstructItems = new ConcurrentDictionary<Item, byte>();
 
         public static IReadOnlyCollection<Item> DangerousItems => _dangerousItems;
-
-        private static readonly List<Item> _repairableItems = new List<Item>();
 
         /// <summary>
         /// Items that have one more more Repairable component
         /// </summary>
         public static IReadOnlyCollection<Item> RepairableItems => _repairableItems;
 
-        private static readonly List<Item> _cleanableItems = new List<Item>();
-
         /// <summary>
         /// Items that may potentially need to be cleaned up (pickable, not attached to a wall, and not inside a valid container)
         /// </summary>
         public static IReadOnlyCollection<Item> CleanableItems => _cleanableItems;
 
-        private static readonly HashSet<Item> _deconstructItems = new HashSet<Item>();
-
         /// <summary>
-        /// Items that have been marked for deconstruction
+        /// Items that have been marked for deconstruction. Thread-safe collection.
         /// </summary>
-        public static HashSet<Item> DeconstructItems => _deconstructItems;
-
-        private static readonly List<Item> _sonarVisibleItems = new List<Item>();
+        public static ICollection<Item> DeconstructItems => _deconstructItems.Keys;
 
         /// <summary>
         /// Items whose <see cref="ItemPrefab.SonarSize"/> is larger than 0
         /// </summary>
         public static IReadOnlyCollection<Item> SonarVisibleItems => _sonarVisibleItems;
 
-        private static readonly List<Item> _turretTargetItems = new List<Item>();
-
         /// <summary>
         /// Items whose <see cref="ItemPrefab.IsAITurretTarget"/> is true.
         /// </summary>
         public static IReadOnlyCollection<Item> TurretTargetItems => _turretTargetItems;
 
-        private static readonly List<Item> _chairItems = new List<Item>();
-
         /// <summary>
         /// Items that have the tag <see cref="Tags.ChairItem"/>. Which is an oddly specific thing, but useful as an optimization for NPC AI.
         /// </summary>
         public static IReadOnlyCollection<Item> ChairItems => _chairItems;
+
+        #region Thread-safe collection helpers
+
+        /// <summary>
+        /// Atomically adds an item to an immutable set using compare-and-swap.
+        /// </summary>
+        private static void AddToImmutableSet(ref ImmutableHashSet<Item> location, Item item)
+        {
+            ImmutableHashSet<Item> original, updated;
+            do
+            {
+                original = location;
+                updated = original.Add(item);
+                if (ReferenceEquals(original, updated)) return; // Already exists
+            }
+            while (Interlocked.CompareExchange(ref location, updated, original) != original);
+        }
+
+        /// <summary>
+        /// Atomically removes an item from an immutable set using compare-and-swap.
+        /// </summary>
+        private static void RemoveFromImmutableSet(ref ImmutableHashSet<Item> location, Item item)
+        {
+            ImmutableHashSet<Item> original, updated;
+            do
+            {
+                original = location;
+                updated = original.Remove(item);
+                if (ReferenceEquals(original, updated)) return; // Doesn't exist
+            }
+            while (Interlocked.CompareExchange(ref location, updated, original) != original);
+        }
+
+        /// <summary>
+        /// Marks an item for deconstruction (thread-safe).
+        /// </summary>
+        public static void MarkForDeconstruction(Item item)
+        {
+            _deconstructItems.TryAdd(item, 0);
+        }
+
+        /// <summary>
+        /// Unmarks an item for deconstruction (thread-safe).
+        /// </summary>
+        public static void UnmarkForDeconstruction(Item item)
+        {
+            _deconstructItems.TryRemove(item, out _);
+        }
+
+        /// <summary>
+        /// Checks if an item is marked for deconstruction (thread-safe).
+        /// </summary>
+        public static bool IsMarkedForDeconstruction(Item item)
+        {
+            return _deconstructItems.ContainsKey(item);
+        }
+
+        /// <summary>
+        /// Clears all item collections (thread-safe). Used during unloading.
+        /// </summary>
+        public static void ClearAllItemCollections()
+        {
+            _itemDictionary.Clear();
+            _dangerousItems = ImmutableHashSet<Item>.Empty;
+            _repairableItems = ImmutableHashSet<Item>.Empty;
+            _cleanableItems = ImmutableHashSet<Item>.Empty;
+            _sonarVisibleItems = ImmutableHashSet<Item>.Empty;
+            _turretTargetItems = ImmutableHashSet<Item>.Empty;
+            _chairItems = ImmutableHashSet<Item>.Empty;
+            _deconstructItems.Clear();
+            while (_pendingConditionUpdates.TryDequeue(out _)) { }
+            _cachedItemList = null;
+            _cachedItemListVersion = -1;
+        }
+
+        // Cached item list for indexed access (used by AI systems)
+        private static volatile List<Item> _cachedItemList;
+        private static volatile int _cachedItemListVersion = -1;
+        private static volatile int _itemListVersion;
+
+        /// <summary>
+        /// Gets a cached list snapshot of all items for indexed access.
+        /// The list is refreshed when items are added or removed.
+        /// Thread-safe but may return slightly stale data.
+        /// </summary>
+        public static List<Item> GetCachedItemList()
+        {
+            int currentVersion = _itemListVersion;
+            if (_cachedItemList == null || _cachedItemListVersion != currentVersion)
+            {
+                _cachedItemList = _itemDictionary.Values.ToList();
+                _cachedItemListVersion = currentVersion;
+            }
+            return _cachedItemList;
+        }
+
+        /// <summary>
+        /// Called when items are added or removed to invalidate the cached list.
+        /// </summary>
+        private static void InvalidateCachedItemList()
+        {
+            Interlocked.Increment(ref _itemListVersion);
+        }
+
+        #endregion
 
         #endregion
 
@@ -179,7 +296,12 @@ namespace Barotrauma
 
         private bool transformDirty = true;
 
-        private static readonly List<Item> itemsWithPendingConditionUpdates = new List<Item>();
+        private static readonly ConcurrentQueue<Item> _pendingConditionUpdates = new ConcurrentQueue<Item>();
+
+        /// <summary>
+        /// Flag to avoid duplicate enqueue for pending condition updates.
+        /// </summary>
+        private volatile bool _hasPendingConditionUpdate;
 
         private float lastSentCondition;
         private float sendConditionUpdateTimer;
@@ -845,11 +967,11 @@ namespace Barotrauma
                 isDangerous = value; 
                 if (!value)
                 {
-                    _dangerousItems.Remove(this);
+                    RemoveFromImmutableSet(ref _dangerousItems, this);
                 }
                 else
                 {
-                    _dangerousItems.Add(this);
+                    AddToImmutableSet(ref _dangerousItems, this);
                 }
             }
         }
@@ -1398,12 +1520,13 @@ namespace Barotrauma
             }
 
             InsertToList();
-            ItemList.Add(this);
-            if (Prefab.IsDangerous) { _dangerousItems.Add(this); }
-            if (Repairables.Any()) { _repairableItems.Add(this); }
-            if (Prefab.SonarSize > 0.0f) { _sonarVisibleItems.Add(this); }
-            if (Prefab.IsAITurretTarget) { _turretTargetItems.Add(this); }
-            if (Prefab.Tags.Contains(Barotrauma.Tags.ChairItem)) { _chairItems.Add(this); }
+            _itemDictionary.TryAdd(ID, this);
+            InvalidateCachedItemList();
+            if (Prefab.IsDangerous) { AddToImmutableSet(ref _dangerousItems, this); }
+            if (Repairables.Any()) { AddToImmutableSet(ref _repairableItems, this); }
+            if (Prefab.SonarSize > 0.0f) { AddToImmutableSet(ref _sonarVisibleItems, this); }
+            if (Prefab.IsAITurretTarget) { AddToImmutableSet(ref _turretTargetItems, this); }
+            if (Prefab.Tags.Contains(Barotrauma.Tags.ChairItem)) { AddToImmutableSet(ref _chairItems, this); }
             CheckCleanable();
 
             DebugConsole.Log("Created " + Name + " (" + ID + ")");
@@ -1699,7 +1822,13 @@ namespace Barotrauma
                 try
                 {
 #endif
-                    body.SetTransformIgnoreContacts(simPosition, rotation, setPrevTransform);
+                    // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                    var capturedBody = body;
+                    var capturedSimPos = simPosition;
+                    var capturedRotation = rotation;
+                    var capturedSetPrevTransform = setPrevTransform;
+                    PhysicsBodyQueue.ExecuteOrDefer(() => 
+                        capturedBody.SetTransformIgnoreContacts(capturedSimPos, capturedRotation, capturedSetPrevTransform));
 #if DEBUG
                 }
                 catch (Exception e)
@@ -1756,14 +1885,11 @@ namespace Barotrauma
                 Prefab.PreferredContainers.Any() &&
                 (container == null || container.HasTag(Barotrauma.Tags.AllowCleanup)))
             {
-                if (!_cleanableItems.Contains(this))
-                {
-                    _cleanableItems.Add(this);
-                }
+                AddToImmutableSet(ref _cleanableItems, this);
             }
             else
             {
-                _cleanableItems.Remove(this);
+                RemoveFromImmutableSet(ref _cleanableItems, this);
             }
         }
 
@@ -1779,13 +1905,19 @@ namespace Barotrauma
 
             if (ItemList != null && body != null)
             {
+                // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                var capturedBody = body;
+                var capturedNewPos = body.SimPosition + ConvertUnits.ToSimUnits(amount);
+                var capturedRotation = body.Rotation;
                 if (ignoreContacts)
                 {
-                    body.SetTransformIgnoreContacts(body.SimPosition + ConvertUnits.ToSimUnits(amount), body.Rotation);
+                    PhysicsBodyQueue.ExecuteOrDefer(() => 
+                        capturedBody.SetTransformIgnoreContacts(capturedNewPos, capturedRotation));
                 }
                 else
                 {
-                    body.SetTransform(body.SimPosition + ConvertUnits.ToSimUnits(amount), body.Rotation);
+                    PhysicsBodyQueue.ExecuteOrDefer(() => 
+                        capturedBody.SetTransform(capturedNewPos, capturedRotation));
                 }
             }
             foreach (ItemComponent ic in components)
@@ -2294,9 +2426,10 @@ namespace Barotrauma
                 {
                     needsConditionUpdate = true;
                 }
-                if (needsConditionUpdate && !itemsWithPendingConditionUpdates.Contains(this))
+                if (needsConditionUpdate && !_hasPendingConditionUpdate)
                 {
-                    itemsWithPendingConditionUpdates.Add(this);
+                    _hasPendingConditionUpdate = true;
+                    _pendingConditionUpdates.Enqueue(this);
                 }
             }
 
@@ -2320,10 +2453,11 @@ namespace Barotrauma
                 {
                     if (c.IsPower)
                     {
-                        Powered.ChangedConnections.Add(c);
-                        foreach (Connection conn in c.Recipients)
+                        Powered.MarkConnectionChanged(c);
+                        // Use ToList() snapshot for thread-safe iteration
+                        foreach (Connection conn in c.Recipients.ToList())
                         {
-                            Powered.ChangedConnections.Add(conn);
+                            Powered.MarkConnectionChanged(conn);
                         }
                     }
                 }
@@ -2352,9 +2486,9 @@ namespace Barotrauma
         public void SendPendingNetworkUpdates()
         {
             if (!(GameMain.NetworkMember is { IsServer: true })) { return; }
-            if (!itemsWithPendingConditionUpdates.Contains(this)) { return; }
+            if (!_hasPendingConditionUpdate) { return; }
             SendPendingNetworkUpdatesInternal();
-            itemsWithPendingConditionUpdates.Remove(this);
+            _hasPendingConditionUpdate = false;
         }
 
         private void SendPendingNetworkUpdatesInternal()
@@ -2383,21 +2517,35 @@ namespace Barotrauma
         public static void UpdatePendingConditionUpdates(float deltaTime)
         {
             if (GameMain.NetworkMember is not { IsServer: true }) { return; }
-            for (int i = 0; i < itemsWithPendingConditionUpdates.Count; i++)
+            
+            int count = _pendingConditionUpdates.Count;
+            for (int i = 0; i < count; i++)
             {
-                var item = itemsWithPendingConditionUpdates[i];
+                if (!_pendingConditionUpdates.TryDequeue(out var item)) { break; }
+                
                 if (item == null || item.Removed)
                 {
-                    itemsWithPendingConditionUpdates.RemoveAt(i--);
+                    item._hasPendingConditionUpdate = false;
                     continue;
                 }
-                if (item.Submarine is { Loading: true }) { continue; }
+                
+                if (item.Submarine is { Loading: true })
+                {
+                    // Re-enqueue, still loading
+                    _pendingConditionUpdates.Enqueue(item);
+                    continue;
+                }
 
                 item.sendConditionUpdateTimer -= deltaTime;
                 if (item.sendConditionUpdateTimer <= 0.0f)
                 {
                     item.SendPendingNetworkUpdatesInternal();
-                    itemsWithPendingConditionUpdates.RemoveAt(i--);
+                    item._hasPendingConditionUpdate = false;
+                }
+                else
+                {
+                    // Not ready yet, re-enqueue
+                    _pendingConditionUpdates.Enqueue(item);
                 }
             }
         }
@@ -2427,7 +2575,12 @@ namespace Barotrauma
                     if (item != this) 
                     {
                         item.body.Enabled = false;
-                        item.body.SetTransformIgnoreContacts(this.SimPosition, body.Rotation); 
+                        // Defer physics operation if in parallel context (Farseer is not thread-safe)
+                        var capturedItemBody = item.body;
+                        var capturedSimPos = this.SimPosition;
+                        var capturedRotation = body.Rotation;
+                        PhysicsBodyQueue.ExecuteOrDefer(() => 
+                            capturedItemBody.SetTransformIgnoreContacts(capturedSimPos, capturedRotation));
                     }
                 }
             }
@@ -2619,17 +2772,25 @@ namespace Barotrauma
                 FindHull();
             }
 
+            // Defer physics transform operations if in parallel context.
+            // Farseer's DynamicTree is not thread-safe.
             if (Submarine == null && prevSub != null)
             {
-                body.SetTransformIgnoreContacts(body.SimPosition + prevSub.SimPosition, body.Rotation);
+                Vector2 newPos = body.SimPosition + prevSub.SimPosition;
+                float rotation = body.Rotation;
+                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
             }
             else if (Submarine != null && prevSub == null)
             {
-                body.SetTransformIgnoreContacts(body.SimPosition - Submarine.SimPosition, body.Rotation);
+                Vector2 newPos = body.SimPosition - Submarine.SimPosition;
+                float rotation = body.Rotation;
+                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
             }
             else if (Submarine != null && prevSub != null && Submarine != prevSub)
             {
-                body.SetTransformIgnoreContacts(body.SimPosition + prevSub.SimPosition - Submarine.SimPosition, body.Rotation);
+                Vector2 newPos = body.SimPosition + prevSub.SimPosition - Submarine.SimPosition;
+                float rotation = body.Rotation;
+                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
             }
 
             if (Submarine != prevSub)
@@ -2845,7 +3006,8 @@ namespace Barotrauma
             foreach (Connection c in connectionPanel.Connections)
             {
                 if (connectionFilter != null && !connectionFilter(c)) { continue; }
-                foreach (Connection recipient in c.Recipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (Connection recipient in c.Recipients.ToList())
                 {
                     var component = recipient.Item.GetComponent<T>();
                     if (component != null)
@@ -2878,7 +3040,8 @@ namespace Barotrauma
             foreach (Connection c in connectionPanel.Connections)
             {
                 if (connectionFilter != null && !connectionFilter(c)) { continue; }
-                foreach (Connection recipient in c.Recipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (Connection recipient in c.Recipients.ToList())
                 {
                     var component = recipient.Item.GetComponent<T>();
                     if (component != null && !connectedComponents.Contains(component))
@@ -2932,12 +3095,13 @@ namespace Barotrauma
             alreadySearched.Add(c);
             static IEnumerable<Connection> GetRecipients(Connection c)
             {
-                foreach (Connection recipient in c.Recipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (Connection recipient in c.Recipients.ToList())
                 {
                     yield return recipient;
                 }
                 //check circuit box inputs/outputs this connection is connected to
-                foreach (var circuitBoxConnection in c.CircuitBoxConnections)
+                foreach (var circuitBoxConnection in c.CircuitBoxConnections.ToArray())
                 {
                     yield return circuitBoxConnection.Connection;
                 }
@@ -3077,7 +3241,8 @@ namespace Barotrauma
             if (signal.stepsTaken > 5 && signal.source != null)
             {
                 int duplicateRecipients = 0;
-                foreach (var recipient in signal.source.LastSentSignalRecipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (var recipient in signal.source.LastSentSignalRecipients.ToList())
                 {
                     if (recipient == connection)
                     {
@@ -3529,20 +3694,45 @@ namespace Barotrauma
             if (body != null)
             {
                 IsActive = true;
-                body.Enabled = true;
-                body.PhysEnabled = true;
-                body.ResetDynamics();
-                if (dropper != null)
+                
+                // Physics body operations must be deferred if we're in a parallel update context,
+                // because Farseer Physics is not thread-safe.
+                if (PhysicsBodyQueue.IsInParallelContext)
                 {
-                    if (body.Removed)
+                    // Capture the values we need for the deferred operation
+                    var capturedBody = body;
+                    var capturedDropperSimPos = dropper?.SimPosition ?? Microsoft.Xna.Framework.Vector2.Zero;
+                    var capturedSetTransform = setTransform && dropper != null;
+                    
+                    PhysicsBodyQueue.Enqueue(() =>
                     {
-                        DebugConsole.ThrowError(
-                            "Failed to drop the item \"" + Name + "\" (body has been removed"
-                            + (Removed ? ", item has been removed)" : ")"));
-                    }
-                    else if (setTransform)
+                        if (capturedBody.Removed || Removed) { return; }
+                        capturedBody.Enabled = true;
+                        capturedBody.PhysEnabled = true;
+                        capturedBody.ResetDynamics();
+                        if (capturedSetTransform)
+                        {
+                            capturedBody.SetTransformIgnoreContacts(capturedDropperSimPos, 0.0f);
+                        }
+                    });
+                }
+                else
+                {
+                    body.Enabled = true;
+                    body.PhysEnabled = true;
+                    body.ResetDynamics();
+                    if (dropper != null)
                     {
-                        body.SetTransformIgnoreContacts(dropper.SimPosition, 0.0f);
+                        if (body.Removed)
+                        {
+                            DebugConsole.ThrowError(
+                                "Failed to drop the item \"" + Name + "\" (body has been removed"
+                                + (Removed ? ", item has been removed)" : ")"));
+                        }
+                        else if (setTransform)
+                        {
+                            body.SetTransformIgnoreContacts(dropper.SimPosition, 0.0f);
+                        }
                     }
                 }
             }
@@ -3553,7 +3743,22 @@ namespace Barotrauma
             {
                 if (setTransform)
                 {
-                    SetTransform(Container.SimPosition, 0.0f);
+                    // Defer SetTransform if in parallel context
+                    if (PhysicsBodyQueue.IsInParallelContext)
+                    {
+                        var capturedContainerSimPos = Container.SimPosition;
+                        PhysicsBodyQueue.Enqueue(() =>
+                        {
+                            if (!Removed)
+                            {
+                                SetTransform(capturedContainerSimPos, 0.0f);
+                            }
+                        });
+                    }
+                    else
+                    {
+                        SetTransform(Container.SimPosition, 0.0f);
+                    }
                 }
                 Container.RemoveContained(this);
                 Container = null;
@@ -4217,7 +4422,7 @@ namespace Barotrauma
                 }
             }
 
-            if (element.GetAttributeBool("markedfordeconstruction", false)) { _deconstructItems.Add(item); }
+            if (element.GetAttributeBool("markedfordeconstruction", false)) { _deconstructItems.TryAdd(item, 0); }
 
             float prevRotation = item.Rotation;
             if (element.GetAttributeBool("flippedx", false)) { item.FlipX(relativeToSub: false, force: true); }
@@ -4510,7 +4715,7 @@ namespace Barotrauma
                 new XAttribute("name", Prefab.OriginalName),
                 new XAttribute("identifier", Prefab.Identifier),
                 new XAttribute("ID", ID),
-                new XAttribute("markedfordeconstruction", _deconstructItems.Contains(this)));
+                new XAttribute("markedfordeconstruction", _deconstructItems.ContainsKey(this)));
 
             if (PendingItemSwap != null)
             {
@@ -4713,14 +4918,16 @@ namespace Barotrauma
 
         private void RemoveFromLists()
         {
-            ItemList.Remove(this);
-            _dangerousItems.Remove(this);
-            _repairableItems.Remove(this);
-            _sonarVisibleItems.Remove(this);
-            _cleanableItems.Remove(this);
-            _deconstructItems.Remove(this);
-            _turretTargetItems.Remove(this);
-            _chairItems.Remove(this);
+            _itemDictionary.TryRemove(ID, out _);
+            InvalidateCachedItemList();
+            RemoveFromImmutableSet(ref _dangerousItems, this);
+            RemoveFromImmutableSet(ref _repairableItems, this);
+            RemoveFromImmutableSet(ref _sonarVisibleItems, this);
+            RemoveFromImmutableSet(ref _cleanableItems, this);
+            _deconstructItems.TryRemove(this, out _);
+            RemoveFromImmutableSet(ref _turretTargetItems, this);
+            RemoveFromImmutableSet(ref _chairItems, this);
+            _hasPendingConditionUpdate = false;
             RemoveFromDroppedStack(allowClientExecute: true);
         }
 

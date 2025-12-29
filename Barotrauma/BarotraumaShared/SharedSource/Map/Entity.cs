@@ -1,5 +1,6 @@
 ﻿using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Barotrauma.IO;
@@ -20,10 +21,10 @@ namespace Barotrauma
 
         public const ushort MaxEntityCount = ushort.MaxValue - 4; //ushort.MaxValue - 4 because the 4 values above are reserved values
 
-        private static readonly Dictionary<ushort, Entity> dictionary = new Dictionary<ushort, Entity>();
+        private static readonly ConcurrentDictionary<ushort, Entity> dictionary = new ConcurrentDictionary<ushort, Entity>();
         public static IReadOnlyCollection<Entity> GetEntities()
         {
-            return dictionary.Values;
+            return (IReadOnlyCollection<Entity>)dictionary.Values;
         }
 
         public static int EntityCount => dictionary.Count;
@@ -122,12 +123,10 @@ namespace Barotrauma
             //give a unique ID
             ID = DetermineID(id, submarine);
 
-            if (dictionary.ContainsKey(ID))
+            if (!dictionary.TryAdd(ID, this))
             {
                 throw new Exception($"ID {ID} is taken by {dictionary[ID]}");
             }
-
-            dictionary.Add(ID, this);
 
             CreationStackTrace = "";
 #if DEBUG
@@ -147,7 +146,6 @@ namespace Barotrauma
                 CreationStackTrace += $"{fileName}@{fileLineNumber}; ";
             }
 #endif
-            #warning TODO: consider removing this mutex, entity creation probably shouldn't be multithreaded
             lock (creationCounterMutex)
             {
                 CreationIndex = creationCounter;
@@ -261,7 +259,7 @@ namespace Barotrauma
                         DebugConsole.ThrowError($"Error while removing item \"{item}\"", exception);
                     }
                 }
-                Item.ItemList.Clear();
+                Item.ClearAllItemCollections();
             }
             if (Character.CharacterList.Count > 0)
             {
@@ -325,7 +323,7 @@ namespace Barotrauma
             }
             else
             {
-                dictionary.Remove(ID);
+                dictionary.TryRemove(ID, out _);
             }
             IdFreed = true;
         }

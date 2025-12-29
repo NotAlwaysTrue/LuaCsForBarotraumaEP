@@ -174,7 +174,7 @@ namespace Barotrauma.Networking
             StartTime = DateTime.Now;
 
             OnStarted(transfer);
-            GameMain.Server.LastClientListUpdateID++;
+            GameMain.Server.IncrementLastClientListUpdateID();
 
             return transfer;
         }
@@ -204,7 +204,7 @@ namespace Barotrauma.Networking
 
             if (numRemoved > 0 || endedTransfers.Count > 0)
             {
-                GameMain.Server.LastClientListUpdateID++;
+                GameMain.Server.IncrementLastClientListUpdateID();
             }
         }
 

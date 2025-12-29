@@ -4,12 +4,69 @@ using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 using LimbParams = Barotrauma.RagdollParams.LimbParams;
 using ColliderParams = Barotrauma.RagdollParams.ColliderParams;
 
 namespace Barotrauma
 {
+    /// <summary>
+    /// Thread-safe wrapper for PhysicsBody list operations.
+    /// Uses copy-on-write pattern for lock-free reads.
+    /// </summary>
+    internal class ThreadSafePhysicsBodyList : IEnumerable<PhysicsBody>
+    {
+        private volatile List<PhysicsBody> _list = new List<PhysicsBody>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(PhysicsBody body)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<PhysicsBody>(_list) { body };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(PhysicsBody body)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<PhysicsBody>(_list);
+                bool removed = newList.Remove(body);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<PhysicsBody>());
+        }
+
+        public bool Contains(PhysicsBody body) => _list.Contains(body);
+
+        public PhysicsBody this[int index] => _list[index];
+
+        public IEnumerator<PhysicsBody> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        // LINQ-friendly methods
+        public List<PhysicsBody> ToList() => new List<PhysicsBody>(_list);
+        public PhysicsBody FirstOrDefault(Func<PhysicsBody, bool> predicate) => _list.FirstOrDefault(predicate);
+        public PhysicsBody Find(Predicate<PhysicsBody> predicate) => _list.Find(predicate);
+        public IEnumerable<PhysicsBody> Where(Func<PhysicsBody, bool> predicate) => _list.Where(predicate);
+        public bool Any() => _list.Any();
+        public bool Any(Func<PhysicsBody, bool> predicate) => _list.Any(predicate);
+    }
+
     class PosInfo
     {
         public Vector2 Position
@@ -92,8 +149,8 @@ namespace Barotrauma
         public const float MinDensity = 0.01f;
         public const float DefaultAngularDamping = 5.0f;
 
-        private static readonly List<PhysicsBody> list = new List<PhysicsBody>();
-        public static List<PhysicsBody> List
+        private static readonly ThreadSafePhysicsBodyList list = new ThreadSafePhysicsBodyList();
+        public static ThreadSafePhysicsBodyList List
         {
             get { return list; }
         }

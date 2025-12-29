@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace Barotrauma
 {
@@ -648,7 +649,11 @@ namespace Barotrauma
             }
         }
 
-        private static readonly Dictionary<Structure, float> damagedStructures = new Dictionary<Structure, float>();
+        // ThreadLocal for thread-safe structure damage tracking
+        private static readonly ThreadLocal<Dictionary<Structure, float>> damagedStructuresLocal = 
+            new ThreadLocal<Dictionary<Structure, float>>(() => new Dictionary<Structure, float>());
+        private static Dictionary<Structure, float> damagedStructures => damagedStructuresLocal.Value;
+        
         /// <summary>
         /// Returns a dictionary where the keys are the structures that took damage and the values are the amount of damage taken
         /// </summary>

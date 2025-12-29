@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Xml.Linq;
 using Microsoft.Xna.Framework;
 namespace Barotrauma.Items.Components
@@ -25,7 +27,8 @@ namespace Barotrauma.Items.Components
         private int signalQueueSize;
         private int delayTicks;
 
-        private readonly Queue<DelayedSignal> signalQueue = new Queue<DelayedSignal>();
+        // Thread-safe queue for concurrent access
+        private readonly ConcurrentQueue<DelayedSignal> signalQueue = new ConcurrentQueue<DelayedSignal>();
 
         private DelayedSignal prevQueuedSignal;
         
@@ -40,7 +43,8 @@ namespace Barotrauma.Items.Components
                 delay = value;
                 delayTicks = (int)(delay / Timing.Step);
                 signalQueueSize = Math.Max(delayTicks, 1) * 2;
-                signalQueue.Clear();
+                // ConcurrentQueue doesn't have Clear(), drain it instead
+                while (signalQueue.TryDequeue(out _)) { }
             }
         }
 
@@ -66,19 +70,19 @@ namespace Barotrauma.Items.Components
 
         public override void Update(float deltaTime, Camera cam)
         {
-            if (signalQueue.Count == 0)
+            if (signalQueue.IsEmpty)
             {
                 IsActive = false;
                 return;
             }
 
-            foreach (var val in signalQueue)
+            // Use ToArray() snapshot for thread-safe iteration
+            foreach (var val in signalQueue.ToArray())
             {
                 val.SendTimer -= 1;
             }
-            while (signalQueue.Count > 0 && signalQueue.Peek().SendTimer <= 0)
+            while (signalQueue.TryPeek(out var signalOut) && signalOut.SendTimer <= 0)
             {
-                var signalOut = signalQueue.Peek();
                 signalOut.SendDuration -= 1;
                 item.SendSignal(new Signal(signalOut.Signal.value, sender: signalOut.Signal.sender, strength: signalOut.Signal.strength), "signal_out");
                 if (signalOut.SendDuration <= 0) 
@@ -100,11 +104,15 @@ namespace Barotrauma.Items.Components
             {
                 case "signal_in":
                     if (signalQueue.Count >= signalQueueSize) { return; }
-                    if (ResetWhenSignalReceived) { prevQueuedSignal = null; signalQueue.Clear(); }
-                    if (ResetWhenDifferentSignalReceived && signalQueue.Count > 0 && signalQueue.Peek().Signal.value != signal.value)
+                    if (ResetWhenSignalReceived) 
+                    { 
+                        prevQueuedSignal = null; 
+                        while (signalQueue.TryDequeue(out _)) { } 
+                    }
+                    if (ResetWhenDifferentSignalReceived && signalQueue.TryPeek(out var peekSignal) && peekSignal.Signal.value != signal.value)
                     {
                         prevQueuedSignal = null;
-                        signalQueue.Clear();
+                        while (signalQueue.TryDequeue(out _)) { }
                     }
 
                     if (prevQueuedSignal != null && 
@@ -127,10 +135,10 @@ namespace Barotrauma.Items.Components
                     if (float.TryParse(signal.value, NumberStyles.Any, CultureInfo.InvariantCulture, out float newDelay))
                     {
 						newDelay = MathHelper.Clamp(newDelay, 0, 60);
-                        if (signalQueue.Count > 0 && newDelay != Delay)
+                        if (!signalQueue.IsEmpty && newDelay != Delay)
                         {
                             prevQueuedSignal = null;
-                            signalQueue.Clear();
+                            while (signalQueue.TryDequeue(out _)) { }
                         }
                         Delay = newDelay;
                     }

@@ -1,6 +1,7 @@
 ﻿using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -10,7 +11,8 @@ namespace Barotrauma.Items.Components
 {
     partial class WifiComponent : ItemComponent, IServerSerializable, IClientSerializable
     {
-        private static readonly List<WifiComponent> list = new List<WifiComponent>();
+        private static readonly ConcurrentDictionary<WifiComponent, byte> _wifiDict = new ConcurrentDictionary<WifiComponent, byte>();
+        private static IEnumerable<WifiComponent> AllWifiComponents => _wifiDict.Keys;
 
         const int ChannelMemorySize = 10;
 
@@ -111,7 +113,7 @@ namespace Barotrauma.Items.Components
         public WifiComponent(Item item, ContentXElement element)
             : base (item, element)
         {
-            list.Add(this);
+            _wifiDict.TryAdd(this, 0);
             IsActive = true;
         }
 
@@ -156,7 +158,7 @@ namespace Barotrauma.Items.Components
         /// </summary>
         public IEnumerable<WifiComponent> GetReceiversInRange()
         {
-            return list.Where(w => w != this && w.CanReceive(this));
+            return AllWifiComponents.Where(w => w != this && w.CanReceive(this));
         }
 
         public bool CanReceive(WifiComponent sender)
@@ -185,7 +187,7 @@ namespace Barotrauma.Items.Components
         /// </summary>
         public IEnumerable<WifiComponent> GetTransmittersInRange()
         {
-            return list.Where(w => w != this && w.CanTransmit(this));
+            return AllWifiComponents.Where(w => w != this && w.CanTransmit(this));
         }
 
         public bool CanTransmit(WifiComponent sender)
@@ -275,7 +277,8 @@ namespace Barotrauma.Items.Components
 
                 if (signal.source != null)
                 {
-                    foreach (Connection receiver in wifiComp.item.LastSentSignalRecipients)
+                    // Use ToList() snapshot for thread-safe iteration
+                    foreach (Connection receiver in wifiComp.item.LastSentSignalRecipients.ToList())
                     {
                         if (!signal.source.LastSentSignalRecipients.Contains(receiver))
                         {
@@ -366,7 +369,7 @@ namespace Barotrauma.Items.Components
         protected override void RemoveComponentSpecific()
         {
             base.RemoveComponentSpecific();
-            list.Remove(this);
+            _wifiDict.TryRemove(this, out _);
         }
 
         public override XElement Save(XElement parentElement)

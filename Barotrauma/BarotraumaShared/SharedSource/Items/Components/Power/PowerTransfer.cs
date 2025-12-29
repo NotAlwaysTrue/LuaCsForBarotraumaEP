@@ -1,6 +1,7 @@
 ﻿using Barotrauma.Extensions;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
@@ -13,10 +14,12 @@ namespace Barotrauma.Items.Components
 
         private readonly HashSet<Connection> signalConnections = new HashSet<Connection>();
 
-        private readonly Dictionary<Connection, bool> connectionDirty = new Dictionary<Connection, bool>();
+        private readonly ConcurrentDictionary<Connection, bool> connectionDirty = new ConcurrentDictionary<Connection, bool>();
 
         //a list of connections a given connection is connected to, either directly or via other power transfer components
-        private readonly Dictionary<Connection, HashSet<Connection>> connectedRecipients = new Dictionary<Connection, HashSet<Connection>>();
+        //Uses ConcurrentDictionary<Connection, byte> as a thread-safe HashSet replacement
+        private readonly ConcurrentDictionary<Connection, ConcurrentDictionary<Connection, byte>> connectedRecipients = 
+            new ConcurrentDictionary<Connection, ConcurrentDictionary<Connection, byte>>();
 
         private float overloadCooldownTimer;
         private const float OverloadCooldown = 5.0f;
@@ -132,7 +135,7 @@ namespace Barotrauma.Items.Components
         
         partial void InitProjectSpecific(XElement element);
 
-        private static readonly HashSet<PowerTransfer> recipientsToRefresh = new HashSet<PowerTransfer>();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<PowerTransfer, byte> _recipientsToRefresh = new System.Collections.Concurrent.ConcurrentDictionary<PowerTransfer, byte>();
         public override void UpdateBroken(float deltaTime, Camera cam)
         {
             base.UpdateBroken(deltaTime, cam);
@@ -144,20 +147,21 @@ namespace Barotrauma.Items.Components
                 powerLoad = 0.0f;
                 currPowerConsumption = 0.0f;
                 SetAllConnectionsDirty();
-                recipientsToRefresh.Clear();
-                foreach (HashSet<Connection> recipientList in connectedRecipients.Values)
+                _recipientsToRefresh.Clear();
+                // Take snapshot for thread-safe iteration (no locks needed with ConcurrentDictionary)
+                foreach (var recipientDict in connectedRecipients.Values)
                 {
-                    foreach (Connection c in recipientList)
+                    foreach (Connection c in recipientDict.Keys)
                     {
                         if (c.Item == item) { continue; }
                         var recipientPowerTransfer = c.Item.GetComponent<PowerTransfer>();
                         if (recipientPowerTransfer != null)
                         {
-                            recipientsToRefresh.Add(recipientPowerTransfer);
+                            _recipientsToRefresh.TryAdd(recipientPowerTransfer, 0);
                         }
                     }
                 }
-                foreach (PowerTransfer recipientPowerTransfer in recipientsToRefresh)
+                foreach (PowerTransfer recipientPowerTransfer in _recipientsToRefresh.Keys)
                 {
                     recipientPowerTransfer.SetAllConnectionsDirty();
                     recipientPowerTransfer.RefreshConnections();
@@ -304,58 +308,56 @@ namespace Barotrauma.Items.Components
         protected void RefreshConnections()
         {
             var connections = item.Connections;
-            foreach (Connection c in connections)
+            if (connections == null) { return; }
+            
+            // Take a snapshot of connections for thread-safe iteration
+            var connectionSnapshot = connections.ToList();
+            foreach (Connection c in connectionSnapshot)
             {
-                if (!connectionDirty.ContainsKey(c))
+                if (!connectionDirty.TryGetValue(c, out bool isDirty))
                 {
                     connectionDirty[c] = true;
+                    isDirty = true;
                 }
-                else if (!connectionDirty[c])
+                
+                if (!isDirty)
                 {
                     continue;
                 }
 
                 //find all connections that are connected to this one (directly or via another PowerTransfer)
-                HashSet<Connection> tempConnected;
-                if (!connectedRecipients.ContainsKey(c))
+                var tempConnected = connectedRecipients.GetOrAdd(c, _ => new ConcurrentDictionary<Connection, byte>());
+                
+                // Get previous recipients and clear
+                var previousRecipients = tempConnected.Keys.ToList();
+                tempConnected.Clear();
+                
+                //mark all previous recipients as dirty
+                foreach (Connection recipient in previousRecipients)
                 {
-                    tempConnected = new HashSet<Connection>();
-                    connectedRecipients.Add(c, tempConnected);
-                }
-                else
-                {
-                    tempConnected = connectedRecipients[c];
-                    tempConnected.Clear();
-                    //mark all previous recipients as dirty
-                    foreach (Connection recipient in tempConnected)
-                    {
-                        var pt = recipient.Item.GetComponent<PowerTransfer>();
-                        if (pt != null) { pt.connectionDirty[recipient] = true; }
-                    }
+                    var pt = recipient.Item.GetComponent<PowerTransfer>();
+                    if (pt != null) { pt.connectionDirty[recipient] = true; }
                 }
 
-                tempConnected.Add(c);
+                tempConnected.TryAdd(c, 0);
                 if (item.Condition > 0.0f)
                 {
                     GetConnected(c, tempConnected);
                     //go through all the PowerTransfers that we're connected to and set their connections to match the ones we just calculated
                     //(no need to go through the recursive GetConnected method again)
-                    foreach (Connection recipient in tempConnected)
+                    // Take snapshot for thread-safe iteration (no locks needed)
+                    var tempConnectedSnapshot = tempConnected.Keys.ToList();
+                    foreach (Connection recipient in tempConnectedSnapshot)
                     {
                         if (recipient == c) { continue; }
                         var recipientPowerTransfer = recipient.Item.GetComponent<PowerTransfer>();
                         if (recipientPowerTransfer == null) { continue; }
-                        if (!recipientPowerTransfer.connectedRecipients.ContainsKey(recipient))
+                        
+                        var recipientSet = recipientPowerTransfer.connectedRecipients.GetOrAdd(recipient, _ => new ConcurrentDictionary<Connection, byte>());
+                        recipientSet.Clear();
+                        foreach (var connection in tempConnectedSnapshot)
                         {
-                            recipientPowerTransfer.connectedRecipients.Add(recipient, new HashSet<Connection>());
-                        }
-                        else
-                        {
-                            recipientPowerTransfer.connectedRecipients[recipient].Clear();
-                        }
-                        foreach (var connection in tempConnected)
-                        {
-                            recipientPowerTransfer.connectedRecipients[recipient].Add(connection);
+                            recipientSet.TryAdd(connection, 0);
                         }
                         recipientPowerTransfer.connectionDirty[recipient] = false;
                     }
@@ -364,19 +366,20 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        //Finds all the connections that can receive a signal sent into the given connection and stores them in the hashset.
-        private void GetConnected(Connection c, HashSet<Connection> connected)
+        //Finds all the connections that can receive a signal sent into the given connection and stores them in the concurrent dictionary.
+        private void GetConnected(Connection c, ConcurrentDictionary<Connection, byte> connected)
         {
-            var recipients = c.Recipients;
+            // Take snapshot for thread-safe iteration
+            var recipients = c.Recipients.ToList();
 
             foreach (Connection recipient in recipients)
             {
-                if (recipient == null || connected.Contains(recipient)) { continue; }
+                if (recipient == null || connected.ContainsKey(recipient)) { continue; }
 
                 Item it = recipient.Item;
                 if (it == null || it.Condition <= 0.0f) { continue; }
 
-                connected.Add(recipient);
+                connected.TryAdd(recipient, 0);
 
                 var powerTransfer = it.GetComponent<PowerTransfer>();
                 if (powerTransfer != null && powerTransfer.CanTransfer && powerTransfer.IsActive)
@@ -394,10 +397,14 @@ namespace Barotrauma.Items.Components
                 connectionDirty[c] = true;
                 if (c.IsPower)
                 {
-                    ChangedConnections.Add(c);
+                    MarkConnectionChanged(c);
                     if (connectedRecipients.TryGetValue(c, out var recipients))
                     {
-                        recipients.Where(c => c.IsPower).ForEach(c => ChangedConnections.Add(c));
+                        // No lock needed - ConcurrentDictionary.Keys is thread-safe
+                        foreach (var conn in recipients.Keys.Where(conn => conn.IsPower))
+                        {
+                            MarkConnectionChanged(conn);
+                        }
                     }
                 }
             }
@@ -410,10 +417,14 @@ namespace Barotrauma.Items.Components
             connectionDirty[connection] = true;
             if (connection.IsPower)
             {
-                ChangedConnections.Add(connection);
+                MarkConnectionChanged(connection);
                 if (connectedRecipients.TryGetValue(connection, out var recipients))
                 {
-                    recipients.Where(c => c.IsPower).ForEach(c => ChangedConnections.Add(c));
+                    // No lock needed - ConcurrentDictionary.Keys is thread-safe
+                    foreach (var conn in recipients.Keys.Where(conn => conn.IsPower))
+                    {
+                        MarkConnectionChanged(conn);
+                    }
                 }
             }
         }
@@ -452,16 +463,19 @@ namespace Barotrauma.Items.Components
         public override void ReceiveSignal(Signal signal, Connection connection)
         {
             if (item.Condition <= 0.0f || connection.IsPower) { return; }
-            if (!connectedRecipients.ContainsKey(connection)) { return; }
+            if (!connectedRecipients.TryGetValue(connection, out var recipients)) { return; }
             if (!signalConnections.Contains(connection)) { return; }
 
-            foreach (Connection recipient in connectedRecipients[connection])
+            // No lock needed - ConcurrentDictionary.Keys is thread-safe
+            // Use ToList() snapshot for thread-safe iteration
+            foreach (Connection recipient in recipients.Keys.ToList())
             {
                 if (recipient.Item == item || recipient.Item == signal.source) { continue; }
 
                 signal.source?.LastSentSignalRecipients.Add(recipient);
 
-                foreach (ItemComponent ic in recipient.Item.Components)
+                // Use ToArray() snapshot for thread-safe iteration
+                foreach (ItemComponent ic in recipient.Item.Components.ToArray())
                 {
                     //other junction boxes don't need to receive the signal in the pass-through signal connections
                     //because we relay it straight to the connected items without going through the whole chain of junction boxes
@@ -471,7 +485,8 @@ namespace Barotrauma.Items.Components
 
                 if (recipient.Effects != null && signal.value != "0" && !string.IsNullOrEmpty(signal.value))
                 {
-                    foreach (StatusEffect effect in recipient.Effects)
+                    // Use ToArray() snapshot for thread-safe iteration
+                    foreach (StatusEffect effect in recipient.Effects.ToArray())
                     {
                         recipient.Item.ApplyStatusEffect(effect, ActionType.OnUse, 1.0f);
                     }
@@ -484,7 +499,7 @@ namespace Barotrauma.Items.Components
             base.RemoveComponentSpecific();
             connectedRecipients?.Clear();
             connectionDirty?.Clear();
-            recipientsToRefresh.Clear();
+            _recipientsToRefresh.Clear();
         }
     }
 }
