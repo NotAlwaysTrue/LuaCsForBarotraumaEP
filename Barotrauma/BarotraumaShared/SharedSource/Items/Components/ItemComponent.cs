@@ -949,8 +949,7 @@ namespace Barotrauma.Items.Components
             //if any of the effects reduce the item's condition, set the user for OnBroken effects as well
             if (reducesCondition && user != null && type != ActionType.OnBroken)
             {
-                // Use ToArray() snapshot for thread-safe iteration
-                foreach (ItemComponent ic in item.Components.ToArray())
+                foreach (ItemComponent ic in item.Components)
                 {
                     if (ic.statusEffectLists == null || !ic.statusEffectLists.TryGetValue(ActionType.OnBroken, out List<StatusEffect> brokenEffects)) { continue; }
                     foreach (var brokenEffect in brokenEffects)

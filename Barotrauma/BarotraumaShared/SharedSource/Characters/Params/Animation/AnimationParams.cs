@@ -1,12 +1,10 @@
 ﻿using Microsoft.Xna.Framework;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using Barotrauma.IO;
 using System;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading;
 using System.Xml.Linq;
 using Barotrauma.Extensions;
 
@@ -119,9 +117,8 @@ namespace Barotrauma
         public virtual AnimationType AnimationType { get; protected set; }
         /// <summary>
         /// The cached animations of all the characters that have been loaded.
-        /// Thread-safe cache using ConcurrentDictionary.
         /// </summary>
-        private static readonly ConcurrentDictionary<Identifier, ConcurrentDictionary<string, AnimationParams>> allAnimations = new ConcurrentDictionary<Identifier, ConcurrentDictionary<string, AnimationParams>>();
+        private static readonly Dictionary<Identifier, Dictionary<string, AnimationParams>> allAnimations = new Dictionary<Identifier, Dictionary<string, AnimationParams>>();
 
         [Header("Movement")]
         [Serialize(1.0f, IsPropertySaveable.Yes), Editable(DecimalCount = 2, MinValueFloat = 0, MaxValueFloat = Ragdoll.MAX_SPEED, ValueStep = 0.1f)]
@@ -247,9 +244,7 @@ namespace Barotrauma
             return GetAnimParams<T>(speciesName, animSpecies, fallbackSpecies: character.Prefab.GetBaseCharacterSpeciesName(speciesName), animType, file, throwErrors);
         }
         
-        // ThreadLocal for thread-safe error message collection during animation loading
-        private static readonly ThreadLocal<List<string>> errorMessagesLocal = new ThreadLocal<List<string>>(() => new List<string>());
-        private static List<string> errorMessages => errorMessagesLocal.Value;
+        private static readonly List<string> errorMessages = new List<string>();
 
         private static T GetAnimParams<T>(Identifier speciesName, Identifier animSpecies, Identifier fallbackSpecies, AnimationType animType, Either<string, ContentPath> file, bool throwErrors = true) where T : AnimationParams, new()
         {
@@ -267,7 +262,11 @@ namespace Barotrauma
             }
             ContentPackage contentPackage = contentPath?.ContentPackage ?? CharacterPrefab.FindBySpeciesName(speciesName)?.ContentPackage;
             Debug.Assert(contentPackage != null);
-            var animations = allAnimations.GetOrAdd(speciesName, _ => new ConcurrentDictionary<string, AnimationParams>());
+            if (!allAnimations.TryGetValue(speciesName, out Dictionary<string, AnimationParams> animations))
+            {
+                animations = new Dictionary<string, AnimationParams>();
+                allAnimations.Add(speciesName, animations);
+            }
             string key = fileName ?? contentPath?.Value ?? GetDefaultFileName(animSpecies, animType);
             if (animations.TryGetValue(key, out AnimationParams anim) && anim.AnimationType == animType)
             {
@@ -419,12 +418,16 @@ namespace Barotrauma
             {
                 throw new Exception("Cannot create an animation file of type " + animationType);
             }
-            var anims = allAnimations.GetOrAdd(speciesName, _ => new ConcurrentDictionary<string, AnimationParams>());
+            if (!allAnimations.TryGetValue(speciesName, out Dictionary<string, AnimationParams> anims))
+            {
+                anims = new Dictionary<string, AnimationParams>();
+                allAnimations.Add(speciesName, anims);
+            }
             string fileName = IO.Path.GetFileNameWithoutExtension(fullPath);
             if (anims.ContainsKey(fileName))
             {
                 DebugConsole.NewMessage($"[AnimationParams] Removing the old animation of type {animationType}.", Color.Red);
-                anims.TryRemove(fileName, out _);
+                anims.Remove(fileName);
             }
             var instance = new T();
             XElement animationElement = new XElement(GetDefaultFileName(speciesName, animationType), new XAttribute("animationtype", animationType.ToString()));
@@ -436,7 +439,7 @@ namespace Barotrauma
             instance.IsLoaded = instance.Deserialize(animationElement);
             instance.Save();
             instance.Load(contentPath, speciesName);
-            anims.TryAdd(fileName, instance);
+            anims.Add(fileName, instance);
             DebugConsole.NewMessage($"[AnimationParams] New animation file of type {animationType} created.", Color.GhostWhite);
             return instance;
         }
@@ -464,14 +467,17 @@ namespace Barotrauma
             {
                 // Update the key by removing and re-adding the animation.
                 string fileName = FileNameWithoutExtension;
-                if (allAnimations.TryGetValue(SpeciesName, out ConcurrentDictionary<string, AnimationParams> animations))
+                if (allAnimations.TryGetValue(SpeciesName, out Dictionary<string, AnimationParams> animations))
                 {
-                    animations.TryRemove(fileName, out _);
+                    animations.Remove(fileName);
                 }
                 base.UpdatePath(newPath);
                 if (animations != null)
                 {
-                    animations.TryAdd(fileName, this);
+                    if (!animations.ContainsKey(fileName))
+                    {
+                        animations.Add(fileName, this);
+                    }
                 }
             }
         }

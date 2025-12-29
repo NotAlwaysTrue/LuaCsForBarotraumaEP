@@ -4775,7 +4775,7 @@ namespace Barotrauma
             //     BeaconStation.FlipX();
             // }
 
-            Item sonarItem = Item.ItemList.FirstOrDefault(it => it.Submarine == BeaconStation && it.GetComponent<Sonar>() != null);
+            Item sonarItem = Item.ItemList.Find(it => it.Submarine == BeaconStation && it.GetComponent<Sonar>() != null);
             if (sonarItem == null)
             {
                 DebugConsole.ThrowError($"No sonar found in the beacon station \"{beaconStationName}\"!");
@@ -4794,7 +4794,7 @@ namespace Barotrauma
                 throw new InvalidOperationException("Failed to prepare beacon station (no beacon station in the level).");
             }
 
-            List<Item> beaconItems = Item.ItemList.Where(it => it.Submarine == BeaconStation).ToList();
+            List<Item> beaconItems = Item.ItemList.FindAll(it => it.Submarine == BeaconStation);
 
             Item reactorItem = beaconItems.Find(it => it.GetComponent<Reactor>() != null);
             Reactor reactorComponent = null;
@@ -4840,7 +4840,7 @@ namespace Barotrauma
             if (BeaconStation?.Info?.BeaconStationInfo is { AllowDisconnectedWires: false }) { return; }
 
             if (disconnectWireProbability <= 0.0f) { return; }
-            List<Item> beaconItems = Item.ItemList.Where(it => it.Submarine == BeaconStation).ToList();
+            List<Item> beaconItems = Item.ItemList.FindAll(it => it.Submarine == BeaconStation);
             foreach (Item item in beaconItems.Where(it => it.GetComponent<Wire>() != null).ToList())
             {
                 if (item.NonInteractable || item.InvulnerableToDamage) { continue; }
@@ -4878,7 +4878,7 @@ namespace Barotrauma
 
             if (breakDeviceProbability <= 0.0f) { return; }
             //break powered items
-            List<Item> beaconItems = Item.ItemList.Where(it => it.Submarine == BeaconStation).ToList();
+            List<Item> beaconItems = Item.ItemList.FindAll(it => it.Submarine == BeaconStation);
             foreach (Item item in beaconItems.Where(it => it.Components.Any(c => c is Powered) && it.Components.Any(c => c is Repairable)))
             {
                 if (item.NonInteractable || item.InvulnerableToDamage) { continue; }

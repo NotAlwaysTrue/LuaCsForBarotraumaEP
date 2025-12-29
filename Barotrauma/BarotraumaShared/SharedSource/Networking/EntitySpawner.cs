@@ -434,7 +434,7 @@ namespace Barotrauma
             if (GameMain.NetworkMember is { IsClient: true }) { return; }
             while (spawnOrRemoveQueue.Count > 0)
             {
-                if (!spawnOrRemoveQueue.TryDequeue(out var spawnOrRemove)) { break; }
+                var spawnOrRemove = spawnOrRemoveQueue.Dequeue();
                 if (spawnOrRemove.TryGet(out Entity entityToRemove))
                 {
                     if (entityToRemove is Item item)

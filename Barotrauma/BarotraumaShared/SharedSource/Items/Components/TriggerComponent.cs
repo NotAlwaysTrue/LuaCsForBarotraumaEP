@@ -73,11 +73,6 @@ namespace Barotrauma.Items.Components
 
         public PhysicsBody PhysicsBody { get; private set; }
 
-        /// <summary>
-        /// Flag to prevent multiple queued refresh requests.
-        /// </summary>
-        private volatile bool physicsBodyRefreshQueued;
-
         private float radius;
         [Editable, Serialize(0.0f, IsPropertySaveable.Yes)]
         public float Radius
@@ -88,7 +83,7 @@ namespace Barotrauma.Items.Components
             {
                 if (radius == value) { return; }
                 radius = value;
-                if (PhysicsBody != null) { QueuePhysicsBodyRefresh(); }
+                if (PhysicsBody != null) { RefreshPhysicsBodySize(); }
             }
         }
 
@@ -102,7 +97,7 @@ namespace Barotrauma.Items.Components
             {
                 if (width == value) { return; }
                 width = value;
-                if (PhysicsBody != null) { QueuePhysicsBodyRefresh(); }
+                if (PhysicsBody != null) { RefreshPhysicsBodySize(); }
             }
         }
 
@@ -116,26 +111,8 @@ namespace Barotrauma.Items.Components
             {
                 if (height == value) { return; }
                 height = value;
-                if (PhysicsBody != null) { QueuePhysicsBodyRefresh(); }
+                if (PhysicsBody != null) { RefreshPhysicsBodySize(); }
             }
-        }
-
-        /// <summary>
-        /// Queue the physics body refresh to be executed on the main thread.
-        /// This is necessary because physics body operations are not thread-safe.
-        /// </summary>
-        private void QueuePhysicsBodyRefresh()
-        {
-            if (physicsBodyRefreshQueued) { return; }
-            physicsBodyRefreshQueued = true;
-            PhysicsBodyQueue.EnqueueCreation(() =>
-            {
-                if (!item.Removed)
-                {
-                    RefreshPhysicsBodySize();
-                }
-                physicsBodyRefreshQueued = false;
-            });
         }
 
         private float currentRadius, currentWidth, currentHeight;
@@ -312,18 +289,13 @@ namespace Barotrauma.Items.Components
                 Matrix transform = Matrix.CreateRotationZ(-item.RotationRad);
                 offset = Vector2.Transform(offset, transform);
             }
-            
-            // Defer physics operations if in parallel context (Farseer is not thread-safe)
-            var capturedBody = PhysicsBody;
-            var capturedPos = item.SimPosition + offset;
-            var capturedRot = -item.RotationRad;
             if (ignoreContacts)
             {
-                PhysicsBodyQueue.ExecuteOrDefer(() => capturedBody.SetTransformIgnoreContacts(capturedPos, capturedRot));
+                PhysicsBody.SetTransformIgnoreContacts(item.SimPosition + offset, -item.RotationRad);
             }
             else
             {
-                PhysicsBodyQueue.ExecuteOrDefer(() => capturedBody.SetTransform(capturedPos, capturedRot));
+                PhysicsBody.SetTransform(item.SimPosition + offset, -item.RotationRad);
             }
             PhysicsBody.UpdateDrawPosition();
         }

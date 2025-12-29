@@ -3,7 +3,6 @@ using Barotrauma.Networking;
 using FarseerPhysics;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -11,8 +10,11 @@ namespace Barotrauma.Items.Components
 {
     partial class ElectricalDischarger : Powered, IServerSerializable
     {
-        private static readonly ConcurrentDictionary<ElectricalDischarger, byte> _dischargerDict = new ConcurrentDictionary<ElectricalDischarger, byte>();
-        public static IEnumerable<ElectricalDischarger> List => _dischargerDict.Keys;
+        private static readonly List<ElectricalDischarger> list = new List<ElectricalDischarger>();
+        public static IEnumerable<ElectricalDischarger> List
+        {
+            get { return list; }
+        }
 
         const int MaxNodes = 100;
         const float MaxNodeDistance = 150.0f;
@@ -113,7 +115,7 @@ namespace Barotrauma.Items.Components
         public ElectricalDischarger(Item item, ContentXElement element) : 
             base(item, element)
         {
-            _dischargerDict.TryAdd(this, 0);
+            list.Add(this);
 
             foreach (var subElement in element.Elements())
             {
@@ -602,7 +604,7 @@ namespace Barotrauma.Items.Components
         protected override void RemoveComponentSpecific()
         {
             base.RemoveComponentSpecific();
-            _dischargerDict.TryRemove(this, out _);
+            list.Remove(this);
         }
 
         public void ServerEventWrite(IWriteMessage msg, Client c, NetEntityEvent.IData extraData = null)

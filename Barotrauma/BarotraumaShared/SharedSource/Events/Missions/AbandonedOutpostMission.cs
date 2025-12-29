@@ -111,7 +111,7 @@ namespace Barotrauma
         {
             if (!itemTag.IsEmpty)
             {
-                var itemsToDestroy = Item.ItemList.Where(it => it.Submarine?.Info.Type != SubmarineType.Player && it.HasTag(itemTag)).ToList();
+                var itemsToDestroy = Item.ItemList.FindAll(it => it.Submarine?.Info.Type != SubmarineType.Player && it.HasTag(itemTag));
                 if (!itemsToDestroy.Any())
                 {
                     DebugConsole.ThrowError($"Error in mission \"{Prefab.Identifier}\". Could not find an item with the tag \"{itemTag}\".",

@@ -62,7 +62,7 @@ namespace Barotrauma.Networking
                     DebugConsole.Log($"Changed client {Name}'s team to {teamID}.");
                     if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsServer)
                     {
-                        GameMain.NetworkMember.IncrementLastClientListUpdateID();
+                        GameMain.NetworkMember.LastClientListUpdateID++;
                     }
                     teamID = value;
                 }
@@ -86,7 +86,7 @@ namespace Barotrauma.Networking
             {
                 if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsServer)
                 {
-                    GameMain.NetworkMember.IncrementLastClientListUpdateID();
+                    GameMain.NetworkMember.LastClientListUpdateID++;
                     if (value != null)
                     {
                         CharacterID = value.ID;
@@ -154,7 +154,7 @@ namespace Barotrauma.Networking
 #endif
                 if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsServer)
                 {
-                    GameMain.NetworkMember.IncrementLastClientListUpdateID();
+                    GameMain.NetworkMember.LastClientListUpdateID++;
                 }
             }
         }
@@ -178,7 +178,7 @@ namespace Barotrauma.Networking
             {
                 if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsServer)
                 {
-                    GameMain.NetworkMember.IncrementLastClientListUpdateID();
+                    GameMain.NetworkMember.LastClientListUpdateID++;
                 }
                 inGame = value;
             }

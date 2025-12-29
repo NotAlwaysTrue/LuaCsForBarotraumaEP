@@ -1891,7 +1891,7 @@ namespace Barotrauma
                        
                     }
                 }
-                else if (Item.IsMarkedForDeconstruction(item) &&
+                else if (Item.DeconstructItems.Contains(item) &&
                     OrderPrefab.Prefabs.TryGet(Tags.DeconstructThis, out OrderPrefab deconstructOrder))
                 {
                     DrawSideIcon(deconstructOrder.SymbolSprite, Direction.Right, TextManager.Get("tooltip.markedfordeconstruction"), GUIStyle.Red, out bool mouseOn);

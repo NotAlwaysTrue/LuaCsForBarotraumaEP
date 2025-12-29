@@ -128,7 +128,7 @@ namespace Barotrauma
                         {
                             foreach (var stackedItem in item.GetStackedItems())
                             {
-                                Item.MarkForDeconstruction(stackedItem);
+                                Item.DeconstructItems.Add(stackedItem);
                             }
 #if CLIENT
                             HintManager.OnItemMarkedForDeconstruction(order.OrderGiver);
@@ -138,7 +138,7 @@ namespace Barotrauma
                         {
                             foreach (var stackedItem in item.GetStackedItems())
                             {
-                                Item.UnmarkForDeconstruction(stackedItem);
+                                Item.DeconstructItems.Remove(stackedItem);
                             }
                         }
                     }

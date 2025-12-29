@@ -283,7 +283,7 @@ namespace Barotrauma
 
             if (!IsClient)
             {
-                PathFinder pathFinder = new PathFinder(WayPoint.WayPointList.ToList(), false);
+                PathFinder pathFinder = new PathFinder(WayPoint.WayPointList, false);
                 var path = pathFinder.FindPath(ConvertUnits.ToSimUnits(patrolPos), ConvertUnits.ToSimUnits(preferredSpawnPos));
                 if (!path.Unreachable)
                 {

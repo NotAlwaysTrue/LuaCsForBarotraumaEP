@@ -1,4 +1,4 @@
-# LuaCsForBarotrauma Enhanced Performance Project
+# LuaCsForBarotrauma Enhanced Performence Project
 
 > ⚠ **Warning：** This release is only available for server-side use and is not recommended to run on the client. Make sure that compatibility is adequately tested before deployment.
 

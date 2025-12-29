@@ -7,12 +7,10 @@ using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading;
 using System.Xml.Linq;
 #if SERVER
 using System.Text;
@@ -30,70 +28,12 @@ namespace Barotrauma
 
     public readonly record struct TalentResistanceIdentifier(Identifier ResistanceIdentifier, Identifier TalentIdentifier);
 
-    /// <summary>
-    /// Thread-safe wrapper for character list operations.
-    /// Provides lock-free read operations and synchronized write operations.
-    /// </summary>
-    class ThreadSafeCharacterList : IEnumerable<Character>
-    {
-        private volatile List<Character> _list = new List<Character>();
-        private readonly object _writeLock = new object();
-
-        public int Count => _list.Count;
-
-        public void Add(Character character)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<Character>(_list) { character };
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-
-        public bool Remove(Character character)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<Character>(_list);
-                bool removed = newList.Remove(character);
-                if (removed)
-                {
-                    Interlocked.Exchange(ref _list, newList);
-                }
-                return removed;
-            }
-        }
-
-        public void Clear()
-        {
-            Interlocked.Exchange(ref _list, new List<Character>());
-        }
-
-        public bool Contains(Character character) => _list.Contains(character);
-
-        public Character this[int index] => _list[index];
-
-        public IEnumerator<Character> GetEnumerator() => _list.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
-        // LINQ-friendly snapshot for complex queries
-        public List<Character> ToList() => new List<Character>(_list);
-        
-        public Character FirstOrDefault(Func<Character, bool> predicate) => _list.FirstOrDefault(predicate);
-        public Character Find(Predicate<Character> predicate) => _list.Find(predicate);
-        public List<Character> FindAll(Predicate<Character> predicate) => _list.FindAll(predicate);
-        public IEnumerable<Character> Where(Func<Character, bool> predicate) => _list.Where(predicate);
-        public bool Any(Func<Character, bool> predicate) => _list.Any(predicate);
-        public bool None(Func<Character, bool> predicate) => !_list.Any(predicate);
-        public int CountWhere(Func<Character, bool> predicate) => _list.Count(predicate);
-    }
-
     partial class Character : Entity, IDamageable, ISerializableEntity, IClientSerializable, IServerPositionSync
     {
-        public static readonly ThreadSafeCharacterList CharacterList = new ThreadSafeCharacterList();
+        public static readonly List<Character> CharacterList = new List<Character>();
 
         public static int CharacterUpdateInterval = 1;
-        private static volatile int characterUpdateTick = 1;
+        private static int characterUpdateTick = 1;
         
         public const float MaxHighlightDistance = 150.0f;
         public const float MaxDragDistance = 200.0f;
@@ -2821,11 +2761,10 @@ namespace Barotrauma
             }
             int itemsPerFrame = IsOnPlayerTeam ? 100 : 10;
             int checkedItemCount = 0;
-            var cachedItems = Item.GetCachedItemList();
-            for (int i = 0; i < itemsPerFrame && itemIndex < cachedItems.Count; i++, itemIndex++)
+            for (int i = 0; i < itemsPerFrame && itemIndex < Item.ItemList.Count; i++, itemIndex++)
             {
                 checkedItemCount++;
-                var item = cachedItems[itemIndex];
+                var item = Item.ItemList[itemIndex];
                 if (!item.IsInteractable(this)) { continue; }
                 if (ignoredItems != null && ignoredItems.Contains(item)) { continue; }
                 if (item.Submarine == null) { continue; }
@@ -2861,10 +2800,10 @@ namespace Barotrauma
                 }
             }
             targetItem = _foundItem;
-            bool completed = itemIndex >= cachedItems.Count - 1;
+            bool completed = itemIndex >= Item.ItemList.Count - 1;
             if (HumanAIController.DebugAI && checkedItemCount > 0 && targetItem != null && StopWatch.ElapsedMilliseconds > 1)
             {
-                var msg = $"Went through {checkedItemCount} of total {cachedItems.Count} items. Found item {targetItem.Name} in {StopWatch.ElapsedMilliseconds} ms. Completed: {completed}";
+                var msg = $"Went through {checkedItemCount} of total {Item.ItemList.Count} items. Found item {targetItem.Name} in {StopWatch.ElapsedMilliseconds} ms. Completed: {completed}";
                 if (StopWatch.ElapsedMilliseconds > 5)
                 {
                     DebugConsole.ThrowError(msg);
@@ -4880,11 +4819,7 @@ namespace Barotrauma
             HealthUpdateInterval = 0.0f;
         }
 
-        // Thread-static to avoid concurrent modification in parallel item updates
-        [ThreadStatic]
-        private static List<ISerializableEntity> t_statusEffectTargets;
-        private static List<ISerializableEntity> StatusEffectTargets => t_statusEffectTargets ??= new List<ISerializableEntity>();
-
+        private readonly List<ISerializableEntity> targets = new List<ISerializableEntity>();
         public void ApplyStatusEffects(ActionType actionType, float deltaTime)
         {
             if (actionType == ActionType.OnEating)
@@ -4913,7 +4848,6 @@ namespace Barotrauma
                     if (statusEffect.HasTargetType(StatusEffect.TargetType.NearbyItems) ||
                         statusEffect.HasTargetType(StatusEffect.TargetType.NearbyCharacters))
                     {
-                        var targets = StatusEffectTargets;
                         targets.Clear();
                         statusEffect.AddNearbyTargets(WorldPosition, targets);
                         statusEffect.Apply(actionType, deltaTime, this, targets);

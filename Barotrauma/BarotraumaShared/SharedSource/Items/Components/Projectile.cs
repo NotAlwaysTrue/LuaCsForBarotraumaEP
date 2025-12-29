@@ -5,7 +5,6 @@ using FarseerPhysics.Dynamics.Contacts;
 using FarseerPhysics.Dynamics.Joints;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -73,7 +72,7 @@ namespace Barotrauma.Items.Components
 
         public const float WaterDragCoefficient = 0.1f;
 
-        private readonly ConcurrentQueue<Impact> impactQueue = new ConcurrentQueue<Impact>();
+        private readonly Queue<Impact> impactQueue = new Queue<Impact>();
 
         private bool removePending;
 
@@ -841,8 +840,9 @@ namespace Barotrauma.Items.Components
                     DisableProjectileCollisions();
                 }
             }
-            while (impactQueue.TryDequeue(out var impact))
+            while (impactQueue.Count > 0)
             {
+                var impact = impactQueue.Dequeue();
                 HandleProjectileCollision(impact.Fixture, impact.Normal, impact.LinearVelocity);
             }
 

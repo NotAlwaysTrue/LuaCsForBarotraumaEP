@@ -156,8 +156,7 @@ namespace Barotrauma
                 Reactor reactor = item.GetComponent<Reactor>();
                 if (reactor != null && reactor.Item.Condition > 0.0f) { roundData.Reactors.Add(reactor); }
             }
-
-            pathFinder = new PathFinder(WayPoint.WayPointList.ToList(), false);
+            pathFinder = new PathFinder(WayPoint.WayPointList, false);
             cachedDistances.Clear();
             
 #if CLIENT
@@ -324,7 +323,7 @@ namespace Barotrauma
 
                 static CachedDistance CalculateNewCachedDistance(Character c)
                 {
-                    pathFinder ??= new PathFinder(WayPoint.WayPointList.ToList(), false);
+                    pathFinder ??= new PathFinder(WayPoint.WayPointList, false);
                     var path = pathFinder.FindPath(ConvertUnits.ToSimUnits(c.WorldPosition), ConvertUnits.ToSimUnits(Submarine.MainSub.WorldPosition));
                     if (path.Unreachable) { return null; }
                     return new CachedDistance(c.WorldPosition, Submarine.MainSub.WorldPosition, path.TotalLength, Timing.TotalTime + Rand.Range(1.0f, 5.0f));

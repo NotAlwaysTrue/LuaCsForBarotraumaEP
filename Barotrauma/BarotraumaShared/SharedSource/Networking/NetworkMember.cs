@@ -1,7 +1,6 @@
 ﻿using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
-using System.Threading;
 
 namespace Barotrauma.Networking
 {
@@ -187,19 +186,10 @@ namespace Barotrauma.Networking
     {
         protected const int MaxSubNameLengthInErrorMessages = 16;
 
-        private int lastClientListUpdateID;
         public UInt16 LastClientListUpdateID
         {
-            get => (UInt16)Interlocked.CompareExchange(ref lastClientListUpdateID, 0, 0);
-            set => Interlocked.Exchange(ref lastClientListUpdateID, value);
-        }
-
-        /// <summary>
-        /// Thread-safe increment of LastClientListUpdateID
-        /// </summary>
-        public void IncrementLastClientListUpdateID()
-        {
-            Interlocked.Increment(ref lastClientListUpdateID);
+            get;
+            set;
         }
 
         public abstract bool IsServer { get; }

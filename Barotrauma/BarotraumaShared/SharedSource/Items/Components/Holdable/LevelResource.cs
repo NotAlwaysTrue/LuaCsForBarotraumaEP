@@ -13,12 +13,6 @@ namespace Barotrauma.Items.Components
         private Holdable holdable;
 
         private float deattachTimer;
-        
-        /// <summary>
-        /// Flag to prevent multiple queued creation requests.
-        /// Uses volatile to ensure visibility across threads.
-        /// </summary>
-        private volatile bool triggerBodyCreationQueued;
 
         [Serialize(1.0f, IsPropertySaveable.No, description: "How long it takes to deattach the item from the level walls (in seconds).")]
         public float DeattachDuration
@@ -92,16 +86,13 @@ namespace Barotrauma.Items.Components
         {
             if (trigger != null && amount.LengthSquared() > 0.00001f)
             {
-                // Defer physics operation if in parallel context (Farseer is not thread-safe)
-                var capturedTrigger = trigger;
-                var capturedPos = item.SimPosition;
                 if (ignoreContacts)
                 {
-                    PhysicsBodyQueue.ExecuteOrDefer(() => capturedTrigger.SetTransformIgnoreContacts(capturedPos, 0.0f));
+                    trigger.SetTransformIgnoreContacts(item.SimPosition, 0.0f);
                 }
                 else
                 {
-                    PhysicsBodyQueue.ExecuteOrDefer(() => capturedTrigger.SetTransform(capturedPos, 0.0f));
+                    trigger.SetTransform(item.SimPosition, 0.0f);
                 }
             }
         }
@@ -118,29 +109,13 @@ namespace Barotrauma.Items.Components
             }
             else
             {
-                if (trigger == null && !triggerBodyCreationQueued) 
+                if (trigger == null) 
                 { 
-                    // Queue the physics body creation to be processed on the main thread.
-                    // This is necessary because physics body creation is not thread-safe
-                    // and Update() may be called from a parallel loop.
-                    triggerBodyCreationQueued = true;
-                    PhysicsBodyQueue.EnqueueCreation(() =>
-                    {
-                        // Double-check that trigger hasn't been created yet
-                        // (in case this was called multiple times before queue processing)
-                        if (trigger == null && !item.Removed)
-                        {
-                            CreateTriggerBody();
-                        }
-                        triggerBodyCreationQueued = false;
-                    });
+                    CreateTriggerBody(); 
                 }
                 if (trigger != null && Vector2.DistanceSquared(item.SimPosition, trigger.SimPosition) > 0.01f)
                 {
-                    // Defer physics operation if in parallel context (Farseer is not thread-safe)
-                    var capturedTrigger = trigger;
-                    var capturedPos = item.SimPosition;
-                    PhysicsBodyQueue.ExecuteOrDefer(() => capturedTrigger.SetTransform(capturedPos, 0.0f));
+                    trigger.SetTransform(item.SimPosition, 0.0f);
                 }
                 IsActive = false;
             }

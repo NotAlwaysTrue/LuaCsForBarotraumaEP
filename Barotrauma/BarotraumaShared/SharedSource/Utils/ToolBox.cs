@@ -2,7 +2,6 @@
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -76,7 +75,7 @@ namespace Barotrauma
             return !corrected;
         }
 
-        private static readonly ConcurrentDictionary<string, string> cachedFileNames = new ConcurrentDictionary<string, string>();
+        private static readonly Dictionary<string, string> cachedFileNames = new Dictionary<string, string>();
 
         public static string CorrectFilenameCase(string filename, out bool corrected, string directory = "")
         {
@@ -154,7 +153,7 @@ namespace Barotrauma
                 if (i < subDirs.Length - 1) { filename += "/"; }
             }
 
-            cachedFileNames.TryAdd(originalFilename, filename);
+            cachedFileNames.Add(originalFilename, filename);
             return filename;
         }
 
@@ -356,26 +355,32 @@ namespace Barotrauma
             return text;
         }
 
-        private static readonly ConcurrentDictionary<string, List<string>> cachedLines = new ConcurrentDictionary<string, List<string>>();
+        private static Dictionary<string, List<string>> cachedLines = new Dictionary<string, List<string>>();
         public static string GetRandomLine(string filePath, Rand.RandSync randSync = Rand.RandSync.ServerAndClient)
         {
-            List<string> lines = cachedLines.GetOrAdd(filePath, path =>
+            List<string> lines;
+            if (cachedLines.ContainsKey(filePath))
+            {
+                lines = cachedLines[filePath];
+            }
+            else
             {
                 try
                 {
-                    var fileLines = File.ReadAllLines(path, catchUnauthorizedAccessExceptions: false).ToList();
-                    if (fileLines.Count == 0)
+                    lines = File.ReadAllLines(filePath, catchUnauthorizedAccessExceptions: false).ToList();
+                    cachedLines.Add(filePath, lines);
+                    if (lines.Count == 0)
                     {
-                        DebugConsole.ThrowError("File \"" + path + "\" is empty!");
+                        DebugConsole.ThrowError("File \"" + filePath + "\" is empty!");
+                        return "";
                     }
-                    return fileLines;
                 }
                 catch (Exception e)
                 {
-                    DebugConsole.ThrowError("Couldn't open file \"" + path + "\"!", e);
-                    return new List<string>();
+                    DebugConsole.ThrowError("Couldn't open file \"" + filePath + "\"!", e);
+                    return "";
                 }
-            });
+            }
 
             if (lines.Count == 0) return "";
             return lines[Rand.Range(0, lines.Count, randSync)];

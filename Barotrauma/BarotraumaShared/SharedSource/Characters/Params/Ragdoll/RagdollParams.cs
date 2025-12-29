@@ -1,6 +1,5 @@
 ﻿using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Xml.Linq;
@@ -125,9 +124,8 @@ namespace Barotrauma
         /// key1: Species name
         /// key2: File path
         /// value: Ragdoll parameters
-        /// Thread-safe cache using ConcurrentDictionary.
         /// </summary>
-        private static readonly ConcurrentDictionary<Identifier, ConcurrentDictionary<string, RagdollParams>> allRagdolls = new ConcurrentDictionary<Identifier, ConcurrentDictionary<string, RagdollParams>>();
+        private static readonly Dictionary<Identifier, Dictionary<string, RagdollParams>> allRagdolls = new Dictionary<Identifier, Dictionary<string, RagdollParams>>();
 
         public List<ColliderParams> Colliders { get; private set; } = new List<ColliderParams>();
         public List<LimbParams> Limbs { get; private set; } = new List<LimbParams>();
@@ -224,7 +222,11 @@ namespace Barotrauma
                 Debug.Assert(!fileName.IsNullOrWhiteSpace() || !contentPath.IsNullOrWhiteSpace());
             }
             Debug.Assert(contentPackage != null);
-            var ragdolls = allRagdolls.GetOrAdd(speciesName, _ => new ConcurrentDictionary<string, RagdollParams>());
+            if (!allRagdolls.TryGetValue(speciesName, out Dictionary<string, RagdollParams> ragdolls))
+            {
+                ragdolls = new Dictionary<string, RagdollParams>();
+                allRagdolls.Add(speciesName, ragdolls);
+            }
             string key = fileName ?? contentPath?.Value ?? GetDefaultFileName(ragdollSpecies);
             if (ragdolls.TryGetValue(key, out RagdollParams ragdoll))
             {
@@ -329,10 +331,10 @@ namespace Barotrauma
             if (allRagdolls.ContainsKey(speciesName))
             {
                 DebugConsole.NewMessage($"[RagdollParams] Removing the old ragdolls from {speciesName}.", Color.Red);
-                allRagdolls.TryRemove(speciesName, out _);
+                allRagdolls.Remove(speciesName);
             }
-            var ragdolls = new ConcurrentDictionary<string, RagdollParams>();
-            allRagdolls.TryAdd(speciesName, ragdolls);
+            var ragdolls = new Dictionary<string, RagdollParams>();
+            allRagdolls.Add(speciesName, ragdolls);
             var instance = new T
             {
                 doc = new XDocument(mainElement)
@@ -343,7 +345,7 @@ namespace Barotrauma
             instance.IsLoaded = instance.Deserialize(mainElement);
             instance.Save();
             instance.Load(contentPath, speciesName);
-            ragdolls.TryAdd(instance.FileNameWithoutExtension, instance);
+            ragdolls.Add(instance.FileNameWithoutExtension, instance);
             DebugConsole.NewMessage("[RagdollParams] New default ragdoll params successfully created at " + fullPath, Color.NavajoWhite);
             return instance;
         }
@@ -360,14 +362,17 @@ namespace Barotrauma
             {
                 // Update the key by removing and re-adding the ragdoll.
                 string fileName = FileNameWithoutExtension;
-                if (allRagdolls.TryGetValue(SpeciesName, out ConcurrentDictionary<string, RagdollParams> ragdolls))
+                if (allRagdolls.TryGetValue(SpeciesName, out Dictionary<string, RagdollParams> ragdolls))
                 {
-                    ragdolls.TryRemove(fileName, out _);
+                    ragdolls.Remove(fileName);
                 }
                 base.UpdatePath(fullPath);
                 if (ragdolls != null)
                 {
-                    ragdolls.TryAdd(fileName, this);
+                    if (!ragdolls.ContainsKey(fileName))
+                    {
+                        ragdolls.Add(fileName, this);
+                    }
                 }
             }
         }

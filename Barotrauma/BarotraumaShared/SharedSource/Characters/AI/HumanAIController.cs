@@ -5,7 +5,6 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 
 namespace Barotrauma
 {
@@ -1818,9 +1817,7 @@ namespace Barotrauma
         public static bool HasDivingMask(Character character, float conditionPercentage = 0, bool requireOxygenTank = true) 
             => HasItem(character, Tags.LightDivingGear, out _, requireOxygenTank ? Tags.OxygenSource : Identifier.Empty, conditionPercentage, requireEquipped: true);
 
-        // ThreadLocal to ensure thread safety - each thread gets its own list instance
-        private static readonly ThreadLocal<List<Item>> matchingItemsLocal = new ThreadLocal<List<Item>>(() => new List<Item>());
-        private static List<Item> matchingItems => matchingItemsLocal.Value;
+        private static List<Item> matchingItems = new List<Item>();
 
         /// <summary>
         /// Note: uses a single list for matching items. The item is reused each time when the method is called. So if you use the method twice, and then refer to the first items, you'll actually get the second. 
@@ -1828,16 +1825,15 @@ namespace Barotrauma
         /// </summary>
         public static bool HasItem(Character character, Identifier tagOrIdentifier, out IEnumerable<Item> items, Identifier containedTag = default, float conditionPercentage = 0, bool requireEquipped = false, bool recursive = true, Func<Item, bool> predicate = null)
         {
-            var localMatchingItems = matchingItems;
-            localMatchingItems.Clear();
-            items = localMatchingItems;
+            matchingItems.Clear();
+            items = matchingItems;
             if (character?.Inventory == null) { return false; }
-            character.Inventory.FindAllItems(i => (i.Prefab.Identifier == tagOrIdentifier || i.HasTag(tagOrIdentifier)) &&
+            matchingItems = character.Inventory.FindAllItems(i => (i.Prefab.Identifier == tagOrIdentifier || i.HasTag(tagOrIdentifier)) &&
                 i.ConditionPercentage >= conditionPercentage &&
                 (!requireEquipped || character.HasEquippedItem(i)) &&
-                (predicate == null || predicate(i)), recursive, localMatchingItems);
-            items = localMatchingItems;
-            foreach (var item in localMatchingItems)
+                (predicate == null || predicate(i)), recursive, matchingItems);
+            items = matchingItems;
+            foreach (var item in matchingItems)
             {
                 if (item == null) { continue; }
 

@@ -6,111 +6,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
 namespace Barotrauma
 {
-    /// <summary>
-    /// Thread-safe wrapper for MapEntity list operations.
-    /// Uses copy-on-write pattern for lock-free reads.
-    /// </summary>
-    internal class ThreadSafeMapEntityList : IEnumerable<MapEntity>
-    {
-        private volatile List<MapEntity> _list = new List<MapEntity>();
-        private readonly object _writeLock = new object();
-
-        public int Count => _list.Count;
-
-        public void Add(MapEntity entity)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<MapEntity>(_list) { entity };
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-
-        public void Insert(int index, MapEntity entity)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<MapEntity>(_list);
-                newList.Insert(index, entity);
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-
-        /// <summary>
-        /// Atomically inserts an entity at a position determined by the insertAction.
-        /// The insertAction is executed within the lock to ensure thread-safety.
-        /// </summary>
-        public void InsertWithAction(MapEntity entity, Action<List<MapEntity>, MapEntity> insertAction)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<MapEntity>(_list);
-                insertAction(newList, entity);
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-
-        public bool Remove(MapEntity entity)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<MapEntity>(_list);
-                bool removed = newList.Remove(entity);
-                if (removed)
-                {
-                    Interlocked.Exchange(ref _list, newList);
-                }
-                return removed;
-            }
-        }
-
-        public int RemoveAll(Predicate<MapEntity> match)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<MapEntity>(_list);
-                int count = newList.RemoveAll(match);
-                if (count > 0)
-                {
-                    Interlocked.Exchange(ref _list, newList);
-                }
-                return count;
-            }
-        }
-
-        public void Clear()
-        {
-            Interlocked.Exchange(ref _list, new List<MapEntity>());
-        }
-
-        public bool Contains(MapEntity entity) => _list.Contains(entity);
-
-        public MapEntity this[int index] => _list[index];
-
-        public IEnumerator<MapEntity> GetEnumerator() => _list.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
-        // LINQ-friendly methods that work on a snapshot
-        public List<MapEntity> ToList() => new List<MapEntity>(_list);
-        public MapEntity FirstOrDefault(Func<MapEntity, bool> predicate) => _list.FirstOrDefault(predicate);
-        public MapEntity Find(Predicate<MapEntity> predicate) => _list.Find(predicate);
-        public List<MapEntity> FindAll(Predicate<MapEntity> predicate) => _list.FindAll(predicate);
-        public IEnumerable<MapEntity> Where(Func<MapEntity, bool> predicate) => _list.Where(predicate);
-        public bool Any(Func<MapEntity, bool> predicate) => _list.Any(predicate);
-        public bool Exists(Predicate<MapEntity> predicate) => _list.Exists(predicate);
-        public IOrderedEnumerable<MapEntity> OrderBy<TKey>(Func<MapEntity, TKey> keySelector) => _list.OrderBy(keySelector);
-        public void ForEach(Action<MapEntity> action) => _list.ForEach(action);
-    }
-
     abstract partial class MapEntity : Entity, ISpatialEntity
     {
-        public readonly static ThreadSafeMapEntityList MapEntityList = new ThreadSafeMapEntityList();
+        public readonly static List<MapEntity> MapEntityList = new List<MapEntity>();
 
         public readonly MapEntityPrefab Prefab;
 
@@ -656,51 +559,45 @@ namespace Barotrauma
                 return;
             }
 
-            // Use atomic insertion to ensure thread-safety
-            MapEntityList.InsertWithAction(this, (list, entity) =>
+            //sort damageable walls by sprite depth:
+            //necessary because rendering the damage effect starts a new sprite batch and breaks the order otherwise
+            int i = 0;
+            if (this is Structure { DrawDamageEffect: true } structure)
             {
-                int i = 0;
-                
-                //sort damageable walls by sprite depth:
-                //necessary because rendering the damage effect starts a new sprite batch and breaks the order otherwise
-                if (entity is Structure { DrawDamageEffect: true } structure)
+                //insertion sort according to draw depth
+                float drawDepth = structure.SpriteDepth;
+                while (i < MapEntityList.Count)
                 {
-                    //insertion sort according to draw depth
-                    float drawDepth = structure.SpriteDepth;
-                    while (i < list.Count)
-                    {
-                        float otherDrawDepth = (list[i] as Structure)?.SpriteDepth ?? 1.0f;
-                        if (otherDrawDepth < drawDepth) { break; }
-                        i++;
-                    }
-                    list.Insert(i, entity);
+                    float otherDrawDepth = (MapEntityList[i] as Structure)?.SpriteDepth ?? 1.0f;
+                    if (otherDrawDepth < drawDepth) { break; }
+                    i++;
+                }
+                MapEntityList.Insert(i, this);
+                return;
+            }
+
+            i = 0;
+            while (i < MapEntityList.Count)
+            {
+                i++;
+                if (MapEntityList[i - 1]?.Prefab == Prefab)
+                {
+                    MapEntityList.Insert(i, this);
                     return;
                 }
-
-                i = 0;
-                var mapEntity = (MapEntity)entity;
-                while (i < list.Count)
-                {
-                    i++;
-                    if (list[i - 1]?.Prefab == mapEntity.Prefab)
-                    {
-                        list.Insert(i, entity);
-                        return;
-                    }
-                }
+            }
 
 #if CLIENT
-                i = 0;
-                while (i < list.Count)
-                {
-                    i++;
-                    Sprite existingSprite = list[i - 1].Sprite;
-                    if (existingSprite == null) { continue; }
-                    if (existingSprite.Texture == mapEntity.Sprite?.Texture) { break; }
-                }
+            i = 0;
+            while (i < MapEntityList.Count)
+            {
+                i++;
+                Sprite existingSprite = MapEntityList[i - 1].Sprite;
+                if (existingSprite == null) { continue; }
+                if (existingSprite.Texture == this.Sprite.Texture) { break; }
+            }
 #endif
-                list.Insert(i, entity);
-            });
+            MapEntityList.Insert(i, this);
         }
 
         /// <summary>
@@ -763,31 +660,15 @@ namespace Barotrauma
                     // basically nothing here is thread-safe so
                     foreach(var hull in hullList)
                     {
-                        PhysicsBodyQueue.IsInParallelContext = true;
-                        try
-                        {
-                            hull.Update(deltaTime, cam);
-                        }
-                        finally
-                        {
-                            PhysicsBodyQueue.IsInParallelContext = false;
-                        }
-                    });
+                        hull.Update(deltaTime, cam);
+                    }
                 },
                 // Structure parallel update
                 () =>
                 {
                     Parallel.ForEach(structureList, parallelOptions, structure =>
                     {
-                        PhysicsBodyQueue.IsInParallelContext = true;
-                        try
-                        {
-                            structure.Update(deltaTime, cam);
-                        }
-                        finally
-                        {
-                            PhysicsBodyQueue.IsInParallelContext = false;
-                        }
+                        structure.Update(deltaTime, cam);
                     });
                 },
                 // Gap reset (must be done before update)
@@ -805,10 +686,6 @@ namespace Barotrauma
                 }
             );
 
-            // Process any physics operations queued during Hull/Structure updates.
-            // BallastFlora growth (from Hull.Update) may queue physics body creations/transforms.
-            PhysicsBodyQueue.ProcessPendingOperations();
-
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
             Hull.UpdateCheats(deltaTime, cam);
@@ -818,19 +695,8 @@ namespace Barotrauma
             var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
             Parallel.ForEach(gapList, parallelOptions, gap =>
             {
-                PhysicsBodyQueue.IsInParallelContext = true;
-                try
-                {
-                    gap.Update(deltaTime, cam);
-                }
-                finally
-                {
-                    PhysicsBodyQueue.IsInParallelContext = false;
-                }
+                gap.Update(deltaTime, cam);
             });
-            
-            // Process any physics operations queued during Gap updates.
-            PhysicsBodyQueue.ProcessPendingOperations();
 
 #if CLIENT
             sw.Stop();
@@ -846,19 +712,11 @@ namespace Barotrauma
 
             try
             {
-                Parallel.ForEach(itemList, parallelOptions, item =>
+                foreach (Item item in itemList)
                 {
-                    PhysicsBodyQueue.IsInParallelContext = true;
-                    try
-                    {
-                        lastUpdatedItem = item;
-                        item.Update(scaledDeltaTime, cam);
-                    }
-                    finally
-                    {
-                        PhysicsBodyQueue.IsInParallelContext = false;
-                    }
-                });
+                    lastUpdatedItem = item;
+                    item.Update(scaledDeltaTime, cam);
+                }
             }
             catch (InvalidOperationException e)
             {
@@ -868,10 +726,6 @@ namespace Barotrauma
                     $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
                 throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
             }
-
-            // Process any physics operations that were queued during the parallel update.
-            // This must be done on the main thread because Farseer Physics is not thread-safe.
-            PhysicsBodyQueue.ProcessPendingOperations();
 
             UpdateAllProjSpecific(scaledDeltaTime);
             Spawner?.Update();

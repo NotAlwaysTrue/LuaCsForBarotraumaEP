@@ -456,8 +456,7 @@ namespace Barotrauma.Items.Components
 
             item.SendSignal(conditionSignal, "condition_out");
 
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (var component in item.Components.ToArray())
+            foreach (var component in item.Components)
             {
                 if (component is IDeteriorateUnderStress deteriorateUnderStress)
                 {
@@ -714,8 +713,7 @@ namespace Barotrauma.Items.Components
 #endif
 
             if (LastActiveTime > Timing.TotalTime) { return true; }
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (ItemComponent ic in item.Components.ToArray())
+            foreach (ItemComponent ic in item.Components)
             {
                 if (ic is Fabricator || ic is Deconstructor)
                 {
@@ -763,8 +761,7 @@ namespace Barotrauma.Items.Components
 
         private float GetDeteriorationDelayMultiplier()
         {
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (ItemComponent ic in item.Components.ToArray())
+            foreach (ItemComponent ic in item.Components)
             {
                 if (ic is Engine engine)
                 {

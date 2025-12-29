@@ -327,7 +327,7 @@ namespace Barotrauma.Networking
                 }
             }
 
-            IncrementLastClientListUpdateID();
+            LastClientListUpdateID++;
 
             if (newClient.Connection == OwnerConnection && OwnerConnection != null)
             {
@@ -3222,7 +3222,7 @@ namespace Barotrauma.Networking
             initiatedStartGame = false;
             GameMain.ResetFrameTime();
 
-            IncrementLastClientListUpdateID();
+            LastClientListUpdateID++;
 
             roundStartTime = DateTime.Now;
 
@@ -3532,7 +3532,7 @@ namespace Barotrauma.Networking
                 {
                     var coolDownRemaining = Client.NameChangeCoolDown - timeSinceNameChange;
                     SendDirectChatMessage($"ServerMessage.NameChangeFailedCooldownActive~[seconds]={(int)coolDownRemaining.TotalSeconds}", c);
-                    IncrementLastClientListUpdateID();
+                    LastClientListUpdateID++;
                     //increment the ID to make sure the current server-side name is treated as the "latest",
                     //and the client correctly reverts back to the old name
                     c.NameId++;
@@ -3545,7 +3545,7 @@ namespace Barotrauma.Networking
 
             if (result != null)
             {
-                IncrementLastClientListUpdateID();
+                LastClientListUpdateID++;
                 return result.Value;
             }
 
@@ -3562,14 +3562,14 @@ namespace Barotrauma.Networking
                 c.Name = newName;
                 c.RejectedName = string.Empty;
                 SendChatMessage($"ServerMessage.NameChangeSuccessful~[oldname]={oldName}~[newname]={newName}", ChatMessageType.Server);
-                IncrementLastClientListUpdateID();
+                LastClientListUpdateID++;
                 return true;
             }
             else
             {
                 //update client list even if the name cannot be changed to the one sent by the client,
                 //so the client will be informed what their actual name is
-                IncrementLastClientListUpdateID();
+                LastClientListUpdateID++;
                 return false;
             }
         }
@@ -4857,7 +4857,7 @@ namespace Barotrauma.Networking
         private void UpdateClientLobbies()
         {
             // Triggers a call to WriteClientList(), which causes clients to call GameClient.ReadClientList()
-            IncrementLastClientListUpdateID();
+            LastClientListUpdateID++;
         }
 
         private List<Client> GetPlayingClients()

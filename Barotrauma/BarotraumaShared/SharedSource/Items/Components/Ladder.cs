@@ -1,19 +1,17 @@
-﻿using System.Collections.Concurrent;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Xml.Linq;
 
 namespace Barotrauma.Items.Components
 {
     partial class Ladder : ItemComponent
     {
-        private static readonly ConcurrentDictionary<Ladder, byte> _ladderDict = new ConcurrentDictionary<Ladder, byte>();
-        public static IEnumerable<Ladder> List => _ladderDict.Keys;
+        public static List<Ladder> List { get; } = new List<Ladder>();
 
         public Ladder(Item item, ContentXElement element)
             : base(item, element)
         {
             InitProjSpecific(element);
-            _ladderDict.TryAdd(this, 0);
+            List.Add(this);
         }
 
         partial void InitProjSpecific(ContentXElement element);
@@ -30,7 +28,7 @@ namespace Barotrauma.Items.Components
         {
             base.RemoveComponentSpecific();
             RemoveProjSpecific();
-            _ladderDict.TryRemove(this, out _);
+            List.Remove(this);
         }
 
         partial void RemoveProjSpecific();

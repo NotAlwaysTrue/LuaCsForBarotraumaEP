@@ -8,71 +8,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Xml.Linq;
 
 namespace Barotrauma
 {
-    /// <summary>
-    /// Thread-safe wrapper for Gap list operations.
-    /// Uses copy-on-write pattern for lock-free reads.
-    /// </summary>
-    internal class ThreadSafeGapList : IEnumerable<Gap>
-    {
-        private volatile List<Gap> _list = new List<Gap>();
-        private readonly object _writeLock = new object();
-
-        public int Count => _list.Count;
-
-        public void Add(Gap gap)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<Gap>(_list) { gap };
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-
-        public bool Remove(Gap gap)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<Gap>(_list);
-                bool removed = newList.Remove(gap);
-                if (removed)
-                {
-                    Interlocked.Exchange(ref _list, newList);
-                }
-                return removed;
-            }
-        }
-
-        public void Clear()
-        {
-            Interlocked.Exchange(ref _list, new List<Gap>());
-        }
-
-        public bool Contains(Gap gap) => _list.Contains(gap);
-
-        public Gap this[int index] => _list[index];
-
-        public IEnumerator<Gap> GetEnumerator() => _list.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
-        // LINQ-friendly methods
-        public List<Gap> ToList() => new List<Gap>(_list);
-        public Gap FirstOrDefault(Func<Gap, bool> predicate) => _list.FirstOrDefault(predicate);
-        public Gap Find(Predicate<Gap> predicate) => _list.Find(predicate);
-        public List<Gap> FindAll(Predicate<Gap> predicate) => _list.FindAll(predicate);
-        public IEnumerable<Gap> Where(Func<Gap, bool> predicate) => _list.Where(predicate);
-        public bool Any() => _list.Any();
-        public bool Any(Func<Gap, bool> predicate) => _list.Any(predicate);
-        public IOrderedEnumerable<Gap> OrderBy<TKey>(Func<Gap, TKey> keySelector) => _list.OrderBy(keySelector);
-    }
-
     partial class Gap : MapEntity, ISerializableEntity
     {
-        public static ThreadSafeGapList GapList = new ThreadSafeGapList();
+        public static List<Gap> GapList = new List<Gap>();
 
         const float MaxFlowForce = 500.0f;
 

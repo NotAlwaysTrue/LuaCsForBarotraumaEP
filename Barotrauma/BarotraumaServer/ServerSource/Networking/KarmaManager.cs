@@ -163,7 +163,7 @@ namespace Barotrauma
                 {
                     client.Character.CharacterHealth.ApplyAffliction(null, new Affliction(herpesAffliction, herpesStrength));
                     GameServer.Log($"{GameServer.ClientLogName(client)} has contracted space herpes due to low karma.", ServerLog.MessageType.Karma);
-                    GameMain.NetworkMember.IncrementLastClientListUpdateID();
+                    GameMain.NetworkMember.LastClientListUpdateID++;
                 }
                 else if (existingAffliction != null)
                 {

@@ -9,7 +9,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using System.Threading;
 using System.Xml.Linq;
 
 namespace Barotrauma.Items.Components
@@ -486,10 +485,7 @@ namespace Barotrauma.Items.Components
                 }
                 else
                 {
-                    // Calculate target position
-                    Vector2 targetPos;
-                    Submarine forceSubmarine = picker.Submarine;
-                    
+                    item.body.ResetDynamics();
                     Limb heldHand, arm;
                     if (picker.Inventory.IsInLimbSlot(item, InvSlotType.LeftHand))
                     {
@@ -507,42 +503,17 @@ namespace Barotrauma.Items.Components
                         Vector2 diff = new Vector2(
                             (heldHand.SimPosition.X - arm.SimPosition.X) / 2f,
                             (heldHand.SimPosition.Y - arm.SimPosition.Y) / 2.5f);
-                        targetPos = heldHand.SimPosition + diff;
-                    }
-                    else
-                    {
-                        targetPos = picker.SimPosition;
-                    }
 
-                    // Defer physics operations if in parallel context
-                    if (PhysicsBodyQueue.IsInParallelContext)
-                    {
-                        var capturedBody = item.body;
-                        var capturedItem = item;
-                        var capturedTargetPos = targetPos;
-                        var capturedForceSubmarine = forceSubmarine;
-                        
-                        PhysicsBodyQueue.Enqueue(() =>
-                        {
-                            if (capturedBody.Removed || capturedItem.Removed) { return; }
-                            capturedBody.ResetDynamics();
-                            //we have forced the item to be in the same sub as the dropper above,
-                            //and are placing it to the position of the hands in "local" coordinates
-                            //which may be outside the sub if the character is e.g. standing half-way through the airlock
-                            // -> let's use the forceSubmarine argument ensure the item is still considered to be in the sub's coordinate space,
-                            //    or it will end up in a weird state and seemingly disappear
-                            capturedItem.SetTransform(capturedTargetPos, 0.0f, forceSubmarine: capturedForceSubmarine);
-                        });
-                    }
-                    else
-                    {
-                        item.body.ResetDynamics();
                         //we have forced the item to be in the same sub as the dropper above,
                         //and are placing it to the position of the hands in "local" coordinates
                         //which may be outside the sub if the character is e.g. standing half-way through the airlock
                         // -> let's use the forceSubmarine argument ensure the item is still considered to be in the sub's coordinate space,
                         //    or it will end up in a weird state and seemingly disappear
-                        item.SetTransform(targetPos, 0.0f, forceSubmarine: forceSubmarine);
+                        item.SetTransform(heldHand.SimPosition + diff, 0.0f, forceSubmarine: picker.Submarine);
+                    }
+                    else
+                    {
+                        item.SetTransform(picker.SimPosition, 0.0f, forceSubmarine: picker.Submarine);
                     }
                 }
             }
@@ -645,13 +616,12 @@ namespace Barotrauma.Items.Components
             return CanBeAttached(user, out _);
         }
 
-        private static readonly ThreadLocal<List<Item>> tempOverlappingItems = new ThreadLocal<List<Item>>(() => new List<Item>());
+        private static List<Item> tempOverlappingItems = new List<Item>();
 
         private bool CanBeAttached(Character user, out IEnumerable<Item> overlappingItems)
         {
-            var overlapping = tempOverlappingItems.Value;
-            overlapping.Clear();
-            overlappingItems = overlapping;
+            tempOverlappingItems.Clear();
+            overlappingItems = tempOverlappingItems;
             if (!attachable || !Reattachable) { return false; }
 
             //can be attached anywhere in sub editor
@@ -694,9 +664,9 @@ namespace Barotrauma.Items.Components
                     }                        
                     if (attachPos.X + size.X < worldRect.X || attachPos.X - size.X > worldRect.Right) { continue; }
                     if (attachPos.Y - size.Y > worldRect.Y || attachPos.Y + size.Y < worldRect.Y - worldRect.Height) { continue; }
-                    overlapping.Add(otherItem);
+                    tempOverlappingItems.Add(otherItem);
                 }
-                if (overlapping.Any()) { return false; }
+                if (tempOverlappingItems.Any()) { return false; }
             }
 
             //can be attached anywhere inside hulls
