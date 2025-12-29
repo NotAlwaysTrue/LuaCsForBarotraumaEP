@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 using Voronoi2;
 
@@ -3655,9 +3656,15 @@ namespace Barotrauma
             return cells;
         }
 
-        private readonly List<VoronoiCell> tempCells = new List<VoronoiCell>();
+        /// <summary>
+        /// Used in <see cref="GetCells"/> - ThreadLocal for thread safety during parallel updates
+        /// </summary>
+        private static readonly ThreadLocal<List<VoronoiCell>> tempCellsLocal = 
+            new ThreadLocal<List<VoronoiCell>>(() => new List<VoronoiCell>());
+        
         public List<VoronoiCell> GetCells(Vector2 worldPos, int searchDepth = 2)
         {
+            var tempCells = tempCellsLocal.Value;
             tempCells.Clear();
             int gridPosX = (int)Math.Floor(worldPos.X / GridCellSize);
             int gridPosY = (int)Math.Floor(worldPos.Y / GridCellSize);
@@ -3712,7 +3719,8 @@ namespace Barotrauma
                 tempCells.AddRange(abyssIsland.Cells);
             }
             
-            return tempCells;
+            // Return a copy to prevent concurrent modification if the caller enumerates while another thread calls this method
+            return tempCells.ToList();
         }
 
         public VoronoiCell GetClosestCell(Vector2 worldPos)

@@ -1214,15 +1214,22 @@ namespace Barotrauma
             }
         }
 
-        private readonly HashSet<Hull> adjacentHulls = new HashSet<Hull>();
+        /// <summary>
+        /// Used in <see cref="GetConnectedHulls"/> - ThreadLocal for thread safety during parallel updates
+        /// </summary>
+        private static readonly ThreadLocal<HashSet<Hull>> adjacentHullsLocal = 
+            new ThreadLocal<HashSet<Hull>>(() => new HashSet<Hull>());
+        
         public IEnumerable<Hull> GetConnectedHulls(bool includingThis, int? searchDepth = null, bool ignoreClosedGaps = false)
         {
+            var adjacentHulls = adjacentHullsLocal.Value;
             adjacentHulls.Clear();
             int startStep = 0;
             searchDepth ??= 100;
             GetAdjacentHulls(adjacentHulls, ref startStep, searchDepth.Value, ignoreClosedGaps);
             if (!includingThis) { adjacentHulls.Remove(this); }
-            return adjacentHulls;
+            // Return a copy to prevent concurrent modification if the caller enumerates while another thread calls this method
+            return adjacentHulls.ToHashSet();
         }
 
         private void GetAdjacentHulls(HashSet<Hull> connectedHulls, ref int step, int searchDepth, bool ignoreClosedGaps = false)
