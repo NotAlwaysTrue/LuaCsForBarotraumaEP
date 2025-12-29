@@ -53,6 +53,8 @@ namespace Barotrauma.IO
             path = getFullPath(path);
             string localModsDir = getFullPath(ContentPackage.LocalModsDir);
             string workshopModsDir = getFullPath(ContentPackage.WorkshopModsDir);
+            // Legacy workshop mods directory for backward compatibility when using custom save path
+            string defaultWorkshopModsDir = getFullPath(ContentPackage.DefaultWorkshopModsDir);
 #if CLIENT
             string workshopStagingDir = getFullPath(SteamManager.Workshop.PublishStagingDir);
             string tempDownloadDir = getFullPath(ModReceiver.DownloadFolder);
@@ -66,6 +68,7 @@ namespace Barotrauma.IO
                     => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
                 
                 if (!pathStartsWith(workshopModsDir)
+                    && !pathStartsWith(defaultWorkshopModsDir)  // Also allow legacy workshop directory
                     && !pathStartsWith(localModsDir)
 #if CLIENT
                     && !pathStartsWith(tempDownloadDir)

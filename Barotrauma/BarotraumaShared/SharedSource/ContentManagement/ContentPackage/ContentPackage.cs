@@ -29,10 +29,43 @@ namespace Barotrauma
         public static readonly Version MinimumHashCompatibleVersion = new Version(1, 1, 0, 0);
         
         public const string LocalModsDir = "LocalMods";
-        public static readonly string WorkshopModsDir = Barotrauma.IO.Path.Combine(
+
+        /// <summary>
+        /// Gets the effective save folder based on user configuration.
+        /// Returns custom SavePath if configured, otherwise returns DefaultSaveFolder.
+        /// </summary>
+        private static string GetEffectiveSaveFolder()
+        {
+            return string.IsNullOrEmpty(GameSettings.CurrentConfig.SavePath)
+                ? SaveUtil.DefaultSaveFolder
+                : GameSettings.CurrentConfig.SavePath;
+        }
+
+        /// <summary>
+        /// Gets the current workshop mods directory based on user configuration.
+        /// This path may differ from DefaultWorkshopModsDir if a custom SavePath is set.
+        /// </summary>
+        public static string WorkshopModsDir => Barotrauma.IO.Path.Combine(
+            GetEffectiveSaveFolder(),
+            "WorkshopMods",
+            "Installed");
+
+        /// <summary>
+        /// Gets the default workshop mods directory (always on C: drive / system default location).
+        /// Used for backward compatibility when a custom SavePath is configured.
+        /// </summary>
+        public static string DefaultWorkshopModsDir => Barotrauma.IO.Path.Combine(
             SaveUtil.DefaultSaveFolder,
             "WorkshopMods",
             "Installed");
+
+        /// <summary>
+        /// Returns true if using a custom save path different from the default.
+        /// When true, LegacyWorkshopPackages should be checked for backward compatibility.
+        /// </summary>
+        public static bool UsingCustomSavePath =>
+            !string.IsNullOrEmpty(GameSettings.CurrentConfig.SavePath) &&
+            !GameSettings.CurrentConfig.SavePath.Equals(SaveUtil.DefaultSaveFolder, StringComparison.OrdinalIgnoreCase);
 
         public const string FileListFileName = "filelist.xml";
         public const string DefaultModVersion = "1.0.0";
