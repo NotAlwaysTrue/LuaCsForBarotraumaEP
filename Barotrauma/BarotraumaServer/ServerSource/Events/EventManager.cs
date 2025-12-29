@@ -33,7 +33,7 @@ namespace Barotrauma
             byte selectedOption = inc.ReadByte();
             bool isIgnore = selectedOption == byte.MaxValue;
 
-            foreach (Event ev in activeEvents)
+            foreach (Event ev in _activeEvents)
             {
                 if (ev is not ScriptedEvent scriptedEvent) { continue; }
                 

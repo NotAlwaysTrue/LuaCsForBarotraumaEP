@@ -1913,7 +1913,7 @@ namespace Barotrauma.Items.Components
 
             void CalculateDistance()
             {
-                pathFinder ??= new PathFinder(WayPoint.WayPointList, false);
+                pathFinder ??= new PathFinder(WayPoint.WayPointList.ToList(), false);
                 var path = pathFinder.FindPath(ConvertUnits.ToSimUnits(transducerPosition), ConvertUnits.ToSimUnits(worldPosition));
                 if (!path.Unreachable)
                 {

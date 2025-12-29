@@ -3,8 +3,11 @@ using Barotrauma.Items.Components;
 using FarseerPhysics;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace Barotrauma
@@ -43,7 +46,7 @@ namespace Barotrauma
 
         private Level level;
 
-        private readonly List<Sprite> preloadedSprites = new List<Sprite>();
+        private volatile ImmutableList<Sprite> _preloadedSprites = ImmutableList<Sprite>.Empty;
 
         //The "intensity" of the current situation (a value between 0.0 - 1.0).
         //High when a disaster has struck, low when nothing special is going on.
@@ -83,14 +86,18 @@ namespace Barotrauma
         private float crewAwayResetTimer;
         private float crewAwayDuration;
 
-        private readonly List<EventSet> pendingEventSets = new List<EventSet>();
+        // volatile + ImmutableCollections
+        private volatile ImmutableList<EventSet> _pendingEventSets = ImmutableList<EventSet>.Empty;
 
-        private readonly Dictionary<EventSet, List<Event>> selectedEvents = new Dictionary<EventSet, List<Event>>();
+        private volatile ImmutableDictionary<EventSet, ImmutableList<Event>> _selectedEvents = 
+            ImmutableDictionary<EventSet, ImmutableList<Event>>.Empty;
 
-        private readonly List<Event> activeEvents = new List<Event>();
+        private volatile ImmutableList<Event> _activeEvents = ImmutableList<Event>.Empty;
 
-        private readonly HashSet<Event> finishedEvents = new HashSet<Event>();
-        private readonly HashSet<Identifier> nonRepeatableEvents = new HashSet<Identifier>();
+        private volatile ImmutableHashSet<Event> _finishedEvents = ImmutableHashSet<Event>.Empty;
+        private volatile ImmutableHashSet<Identifier> _nonRepeatableEvents = ImmutableHashSet<Identifier>.Empty;
+        
+        private volatile ImmutableQueue<Action> _deferredActions = ImmutableQueue<Action>.Empty;
 
 
 #if DEBUG && SERVER
@@ -112,10 +119,10 @@ namespace Barotrauma
 
         public IEnumerable<Event> ActiveEvents
         {
-            get { return activeEvents; }
+            get { return _activeEvents; }
         }
         
-        public readonly Queue<Event> QueuedEvents = new Queue<Event>();
+        public readonly ConcurrentQueue<Event> QueuedEvents = new ConcurrentQueue<Event>();
 
         public readonly Queue<Identifier> QueuedEventsForNextRound = new Queue<Identifier>();
 
@@ -131,8 +138,8 @@ namespace Barotrauma
             }
         }
 
-        private readonly List<TimeStamp> timeStamps = new List<TimeStamp>();
-        public void AddTimeStamp(Event e) => timeStamps.Add(new TimeStamp(e));
+        private volatile ImmutableList<TimeStamp> _timeStamps = ImmutableList<TimeStamp>.Empty;
+        public void AddTimeStamp(Event e) => AtomicUpdate(ref _timeStamps, list => list.Add(new TimeStamp(e)));
 
         public readonly EventLog EventLog = new EventLog();
 
@@ -143,6 +150,72 @@ namespace Barotrauma
 
         public bool Enabled = true;
 
+        private static T AtomicUpdate<T>(ref T location, Func<T, T> updateFunc) where T : class
+        {
+            T original, updated;
+            do
+            {
+                original = Volatile.Read(ref location);
+                updated = updateFunc(original);
+            } while (Interlocked.CompareExchange(ref location, updated, original) != original);
+            return updated;
+        }
+
+        // activeEvents
+        private void AddActiveEvent(Event ev) => AtomicUpdate(ref _activeEvents, list => list.Add(ev));
+        private void ClearActiveEvents() => _activeEvents = ImmutableList<Event>.Empty;
+
+        // pendingEventSets
+        private void AddPendingEventSet(EventSet eventSet) => 
+            AtomicUpdate(ref _pendingEventSets, list => list.Contains(eventSet) ? list : list.Add(eventSet));
+        private void RemovePendingEventSetAt(int index) => 
+            AtomicUpdate(ref _pendingEventSets, list => index < list.Count ? list.RemoveAt(index) : list);
+        private void ClearPendingEventSets() => _pendingEventSets = ImmutableList<EventSet>.Empty;
+
+        // selectedEvents
+        private void AddSelectedEvent(EventSet eventSet, Event ev) =>
+            AtomicUpdate(ref _selectedEvents, dict =>
+            {
+                var currentList = dict.GetValueOrDefault(eventSet, ImmutableList<Event>.Empty);
+                return dict.SetItem(eventSet, currentList.Add(ev));
+            });
+        private void RemoveSelectedEventSet(EventSet eventSet) =>
+            AtomicUpdate(ref _selectedEvents, dict => dict.Remove(eventSet));
+        private void ClearSelectedEvents() => 
+            _selectedEvents = ImmutableDictionary<EventSet, ImmutableList<Event>>.Empty;
+        private ImmutableList<Event> GetSelectedEvents(EventSet eventSet) =>
+            _selectedEvents.GetValueOrDefault(eventSet, ImmutableList<Event>.Empty);
+        private bool HasSelectedEvents(EventSet eventSet) => _selectedEvents.ContainsKey(eventSet);
+
+        // finishedEvents
+        private void AddFinishedEvent(Event ev) => AtomicUpdate(ref _finishedEvents, set => set.Add(ev));
+        private void ClearFinishedEvents() => _finishedEvents = ImmutableHashSet<Event>.Empty;
+        private bool IsEventFinished(Event ev) => _finishedEvents.Contains(ev);
+
+        // nonRepeatableEvents
+        private void AddNonRepeatableEvent(Identifier id) => AtomicUpdate(ref _nonRepeatableEvents, set => set.Add(id));
+        private void ClearNonRepeatableEvents() => _nonRepeatableEvents = ImmutableHashSet<Identifier>.Empty;
+
+        // preloadedSprites
+        private void AddPreloadedSprite(Sprite sprite) => AtomicUpdate(ref _preloadedSprites, list => list.Add(sprite));
+        private void ClearPreloadedSprites()
+        {
+            var sprites = Interlocked.Exchange(ref _preloadedSprites, ImmutableList<Sprite>.Empty);
+            foreach (var s in sprites) { s.Remove(); }
+        }
+
+        // timeStamps
+        private void ClearTimeStamps() => _timeStamps = ImmutableList<TimeStamp>.Empty;
+
+        private void EnqueueDeferredAction(Action action) => 
+            AtomicUpdate(ref _deferredActions, queue => queue.Enqueue(action));
+        private void ProcessDeferredActions()
+        {
+            var actions = Interlocked.Exchange(ref _deferredActions, ImmutableQueue<Action>.Empty);
+            foreach (var action in actions) { action(); }
+        }
+        
+
         private MTRandom random;
         public int RandomSeed { get; private set; }
 
@@ -152,10 +225,10 @@ namespace Barotrauma
 
             if (isClient) { return; }
 
-            timeStamps.Clear();
-            pendingEventSets.Clear();
-            selectedEvents.Clear();
-            activeEvents.Clear();
+            ClearTimeStamps();
+            ClearPendingEventSets();
+            ClearSelectedEvents();
+            ClearActiveEvents();
 #if SERVER
             MissionAction.ResetMissionsUnlockedThisRound();
             UnlockPathAction.ResetPathsUnlockedThisRound();
@@ -235,8 +308,8 @@ namespace Barotrauma
 
             void AddSet(EventSet eventSet)
             {
-                if (pendingEventSets.Contains(eventSet)) { return; }
-                pendingEventSets.Add(eventSet);
+                if (_pendingEventSets.Contains(eventSet)) { return; }
+                AddPendingEventSet(eventSet);
                 CreateEvents(eventSet);
             }
 
@@ -251,7 +324,7 @@ namespace Barotrauma
                         if (unlockPathEventPrefab != null)
                         {
                             var newEvent = unlockPathEventPrefab.CreateInstance(RandomSeed);
-                            activeEvents.Add(newEvent);
+                            AddActiveEvent(newEvent);
                         }
                         else
                         {
@@ -284,7 +357,7 @@ namespace Barotrauma
                     {
                         foreach (EventPrefab ep in eventSet.EventPrefabs.SelectMany(e => e.EventPrefabs))
                         {
-                            nonRepeatableEvents.Add(ep.Identifier);                                
+                            AddNonRepeatableEvent(ep.Identifier);                                
                         }
                     }
                     foreach (EventSet childSet in eventSet.ChildSets)
@@ -329,13 +402,13 @@ namespace Barotrauma
 
         public void ActivateEvent(Event newEvent)
         {
-            activeEvents.Add(newEvent);
+            AddActiveEvent(newEvent);
             newEvent.Init();
         }
 
         public void ClearEvents()
         {
-            activeEvents.Clear();
+            ClearActiveEvents();
         }
 
         private void SelectSettings()
@@ -388,7 +461,8 @@ namespace Barotrauma
 
         public IEnumerable<ContentFile> GetFilesToPreload()
         {
-            foreach (List<Event> eventList in selectedEvents.Values)
+            var snapshot = _selectedEvents;
+            foreach (ImmutableList<Event> eventList in snapshot.Values)
             {
                 foreach (Event ev in eventList)
                 {
@@ -441,13 +515,13 @@ namespace Barotrauma
 
             foreach (ContentFile file in filesToPreload)
             {
-                file.Preload(preloadedSprites.Add);
+                file.Preload(AddPreloadedSprite);
             }
         }
 
         public void TriggerOnEndRoundActions()
         {
-            foreach (var ev in activeEvents)
+            foreach (var ev in _activeEvents)
             {
                 (ev as ScriptedEvent)?.OnRoundEndAction?.Update(1.0f);
             }
@@ -455,17 +529,16 @@ namespace Barotrauma
 
         public void EndRound()
         {
-            pendingEventSets.Clear();
-            selectedEvents.Clear();
-            activeEvents.Clear();
-            QueuedEvents.Clear();
-            finishedEvents.Clear();
-            nonRepeatableEvents.Clear();
+            ClearPendingEventSets();
+            ClearSelectedEvents();
+            ClearActiveEvents();
+            while (QueuedEvents.TryDequeue(out _)) { } // 清空 ConcurrentQueue
+            ClearFinishedEvents();
+            ClearNonRepeatableEvents();
 
-            preloadedSprites.ForEach(s => s.Remove());
-            preloadedSprites.Clear();
+            ClearPreloadedSprites();
 
-            timeStamps.Clear();
+            ClearTimeStamps();
 
             pathFinder = null;
         }
@@ -481,7 +554,7 @@ namespace Barotrauma
             {
                 if (registerFinishedOnly)
                 {
-                    foreach (var finishedEvent in finishedEvents)
+                    foreach (var finishedEvent in _finishedEvents)
                     {
                         EventSet parentSet = finishedEvent.ParentSet;
                         if (parentSet == null) { continue; }
@@ -496,7 +569,7 @@ namespace Barotrauma
                     }
                 }
 
-                level.LevelData.EventHistory.AddRange(selectedEvents.Values
+                level.LevelData.EventHistory.AddRange(_selectedEvents.Values
                     .SelectMany(v => v)
                     .Select(e => e.Prefab.Identifier)
                     .Where(eventId => Register(eventId) && !level.LevelData.EventHistory.Contains(eventId)));
@@ -506,14 +579,14 @@ namespace Barotrauma
                     level.LevelData.EventHistory.RemoveRange(0, level.LevelData.EventHistory.Count - MaxEventHistory);
                 }
             }
-            level.LevelData.NonRepeatableEvents.AddRange(nonRepeatableEvents.Where(eventId => Register(eventId) && !level.LevelData.NonRepeatableEvents.Contains(eventId)));
+            level.LevelData.NonRepeatableEvents.AddRange(_nonRepeatableEvents.Where(eventId => Register(eventId) && !level.LevelData.NonRepeatableEvents.Contains(eventId)));
 
             if (!registerFinishedOnly)
             {
                 level.LevelData.FinishedEvents.Clear();
             }
 
-            bool Register(Identifier eventId) => !registerFinishedOnly || finishedEvents.Any(fe => fe.Prefab.Identifier == eventId);
+            bool Register(Identifier eventId) => !registerFinishedOnly || _finishedEvents.Any(fe => fe.Prefab.Identifier == eventId);
         }
 
         public void SkipEventCooldown()
@@ -531,7 +604,7 @@ namespace Barotrauma
 
         private void CreateEvents(EventSet eventSet)
         {
-            selectedEvents.Remove(eventSet);
+            RemoveSelectedEventSet(eventSet);
             if (level == null) { return; }
             if (level.LevelData.HasHuntingGrounds && eventSet.DisableInHuntingGrounds) { return; }
             if (eventSet.Exhaustible && level.LevelData.IsEventSetExhausted(eventSet)) { return; }
@@ -598,11 +671,7 @@ namespace Barotrauma
                                 if (newEvent == null) { continue; }
                                 if (i < spawnPosFilter.Count) { newEvent.SpawnPosFilter = spawnPosFilter[i]; }
                                 DebugConsole.NewMessage($"Initialized event {newEvent}", debugOnly: true);
-                                if (!selectedEvents.ContainsKey(eventSet))
-                                {
-                                    selectedEvents.Add(eventSet, new List<Event>());
-                                }
-                                selectedEvents[eventSet].Add(newEvent);
+                                AddSelectedEvent(eventSet, newEvent);
                                 unusedEvents.Remove(subEventPrefab);
                             }
                         }
@@ -641,11 +710,7 @@ namespace Barotrauma
                         var newEvent = eventPrefab.CreateInstance(RandomSeed);
                         if (newEvent == null) { continue; }
                         if (i < spawnPosFilter.Count) { newEvent.SpawnPosFilter = spawnPosFilter[i]; }
-                        if (!selectedEvents.ContainsKey(eventSet))
-                        {
-                            selectedEvents.Add(eventSet, new List<Event>());
-                        }
-                        selectedEvents[eventSet].Add(newEvent);
+                        AddSelectedEvent(eventSet, newEvent);
                     }
 
                     var location = GetEventLocation();
@@ -837,9 +902,10 @@ namespace Barotrauma
 
             if (!eventsInitialized)
             {
-                foreach (var eventSet in selectedEvents.Keys)
+                var selectedSnapshot = _selectedEvents;
+                foreach (var eventSet in selectedSnapshot.Keys)
                 {
-                    foreach (var ev in selectedEvents[eventSet])
+                    foreach (var ev in selectedSnapshot[eventSet])
                     {
                         ev.Init(eventSet);
                     }
@@ -910,23 +976,25 @@ namespace Barotrauma
             {
                 recheck = false;
                 //activate pending event sets that can be activated
-                for (int i = pendingEventSets.Count - 1; i >= 0; i--)
+                var pendingSnapshot = _pendingEventSets;
+                for (int i = pendingSnapshot.Count - 1; i >= 0; i--)
                 {
-                    var eventSet = pendingEventSets[i];
+                    var eventSet = pendingSnapshot[i];
                     if (eventCoolDown > 0.0f && !eventSet.IgnoreCoolDown) { continue; }
                     if (currentIntensity > eventThreshold && !eventSet.IgnoreIntensity) { continue; }
                     if (!CanStartEventSet(eventSet)) { continue; }
 
-                    pendingEventSets.RemoveAt(i);
+                    RemovePendingEventSetAt(i);
 
-                    if (selectedEvents.ContainsKey(eventSet))
+                    var selectedEventsList = GetSelectedEvents(eventSet);
+                    if (selectedEventsList.Count > 0)
                     {
                         //start events in this set
-                        foreach (Event ev in selectedEvents[eventSet])
+                        foreach (Event ev in selectedEventsList)
                         {
-                            activeEvents.Add(ev);
+                            AddActiveEvent(ev);
                             eventThreshold = settings.DefaultEventThreshold;
-                            if (eventSet.TriggerEventCooldown && selectedEvents[eventSet].Any(e => e.Prefab.TriggerEventCooldown))
+                            if (eventSet.TriggerEventCooldown && selectedEventsList.Any(e => e.Prefab.TriggerEventCooldown))
                             {
                                 eventCoolDown = settings.EventCooldown;
                             }
@@ -934,12 +1002,15 @@ namespace Barotrauma
                             {
                                 ev.Finished += () =>
                                 {
-                                    pendingEventSets.Add(eventSet);
-                                    CreateEvents(eventSet);
-                                    foreach (Event newEvent in selectedEvents[eventSet])
+                                    EnqueueDeferredAction(() =>
                                     {
-                                        if (!newEvent.Initialized) { newEvent.Init(eventSet); }
-                                    }
+                                        AddPendingEventSet(eventSet);
+                                        CreateEvents(eventSet);
+                                        foreach (Event newEvent in GetSelectedEvents(eventSet))
+                                        {
+                                            if (!newEvent.Initialized) { newEvent.Init(eventSet); }
+                                        }
+                                    });
                                 };
                             }
                         }
@@ -948,37 +1019,40 @@ namespace Barotrauma
                     //add child event sets to pending
                     foreach (EventSet childEventSet in eventSet.ChildSets)
                     {
-                        pendingEventSets.Add(childEventSet);
+                        AddPendingEventSet(childEventSet);
                         recheck = true;
                     }
                 }
             } while (recheck);
 
-            foreach (Event ev in activeEvents)
+            var activeSnapshot = _activeEvents;
+            foreach (Event ev in activeSnapshot)
             {
                 if (!ev.IsFinished) 
                 { 
                     ev.Update(deltaTime); 
                 }
-                else if (ev.Prefab != null && !finishedEvents.Any(e => e.Prefab == ev.Prefab))
+                else if (ev.Prefab != null && !IsEventFinished(ev))
                 {
                     if (level?.LevelData != null && level.LevelData.Type == LevelData.LevelType.Outpost)
                     {
                         if (!level.LevelData.EventHistory.Contains(ev.Prefab.Identifier)) { level.LevelData.EventHistory.Add(ev.Prefab.Identifier); }
                     }
-                    finishedEvents.Add(ev);
+                    AddFinishedEvent(ev);
                 }
             }
 
-            if (QueuedEvents.Count > 0)
+            if (QueuedEvents.TryDequeue(out var queuedEvent))
             {
-                activeEvents.Add(QueuedEvents.Dequeue());
+                AddActiveEvent(queuedEvent);
             }
+
+            ProcessDeferredActions();
         }
 
         public void EntitySpawned(Entity entity)
         {
-            foreach (var ev in activeEvents)
+            foreach (var ev in _activeEvents)
             {
                 if (ev is ScriptedEvent scriptedEvent)
                 {

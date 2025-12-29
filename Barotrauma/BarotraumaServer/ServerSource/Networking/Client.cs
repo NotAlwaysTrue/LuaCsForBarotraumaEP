@@ -64,6 +64,32 @@ namespace Barotrauma.Networking
         //  key = entity, value = NetTime.Now when sending
         public readonly Dictionary<Entity, float> PositionUpdateLastSent = new Dictionary<Entity, float>();
         public readonly Queue<Entity> PendingPositionUpdates = new Queue<Entity>();
+        private readonly HashSet<Entity> pendingPositionUpdatesSet = new HashSet<Entity>();
+
+        /// <summary>
+        /// Attempts to enqueue a position update for the given entity. Returns true if the entity was added, false if it was already in the queue.
+        /// Uses HashSet for O(1) lookup instead of Queue.Contains() which is O(n).
+        /// </summary>
+        public bool TryEnqueuePositionUpdate(Entity entity)
+        {
+            if (pendingPositionUpdatesSet.Add(entity))
+            {
+                PendingPositionUpdates.Enqueue(entity);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Dequeues a position update and removes it from the HashSet tracking.
+        /// </summary>
+        public Entity DequeuePositionUpdate()
+        {
+            if (PendingPositionUpdates.Count == 0) { return null; }
+            var entity = PendingPositionUpdates.Dequeue();
+            pendingPositionUpdatesSet.Remove(entity);
+            return entity;
+        }
 
         public bool ReadyToStart;
 
@@ -353,6 +379,7 @@ namespace Barotrauma.Networking
         {
             NeedsMidRoundSync = false;
             PendingPositionUpdates.Clear();
+            pendingPositionUpdatesSet.Clear();
             EntityEventLastSent.Clear();
             LastSentEntityEventID = 0;
             LastRecvEntityEventID = 0;

@@ -1,12 +1,32 @@
 ﻿using Barotrauma.Items.Components;
 using Barotrauma.Networking;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace Barotrauma
 {
     partial class EntitySpawner : Entity, IServerSerializable
     {
-        public readonly List<(Entity entity, bool isRemoval)> receivedEvents = new List<(Entity entity, bool isRemoval)>();
+        /// <summary>
+        /// Thread-safe queue for received entity spawn/remove events from the server.
+        /// </summary>
+        private readonly ConcurrentQueue<(Entity entity, bool isRemoval)> receivedEventsQueue = new ConcurrentQueue<(Entity entity, bool isRemoval)>();
+
+        /// <summary>
+        /// Gets a thread-safe snapshot of received events.
+        /// </summary>
+        public IEnumerable<(Entity entity, bool isRemoval)> GetReceivedEventsSnapshot()
+        {
+            return receivedEventsQueue.ToArray();
+        }
+
+        /// <summary>
+        /// Clears all received events from the queue.
+        /// </summary>
+        partial void ResetReceivedEvents()
+        {
+            while (receivedEventsQueue.TryDequeue(out _)) { }
+        }
 
         public void ClientEventRead(IReadMessage message, float sendingTime)
         {
@@ -34,7 +54,7 @@ namespace Barotrauma
                 {
                     DebugConsole.Log("Received entity removal message for ID " + entityId + ". Entity with a matching ID not found.");
                 }
-                receivedEvents.Add((entity, true));
+                receivedEventsQueue.Enqueue((entity, true));
             }
             else
             {
@@ -57,7 +77,7 @@ namespace Barotrauma
                                     GameAnalyticsManager.AddDesignEvent("ItemFabricated:" + (GameMain.GameSession?.GameMode?.Preset.Identifier ?? "none".ToIdentifier()) + ":" + newItem.Prefab.Identifier);
                                 }
                             }
-                            receivedEvents.Add((newItem, false));
+                            receivedEventsQueue.Enqueue((newItem, false));
                         }
                         break;
                     case (byte)SpawnableType.Character:
@@ -68,7 +88,7 @@ namespace Barotrauma
                         }
                         else
                         {
-                            receivedEvents.Add((character, false));
+                            receivedEventsQueue.Enqueue((character, false));
                         }
                         break;
                     default:

@@ -744,11 +744,6 @@ namespace Barotrauma.Networking
                             {
                                 errorMsg += "\nInner exception: " + e.InnerException.Message + "\n" + e.InnerException.StackTrace.CleanupStackTrace();
                             }
-
-                            GameAnalyticsManager.AddErrorEventOnce(
-                                "GameServer.Update:ClientWriteFailed" + e.StackTrace.CleanupStackTrace(),
-                                GameAnalyticsManager.ErrorSeverity.Error,
-                                errorMsg);
                         }
                     }
 
@@ -2147,7 +2142,7 @@ namespace Barotrauma.Networking
                     {
                         if (lastSent > NetTime.Now - updateInterval) { continue; }
                     }
-                    if (!c.PendingPositionUpdates.Contains(otherCharacter)) { c.PendingPositionUpdates.Enqueue(otherCharacter); }
+                    c.TryEnqueuePositionUpdate(otherCharacter);
                 }
 
                 foreach (Submarine sub in Submarine.Loaded)
@@ -2156,7 +2151,7 @@ namespace Barotrauma.Networking
                     //  (= update is only sent for the docked sub that has the smallest ID, doesn't matter if it's the main sub or a shuttle)
                     if (sub.Info.IsOutpost || sub.DockedTo.Any(s => s.ID < sub.ID)) { continue; }
                     if (sub.PhysicsBody == null || sub.PhysicsBody.BodyType == FarseerPhysics.BodyType.Static) { continue; }
-                    if (!c.PendingPositionUpdates.Contains(sub)) { c.PendingPositionUpdates.Enqueue(sub); }
+                    c.TryEnqueuePositionUpdate(sub);
                 }
 
                 foreach (Item item in Item.ItemList)
@@ -2173,7 +2168,7 @@ namespace Barotrauma.Networking
                     {
                         if (lastSent > NetTime.Now - updateInterval) { continue; }
                     }
-                    if (!c.PendingPositionUpdates.Contains(item)) { c.PendingPositionUpdates.Enqueue(item); }
+                    c.TryEnqueuePositionUpdate(item);
                 }
             }
 
@@ -2217,7 +2212,7 @@ namespace Barotrauma.Networking
                         entity.Removed ||
                         (entity is Item item && float.IsInfinity(item.PositionUpdateInterval)))
                     {
-                        c.PendingPositionUpdates.Dequeue();
+                        c.DequeuePositionUpdate();
                         continue;
                     }
 
@@ -2239,7 +2234,7 @@ namespace Barotrauma.Networking
                     outmsg.WritePadBits();
 
                     c.PositionUpdateLastSent[entity] = (float)NetTime.Now;
-                    c.PendingPositionUpdates.Dequeue();
+                    c.DequeuePositionUpdate();
                 }
                 positionUpdateBytes = outmsg.LengthBytes - positionUpdateBytes;
 

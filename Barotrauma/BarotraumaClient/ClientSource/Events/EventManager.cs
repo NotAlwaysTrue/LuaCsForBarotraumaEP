@@ -28,7 +28,7 @@ namespace Barotrauma
 
         public void DebugDraw(SpriteBatch spriteBatch)
         {
-            foreach (Event ev in activeEvents)
+            foreach (Event ev in _activeEvents)
             {
                 Vector2 drawPos = ev.DebugDrawPos;
                 drawPos.Y = -drawPos.Y;
@@ -41,7 +41,7 @@ namespace Barotrauma
 
         public void DebugDrawHUD(SpriteBatch spriteBatch, float y)
         {
-            foreach (ScriptedEvent scriptedEvent in activeEvents.Where(ev => !ev.IsFinished && ev is ScriptedEvent).Cast<ScriptedEvent>())
+            foreach (ScriptedEvent scriptedEvent in _activeEvents.Where(ev => !ev.IsFinished && ev is ScriptedEvent).Cast<ScriptedEvent>())
             {
                 DrawEventTargetTags(spriteBatch, scriptedEvent);
             }
@@ -156,7 +156,7 @@ namespace Barotrauma
             {
                 if (isGraphHovered || isGraphSelected)
                 {
-                    foreach (var timeStamp in timeStamps)
+                    foreach (var timeStamp in _timeStamps)
                     {
                         int t = (int)Math.Abs(Math.Round((timeStamp.Time - lastIntensityUpdate) / intensityGraphUpdateInterval));
                         if (t == order)
@@ -205,7 +205,7 @@ namespace Barotrauma
             }
 
             adjustedYStep = GUI.AdjustForTextScale(12);
-            foreach (EventSet eventSet in pendingEventSets)
+            foreach (EventSet eventSet in _pendingEventSets)
             {
                 if (Submarine.MainSub == null) { break; }
 
@@ -263,7 +263,7 @@ namespace Barotrauma
             y += yStep;
 
             adjustedYStep = GUI.AdjustForTextScale(18);
-            foreach (Event ev in activeEvents.Where(ev => !ev.IsFinished || PlayerInput.IsShiftDown()))
+            foreach (Event ev in _activeEvents.Where(ev => !ev.IsFinished || PlayerInput.IsShiftDown()))
             {
                 GUI.DrawString(spriteBatch, new Vector2(x + 5, y), ev.ToString(), (!ev.IsFinished ? Color.White : Color.Red) * 0.8f, null, 0, GUIStyle.SmallFont);
 

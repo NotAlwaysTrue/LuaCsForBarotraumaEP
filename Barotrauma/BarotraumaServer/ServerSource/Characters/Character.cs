@@ -75,7 +75,7 @@ namespace Barotrauma
             {
                 if (client.InGame)
                 {
-                    client.PendingPositionUpdates.Enqueue(this);
+                    client.TryEnqueuePositionUpdate(this);
                 }
             }
         }

@@ -1397,12 +1397,12 @@ namespace Barotrauma
                     if (me.SimPosition.Length() > 2000.0f)
                     {
                         NewMessage("Removed " + me.Name + " (simposition " + me.SimPosition + ")", Color.Orange);
-                        MapEntity.MapEntityList.RemoveAt(i);
+                        MapEntity.MapEntityList.Remove(me);
                     }
                     else if (!me.ShouldBeSaved)
                     {
                         NewMessage("Removed " + me.Name + " (!ShouldBeSaved)", Color.Orange);
-                        MapEntity.MapEntityList.RemoveAt(i);
+                        MapEntity.MapEntityList.Remove(me);
                     }
                     else if (me is Item)
                     {

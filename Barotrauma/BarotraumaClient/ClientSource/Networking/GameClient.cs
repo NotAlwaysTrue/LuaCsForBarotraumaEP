@@ -3918,7 +3918,7 @@ namespace Barotrauma.Networking
             {
                 errorLines.Add("");
                 errorLines.Add("EntitySpawner events:");
-                foreach ((Entity entity, bool isRemoval) in Entity.Spawner.receivedEvents)
+                foreach ((Entity entity, bool isRemoval) in Entity.Spawner.GetReceivedEventsSnapshot())
                 {
                     errorLines.Add(
                         (isRemoval ? "Remove " : "Create ") +

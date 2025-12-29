@@ -1,7 +1,8 @@
 ﻿using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Threading;
 
 namespace Barotrauma
 {
@@ -10,11 +11,22 @@ namespace Barotrauma
     /// </summary>
     class UnlockPathAction : EventAction
     {
-        private static readonly HashSet<LocationConnection> pathsUnlockedThisRound = new HashSet<LocationConnection>();
+        private static volatile ImmutableHashSet<LocationConnection> _pathsUnlockedThisRound = 
+            ImmutableHashSet<LocationConnection>.Empty;
 
         public static void ResetPathsUnlockedThisRound()
         {
-            pathsUnlockedThisRound.Clear();
+            _pathsUnlockedThisRound = ImmutableHashSet<LocationConnection>.Empty;
+        }
+
+        private static void AddUnlockedPath(LocationConnection connection)
+        {
+            ImmutableHashSet<LocationConnection> original, updated;
+            do
+            {
+                original = _pathsUnlockedThisRound;
+                updated = original.Add(connection);
+            } while (Interlocked.CompareExchange(ref _pathsUnlockedThisRound, updated, original) != original);
         }
 
         public UnlockPathAction(ScriptedEvent parentEvent, ContentXElement element) : base(parentEvent, element) { }
@@ -40,7 +52,7 @@ namespace Barotrauma
                 {
                     if (!connection.Locked) { continue; }
                     connection.Locked = false;
-                    pathsUnlockedThisRound.Add(connection);
+                    AddUnlockedPath(connection);
 #if SERVER
                     NotifyUnlock(connection);
 #else
@@ -61,7 +73,7 @@ namespace Barotrauma
 #if SERVER
         public static void NotifyPathsUnlockedThisRound(Client client)
         {
-            foreach (LocationConnection connection in pathsUnlockedThisRound)
+            foreach (LocationConnection connection in _pathsUnlockedThisRound)
             {
                 NotifyUnlock(connection, client);
             }

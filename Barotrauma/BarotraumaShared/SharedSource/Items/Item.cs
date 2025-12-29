@@ -2555,7 +2555,11 @@ namespace Barotrauma
         /// </summary>
         public bool IsActive = true;
 
-        public bool IsInRemoveQueue;
+        /// <summary>
+        /// Thread-safe flag indicating whether this item is queued for removal.
+        /// Uses volatile to ensure memory visibility across threads.
+        /// </summary>
+        public volatile bool IsInRemoveQueue;
 
         public override void Update(float deltaTime, Camera cam)
         {
@@ -4903,12 +4907,11 @@ namespace Barotrauma
                 StaticFixtures.Clear();
             }
 
-            foreach (Item it in ItemList)
+            // Optimized: Remove() returns false if not found, no need for Contains() check
+            // Using _itemDictionary.Values directly avoids property access overhead
+            foreach (Item it in _itemDictionary.Values)
             {
-                if (it.linkedTo.Contains(this))
-                {
-                    it.linkedTo.Remove(this);
-                }
+                it.linkedTo.Remove(this);
             }
 
             RemoveProjSpecific();

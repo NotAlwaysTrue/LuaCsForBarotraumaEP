@@ -3,6 +3,7 @@ using Barotrauma.Items.Components;
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -204,7 +205,17 @@ namespace Barotrauma
             }
         }
 
-        private readonly Queue<Either<IEntitySpawnInfo, Entity>> spawnOrRemoveQueue;
+        /// <summary>
+        /// Thread-safe queue for spawn/remove operations.
+        /// Uses ConcurrentQueue for lock-free concurrent access.
+        /// </summary>
+        private readonly ConcurrentQueue<Either<IEntitySpawnInfo, Entity>> spawnOrRemoveQueue;
+
+        /// <summary>
+        /// Thread-safe set for O(1) removal queue lookup.
+        /// Entities are added when queued for removal and removed after actual removal.
+        /// </summary>
+        private readonly ConcurrentDictionary<Entity, byte> removeQueueLookup;
 
         public abstract class SpawnOrRemove : NetEntityEvent.IData
         {
@@ -264,7 +275,8 @@ namespace Barotrauma
         public EntitySpawner()
             : base(null, Entity.EntitySpawnerID)
         {
-            spawnOrRemoveQueue = new Queue<Either<IEntitySpawnInfo, Entity>>();
+            spawnOrRemoveQueue = new ConcurrentQueue<Either<IEntitySpawnInfo, Entity>>();
+            removeQueueLookup = new ConcurrentDictionary<Entity, byte>();
         }
 
         public override string ToString()
@@ -358,8 +370,12 @@ namespace Barotrauma
         public void AddEntityToRemoveQueue(Entity entity)
         {
             if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsClient) { return; }
-            if (entity == null || IsInRemoveQueue(entity) || entity.Removed || entity.IdFreed) { return; }
+            if (entity == null || entity.Removed || entity.IdFreed) { return; }
             if (entity is Item item) { AddItemToRemoveQueue(item); return; }
+            
+            // Thread-safe check-and-add using ConcurrentDictionary
+            if (!removeQueueLookup.TryAdd(entity, 0)) { return; }
+            
             if (entity is Character)
             {
                 Character character = entity as Character;
@@ -381,7 +397,10 @@ namespace Barotrauma
         public void AddItemToRemoveQueue(Item item)
         {
             if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsClient) { return; }
-            if (IsInRemoveQueue(item) || item.Removed) { return; }
+            if (item.Removed) { return; }
+            
+            // Thread-safe check-and-add using ConcurrentDictionary
+            if (!removeQueueLookup.TryAdd(item, 0)) { return; }
 
             spawnOrRemoveQueue.Enqueue(item);
             item.IsInRemoveQueue = true;
@@ -396,11 +415,13 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// Are there any entities in the spawn queue that match the given predicate
+        /// Thread-safe check if any entities in the spawn queue match the given predicate.
+        /// Uses a snapshot of the queue for iteration.
         /// </summary>
         public bool IsInSpawnQueue(Predicate<IEntitySpawnInfo> predicate)
         {
-            foreach (var spawnOrRemove in spawnOrRemoveQueue)
+            // ConcurrentQueue.ToArray() provides a thread-safe snapshot
+            foreach (var spawnOrRemove in spawnOrRemoveQueue.ToArray())
             {
                 if (spawnOrRemove.TryGet(out IEntitySpawnInfo spawnInfo) && predicate(spawnInfo)) { return true; }
             }
@@ -408,35 +429,45 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// How many entities in the spawn queue match the given predicate
+        /// Thread-safe count of entities in the spawn queue that match the given predicate.
+        /// Uses a snapshot of the queue for iteration.
         /// </summary>
         public int CountSpawnQueue(Predicate<IEntitySpawnInfo> predicate)
         {
             int count = 0;
-            foreach (var spawnOrRemove in spawnOrRemoveQueue)
+            // ConcurrentQueue.ToArray() provides a thread-safe snapshot
+            foreach (var spawnOrRemove in spawnOrRemoveQueue.ToArray())
             {
                 if (spawnOrRemove.TryGet(out IEntitySpawnInfo spawnInfo) && predicate(spawnInfo)) { count++; }
             }
             return count;
         }
 
+        /// <summary>
+        /// Thread-safe O(1) check if entity is in the remove queue.
+        /// </summary>
         public bool IsInRemoveQueue(Entity entity)
         {
-            foreach (var spawnOrRemove in spawnOrRemoveQueue)
-            {
-                if (spawnOrRemove.TryGet(out Entity entityToRemove) && entityToRemove == entity) { return true; }
-            }
-            return false;
+            return removeQueueLookup.ContainsKey(entity);
         }
 
         public void Update(bool createNetworkEvents = true)
         {
             if (GameMain.NetworkMember is { IsClient: true }) { return; }
-            while (spawnOrRemoveQueue.Count > 0)
+            
+            // IMPORTANT: Entity creation and removal MUST be sequential!
+            // - Entity ID allocation is NOT thread-safe (causes ID conflicts)
+            // - Inventory operations are NOT thread-safe (causes stack overflow/slot conflicts)  
+            // - Entity.Remove() has cascading effects on global state
+            //
+            // Optimization: batch dequeue for better cache locality
+            while (spawnOrRemoveQueue.TryDequeue(out var spawnOrRemove))
             {
-                if (!spawnOrRemoveQueue.TryDequeue(out var spawnOrRemove)) { break; }
                 if (spawnOrRemove.TryGet(out Entity entityToRemove))
                 {
+                    // Remove from lookup after processing
+                    removeQueueLookup.TryRemove(entityToRemove, out _);
+                    
                     if (entityToRemove is Item item)
                     {
                         item.SendPendingNetworkUpdates();
@@ -465,9 +496,11 @@ namespace Barotrauma
 
         public void Reset()
         {
-            spawnOrRemoveQueue.Clear();
+            // Clear the concurrent queue by draining it
+            while (spawnOrRemoveQueue.TryDequeue(out _)) { }
+            removeQueueLookup.Clear();
 #if CLIENT
-            receivedEvents.Clear();
+            ResetReceivedEvents();
 #endif
         }
     }

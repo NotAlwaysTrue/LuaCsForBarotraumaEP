@@ -105,7 +105,7 @@ namespace Barotrauma
 
         public static void Draw(SpriteBatch spriteBatch, bool editing = false)
         {
-            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList;
+            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList.ToList();
 
             foreach (MapEntity e in entitiesToRender)
             {
@@ -115,7 +115,7 @@ namespace Barotrauma
 
         public static void DrawFront(SpriteBatch spriteBatch, bool editing = false, Predicate<MapEntity> predicate = null)
         {
-            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList;
+            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList.ToList();
 
             foreach (MapEntity e in entitiesToRender)
             {
@@ -164,7 +164,7 @@ namespace Barotrauma
 
         public static void DrawDamageable(SpriteBatch spriteBatch, Effect damageEffect, bool editing = false, Predicate<MapEntity> predicate = null)
         {
-            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList;
+            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList.ToList();
 
             depthSortedDamageable.Clear();
 
@@ -197,7 +197,7 @@ namespace Barotrauma
 
         public static void DrawPaintedColors(SpriteBatch spriteBatch, bool editing = false, Predicate<MapEntity> predicate = null)
         {
-            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList;
+            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList.ToList();
 
             foreach (MapEntity e in entitiesToRender)
             {
@@ -217,7 +217,7 @@ namespace Barotrauma
 
         public static void DrawBack(SpriteBatch spriteBatch, bool editing = false, Predicate<MapEntity> predicate = null)
         {
-            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList;
+            var entitiesToRender = !editing && visibleEntities != null ? visibleEntities : MapEntity.MapEntityList.ToList();
 
             foreach (MapEntity e in entitiesToRender)
             {

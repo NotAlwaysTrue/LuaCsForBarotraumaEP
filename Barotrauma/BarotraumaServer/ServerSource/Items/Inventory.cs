@@ -202,9 +202,9 @@ namespace Barotrauma
 #if DEBUG || UNSTABLE
                                 DebugConsole.NewMessage($"Client {sender.Name} failed to put \"{item}\" in the inventory of {Owner} (parent inventory: {item.ParentInventory?.Owner.ToString() ?? "null"}). No access.", Color.Yellow);
 #endif
-                                if (item.body != null && !sender.PendingPositionUpdates.Contains(item))
+                                if (item.body != null)
                                 {
-                                    sender.PendingPositionUpdates.Enqueue(item);
+                                    sender.TryEnqueuePositionUpdate(item);
                                 }
                                 item.PositionUpdateInterval = 0.0f;                            
                                 continue;
