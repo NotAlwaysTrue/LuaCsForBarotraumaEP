@@ -23,7 +23,7 @@ namespace Barotrauma
         /// <summary>
         /// Clears all received events from the queue.
         /// </summary>
-        partial void ResetReceivedEvents()
+        void ResetReceivedEvents()
         {
             while (receivedEventsQueue.TryDequeue(out _)) { }
         }

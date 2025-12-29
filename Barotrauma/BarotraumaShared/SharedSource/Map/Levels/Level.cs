@@ -5189,7 +5189,7 @@ namespace Barotrauma
                 UnsyncedExtraWalls = null;
             }
 
-            tempCells?.Clear();
+            tempCellsLocal?.Value?.Clear();
             cells = null;
             cellGrid = null;
             
