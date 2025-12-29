@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using MoonSharp.Interpreter;
 using Microsoft.Xna.Framework;
 using FarseerPhysics.Dynamics;
@@ -132,7 +134,7 @@ namespace Barotrauma
                 return new Pair<JobPrefab, int>((JobPrefab)v.Table.Get(1).ToObject(), (int)v.Table.Get(2).CastToNumber());
             });
 
-            Script.GlobalOptions.CustomConverters.SetClrToScriptCustomConversion<ulong>((Script script, ulong v) => 
+            Script.GlobalOptions.CustomConverters.SetClrToScriptCustomConversion<ulong>((Script script, ulong v) =>
             {
                 return DynValue.NewString(v.ToString());
             });
@@ -226,6 +228,28 @@ namespace Barotrauma
             RegisterEither<Address, AccountId>();
 
             RegisterImmutableArray<FactionPrefab.HireableCharacter>();
+
+
+            RegisterThreadSafeList<Character, ThreadSafeCharacterList>();
+            RegisterThreadSafeList<WayPoint, ThreadSafeWayPointList>();
+            RegisterThreadSafeList<Submarine, ThreadSafeSubmarineList>();
+            RegisterThreadSafeList<MapEntity, ThreadSafeMapEntityList>();
+            RegisterThreadSafeList<Hull, ThreadSafeHullList>();
+            RegisterThreadSafeList<Gap, ThreadSafeGapList>();
+            RegisterThreadSafeList<Structure, ThreadSafeStructureList>();
+            RegisterThreadSafeList<AITarget, ThreadSafeAITargetList>();
+            RegisterThreadSafeList<PhysicsBody, ThreadSafePhysicsBodyList>();
+
+            RegisterImmutableList<Event>();
+            RegisterImmutableList<EventSet>();
+            RegisterImmutableList<Sprite>();
+
+            RegisterImmutableHashSet<Event>();
+            RegisterImmutableHashSet<Identifier>();
+            RegisterImmutableHashSet<LocationConnection>();
+
+            RegisterImmutableDictionary<Identifier, EventPrefab>();
+            RegisterImmutableDictionary<EventSet, ImmutableList<Event>>();
         }
 
         private void RegisterImmutableArray<T>()
@@ -332,7 +356,7 @@ namespace Barotrauma
 
         private void RegisterAction()
         {
-            Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.Function, typeof(Action), v => 
+            Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(DataType.Function, typeof(Action), v =>
             {
                 var function = v.Function;
                 return (Action)(() => CallLuaFunction(function));
@@ -388,6 +412,104 @@ namespace Barotrauma
                 var function = v.Function;
                 return (T1 a, T2 b, T3 c, T4 d) => function.Call(a, b, c, d).ToObject<T5>();
             });
+        }
+
+        private void RegisterThreadSafeList<TItem, TList>() where TList : IEnumerable<TItem>
+        {
+            Script.GlobalOptions.CustomConverters.SetClrToScriptCustomConversion(
+                typeof(TList),
+                (Script script, object obj) =>
+                {
+                    if (obj is IEnumerable<TItem> enumerable)
+                    {
+                        var table = new Table(script);
+                        int i = 1;
+                        foreach (var item in enumerable)
+                        {
+                            table[i++] = DynValue.FromObject(script, item);
+                        }
+                        return DynValue.NewTable(table);
+                    }
+                    return DynValue.Nil;
+                }
+            );
+        }
+
+        private void RegisterImmutableList<T>()
+        {
+            Script.GlobalOptions.CustomConverters.SetClrToScriptCustomConversion(
+                typeof(ImmutableList<T>),
+                (Script script, object obj) =>
+                {
+                    if (obj is ImmutableList<T> list)
+                    {
+                        var table = new Table(script);
+                        int i = 1;
+                        foreach (var item in list)
+                        {
+                            table[i++] = DynValue.FromObject(script, item);
+                        }
+                        return DynValue.NewTable(table);
+                    }
+                    return DynValue.Nil;
+                }
+            );
+
+            // Lua table -> ImmutableList<T>
+            Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(
+                DataType.Table,
+                typeof(ImmutableList<T>),
+                v => v.ToObject<T[]>().ToImmutableList()
+            );
+        }
+
+        private void RegisterImmutableHashSet<T>()
+        {
+            Script.GlobalOptions.CustomConverters.SetClrToScriptCustomConversion(
+                typeof(ImmutableHashSet<T>),
+                (Script script, object obj) =>
+                {
+                    if (obj is ImmutableHashSet<T> set)
+                    {
+                        var table = new Table(script);
+                        int i = 1;
+                        foreach (var item in set)
+                        {
+                            table[i++] = DynValue.FromObject(script, item);
+                        }
+                        return DynValue.NewTable(table);
+                    }
+                    return DynValue.Nil;
+                }
+            );
+
+            // Lua table -> ImmutableHashSet<T>
+            Script.GlobalOptions.CustomConverters.SetScriptToClrCustomConversion(
+                DataType.Table,
+                typeof(ImmutableHashSet<T>),
+                v => v.ToObject<T[]>().ToImmutableHashSet()
+            );
+        }
+
+        private void RegisterImmutableDictionary<TKey, TValue>()
+        {
+            Script.GlobalOptions.CustomConverters.SetClrToScriptCustomConversion(
+                typeof(ImmutableDictionary<TKey, TValue>),
+                (Script script, object obj) =>
+                {
+                    if (obj is ImmutableDictionary<TKey, TValue> dict)
+                    {
+                        var table = new Table(script);
+                        foreach (var kvp in dict)
+                        {
+                            table[DynValue.FromObject(script, kvp.Key)] =
+                                DynValue.FromObject(script, kvp.Value);
+                        }
+                        return DynValue.NewTable(table);
+                    }
+                    return DynValue.Nil;
+                }
+            );
         }
     }
 }
