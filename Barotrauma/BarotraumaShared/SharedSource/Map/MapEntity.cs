@@ -30,7 +30,7 @@ namespace Barotrauma
         protected readonly List<Upgrade> Upgrades = new List<Upgrade>();
 
         public readonly HashSet<Identifier> DisallowedUpgradeSet = new HashSet<Identifier>();
-        
+
         [Editable, Serialize("", IsPropertySaveable.Yes)]
         public string DisallowedUpgrades
         {
@@ -85,11 +85,11 @@ namespace Barotrauma
         public bool IsHighlighted
         {
             get { return isHighlighted || ExternalHighlight; }
-            set 
+            set
             {
                 if (value != isHighlighted)
                 {
-                    isHighlighted = value; 
+                    isHighlighted = value;
                     CheckIsHighlighted();
                 }
             }
@@ -532,7 +532,7 @@ namespace Barotrauma
                 }
 
                 if (originalWire.Connections.Any(c => c != null) &&
-                    (cloneWire.Connections[0] == null || cloneWire.Connections[1] == null) && 
+                    (cloneWire.Connections[0] == null || cloneWire.Connections[1] == null) &&
                     cloneItem.GetComponent<DockingPort>() == null)
                 {
                     if (!clones.Any(c => (c as Item)?.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(cloneWire) ?? false))
@@ -640,29 +640,25 @@ namespace Barotrauma
         /// <summary>
         /// Call Update() on every object in Entity.list
         /// </summary>
-        public static void UpdateAll(float deltaTime, Camera cam , ParallelOptions parallelOptions)
+        public static void UpdateAll(float deltaTime, Camera cam, ParallelOptions parallelOptions)
         {
 #if CLIENT
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
 #endif
+
             // Buffer lists to avoid repeated allocations
             var hullList = Hull.HullList.ToList();
             var structureList = Structure.WallList.ToList();
             var gapList = Gap.GapList.ToList();
             var itemList = Item.ItemList.ToList();
 
-            Parallel.ForEach(gapList, parallelOptions, gap =>
-            {
-                gap.ResetWaterFlowThisFrame();
-            });
-
             // First phase: parallel updates that have no order dependencies
             Parallel.Invoke(parallelOptions,
                 () =>
                 {
                     // basically nothing here is thread-safe so
-                    foreach(var hull in hullList)
+                    foreach (var hull in hullList)
                     {
                         hull.Update(deltaTime, cam);
                     }
@@ -675,16 +671,21 @@ namespace Barotrauma
                         structure.Update(deltaTime, cam);
                     });
                 },
-                // Gap reset (must be done before update)
                 () =>
-                {
-                    // Gap update (has order dependencies, keep random order but execute sequentially)
-                    var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
-                    foreach (var gap in shuffledGaps)
-                    {
-                        gap.Update(deltaTime, cam);
-                    }
+                //update gaps in random order, because otherwise in rooms with multiple gaps
+                //the water/air will always tend to flow through the first gap in the list,
+                //which may lead to weird behavior like water draining down only through
+                //one gap in a room even if there are several
 
+                // moved waterflow reset here to see if we can reduce at least some time
+                {
+                    // if crashed, go ask the god damn physics engine :(
+                    var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
+                    Parallel.ForEach(gapList, parallelOptions, gap =>
+                    {
+                        gap.ResetWaterFlowThisFrame();
+                        gap.Update(deltaTime, cam);
+                    });
                 },
                 // Powered components update
                 () =>
@@ -696,6 +697,9 @@ namespace Barotrauma
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
             Hull.UpdateCheats(deltaTime, cam);
+#endif
+
+#if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Misc", sw.ElapsedTicks);
             sw.Restart();
@@ -783,7 +787,7 @@ namespace Barotrauma
                 var tags = element.GetAttributeIdentifierArray("tags", Array.Empty<Identifier>());
                 if (tags.Contains(Tags.HiddenItemContainer))
                 {
-                    containsHiddenContainers = true; 
+                    containsHiddenContainers = true;
                     break;
                 }
             }
@@ -828,7 +832,7 @@ namespace Barotrauma
                         }
                     }
                 }
-                else if (t == typeof(Item) && !containsHiddenContainers && identifier == "vent" && 
+                else if (t == typeof(Item) && !containsHiddenContainers && identifier == "vent" &&
                     submarine.Info.Type == SubmarineType.Player && !submarine.Info.HasTag(SubmarineTag.Shuttle))
                 {
                     if (!hiddenContainerCreated)
