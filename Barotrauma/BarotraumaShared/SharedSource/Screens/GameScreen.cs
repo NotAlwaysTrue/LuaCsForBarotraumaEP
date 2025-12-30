@@ -245,10 +245,10 @@ namespace Barotrauma
             Character.Controlled?.UpdateLocalCursor(cam);
 
 #elif SERVER
-            Parallel.Invoke(parallelOptions,
-                () => { if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance); },
-                () => Character.UpdateAll((float)deltaTime, Camera.Instance)
-            );
+
+            // Don't parallize these things here or the server may got stuck but why idk
+            if (Level.Loaded != null) { Level.Loaded.Update((float)deltaTime, Camera.Instance); }
+            Character.UpdateAll((float)deltaTime, Camera.Instance);
 
             //StatusEffect.UpdateAll is not thread-safe and must be executed on the main thread
             StatusEffect.UpdateAll((float)deltaTime);
@@ -272,9 +272,7 @@ namespace Barotrauma
 #if CLIENT
             MapEntity.UpdateAll((float)deltaTime, cam, parallelOptions);
 #elif SERVER
-
             MapEntity.UpdateAll((float)deltaTime, Camera.Instance, parallelOptions);
-            
 #endif
 
 #if CLIENT
