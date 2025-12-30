@@ -29,6 +29,7 @@
 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -347,6 +348,21 @@ namespace FarseerPhysics.Dynamics
                     OnDisabled?.Invoke();
                 }
             }
+        }
+
+        private static ConcurrentQueue<Body> DisableQueue = new ConcurrentQueue<Body>();
+
+        public static void QueueDisable()
+        {
+            while (DisableQueue.TryDequeue(out var pendingbody))
+            {
+                pendingbody.Enabled = false;
+            }
+        }
+
+        public void AddToDisableQueue()
+        {
+            DisableQueue.Enqueue(this);
         }
 
         /// <summary>

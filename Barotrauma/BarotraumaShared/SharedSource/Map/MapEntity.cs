@@ -686,6 +686,7 @@ namespace Barotrauma
                         gap.ResetWaterFlowThisFrame();
                         gap.Update(deltaTime, cam);
                     });
+                    FarseerPhysics.Dynamics.Body.QueueDisable();
                 },
                 // Powered components update
                 () =>
