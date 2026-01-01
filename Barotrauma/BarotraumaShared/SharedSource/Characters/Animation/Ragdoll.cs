@@ -2198,8 +2198,9 @@ namespace Barotrauma
             if (limb == null)
             {
                 // Didn't seek or find a (valid) limb of the matching type. If there's multiple limbs of the same type, check the other limbs.
-                foreach (var l in limbs)
+                foreach (var l in Limbs)
                 {
+                    if (l == null) { continue; }
                     if (l.Removed) { continue; }
                     if (useSecondaryType)
                     {
