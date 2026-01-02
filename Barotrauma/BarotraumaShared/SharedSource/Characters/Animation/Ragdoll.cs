@@ -1184,6 +1184,10 @@ namespace Barotrauma
 
         public void Teleport(Vector2 moveAmount, Vector2 velocityChange, bool detachProjectiles = true)
         {
+            // Hopefully this will fix some crashes :(
+            // If Collider was null then no need to procced: nothing is there already
+            if (Collider == null) { return; }
+
             foreach (Limb limb in Limbs)
             {
                 if (limb.IsSevered) { continue; }
@@ -1205,6 +1209,7 @@ namespace Barotrauma
 
             character.DisableImpactDamageTimer = 0.25f;
 
+            // Why they did null check below but didn't do it here????
             SetPosition(Collider.SimPosition + moveAmount);
             character.CursorPosition += moveAmount;
 
