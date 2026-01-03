@@ -892,6 +892,8 @@ namespace Barotrauma
                 return null;
             }
 
+            if (GameMain.World == null) return null;
+            
             float closestFraction = 1.0f;
             Vector2 closestNormal = Vector2.Zero;
             Fixture closestFixture = null;
@@ -899,19 +901,28 @@ namespace Barotrauma
             if (allowInsideFixture)
             {
                 var aabb = new FarseerPhysics.Collision.AABB(rayStart - Vector2.One * 0.001f, rayStart + Vector2.One * 0.001f);
-                GameMain.World.QueryAABB((fixture) =>
+                try
                 {
-                    if (!CheckFixtureCollision(fixture, ignoredBodies, collisionCategory, ignoreSensors, customPredicate)) { return true; }
+                    GameMain.World.QueryAABB((fixture) =>
+                    {
+                        if (fixture == null || fixture.Body == null) { return true; }
+                        
+                        if (!CheckFixtureCollision(fixture, ignoredBodies, collisionCategory, ignoreSensors, customPredicate)) { return true; }
 
-                    fixture.Body.GetTransform(out FarseerPhysics.Common.Transform transform);
-                    if (!fixture.Shape.TestPoint(ref transform, ref rayStart)) { return true; }
+                        fixture.Body.GetTransform(out FarseerPhysics.Common.Transform transform);
+                        if (!fixture.Shape.TestPoint(ref transform, ref rayStart)) { return true; }
 
-                    closestFraction = 0.0f;
-                    closestNormal = Vector2.Normalize(rayEnd - rayStart);
-                    closestFixture = fixture;
-                    if (fixture.Body != null) { closestBody = fixture.Body; }
-                    return false;
-                }, ref aabb);
+                        closestFraction = 0.0f;
+                        closestNormal = Vector2.Normalize(rayEnd - rayStart);
+                        closestFixture = fixture;
+                        if (fixture.Body != null) { closestBody = fixture.Body; }
+                        return false;
+                    }, ref aabb);
+                }
+                catch (NullReferenceException)
+                {
+                    return null;
+                }
                 if (closestFraction <= 0.0f)
                 {
                     lastPickedPositionLocal.Value = rayStart;
@@ -2293,6 +2304,7 @@ namespace Barotrauma
         /// </summary>
         public void DisableObstructedWayPoints()
         {
+
             // Check collisions to level
             foreach (var node in OutdoorNodes)
             {
@@ -2321,7 +2333,9 @@ namespace Barotrauma
         /// </summary>
         public void DisableObstructedWayPoints(Submarine otherSub)
         {
-            if (otherSub == null) { return; }
+
+            if (otherSub?.PhysicsBody?.FarseerBody == null) return;
+
             if (otherSub == this) { return; }
             // Check collisions to other subs.
             foreach (var node in OutdoorNodes)
@@ -2338,13 +2352,20 @@ namespace Barotrauma
                     {
                         Vector2 start = ConvertUnits.ToSimUnits(wp.WorldPosition) - otherSub.SimPosition;
                         Vector2 end = ConvertUnits.ToSimUnits(connectedWp.WorldPosition) - otherSub.SimPosition;
-                        var body = PickBody(start, end, null, Physics.CollisionWall, allowInsideFixture: true);
-                        if (body != null)
+                        try
                         {
-                            if (body.UserData is Structure wall && !wall.IsPlatform || body.UserData is Item && body.FixtureList[0].CollisionCategories.HasFlag(Physics.CollisionWall))
+                            var body = PickBody(start, end, null, Physics.CollisionWall, allowInsideFixture: true);
+                            if (body != null)
                             {
-                                isObstructed = true;
+                                if (body.UserData is Structure wall && !wall.IsPlatform || body.UserData is Item && body.FixtureList?[0].CollisionCategories.HasFlag(Physics.CollisionWall) == true)
+                                {
+                                    isObstructed = true;
+                                }
                             }
+                        }
+                        catch (NullReferenceException)
+                        {
+                            continue;
                         }
                     }
                     if (isObstructed)
