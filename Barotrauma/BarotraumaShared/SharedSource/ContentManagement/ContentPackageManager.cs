@@ -382,15 +382,69 @@ namespace Barotrauma
                 ContentPackage.LocalModsDir,
                 skipPredicate: null,
                 onLoadFail: null);
-        public static readonly PackageSource WorkshopPackages = new PackageSource(
-            ContentPackage.WorkshopModsDir,
-            skipPredicate: SteamManager.Workshop.IsInstallingToPath,
-            onLoadFail: (fileListPath, exception) =>
+
+        // Primary workshop packages source - uses current configured path
+        private static PackageSource? _workshopPackages = null;
+        public static PackageSource WorkshopPackages
+        {
+            get
             {
-                // Delete Workshop mods that fail to load to
-                // force a reinstall on next launch if necessary
-                Directory.TryDelete(Path.GetDirectoryName(fileListPath)!);
-            });
+                if (_workshopPackages == null)
+                {
+                    _workshopPackages = new PackageSource(
+                        ContentPackage.WorkshopModsDir,
+                        skipPredicate: SteamManager.Workshop.IsInstallingToPath,
+                        onLoadFail: (fileListPath, exception) =>
+                        {
+                            // Delete Workshop mods that fail to load to
+                            // force a reinstall on next launch if necessary
+                            Directory.TryDelete(Path.GetDirectoryName(fileListPath)!);
+                        });
+                }
+                return _workshopPackages;
+            }
+        }
+
+        /// <summary>
+        /// Legacy workshop packages source for backward compatibility.
+        /// When using a custom SavePath, this provides access to mods in the original default location (C: drive).
+        /// Returns null if not using a custom path or if the legacy directory doesn't exist.
+        /// </summary>
+        private static PackageSource? _legacyWorkshopPackages = null;
+        private static bool _legacyWorkshopPackagesChecked = false;
+        public static PackageSource? LegacyWorkshopPackages
+        {
+            get
+            {
+                if (!_legacyWorkshopPackagesChecked)
+                {
+                    _legacyWorkshopPackagesChecked = true;
+                    
+                    // Only create legacy source if using a custom path AND the default path is different
+                    if (ContentPackage.UsingCustomSavePath &&
+                        Directory.Exists(ContentPackage.DefaultWorkshopModsDir))
+                    {
+                        _legacyWorkshopPackages = new PackageSource(
+                            ContentPackage.DefaultWorkshopModsDir,
+                            skipPredicate: SteamManager.Workshop.IsInstallingToPath,
+                            onLoadFail: null);  // Don't delete mods from legacy location on failure
+                    }
+                }
+                return _legacyWorkshopPackages;
+            }
+        }
+
+        /// <summary>
+        /// Combined workshop core packages from both current and legacy locations.
+        /// </summary>
+        private static IEnumerable<CorePackage> AllWorkshopCorePackages
+            => WorkshopPackages.Core.Concat(LegacyWorkshopPackages?.Core ?? Enumerable.Empty<CorePackage>());
+
+        /// <summary>
+        /// Combined workshop regular packages from both current and legacy locations.
+        /// </summary>
+        private static IEnumerable<RegularPackage> AllWorkshopRegularPackages
+            => WorkshopPackages.Regular.Concat(LegacyWorkshopPackages?.Regular ?? Enumerable.Empty<RegularPackage>());
 
         public static CorePackage? VanillaCorePackage { get; private set; } = null;
         
@@ -398,19 +452,33 @@ namespace Barotrauma
             => (VanillaCorePackage is null
                 ? Enumerable.Empty<CorePackage>()
                 : VanillaCorePackage.ToEnumerable())
-                    .CollectionConcat(LocalPackages.Core.CollectionConcat(WorkshopPackages.Core));
+                    .CollectionConcat(LocalPackages.Core.CollectionConcat(AllWorkshopCorePackages));
 
         public static IEnumerable<RegularPackage> RegularPackages
-            => LocalPackages.Regular.CollectionConcat(WorkshopPackages.Regular);
+            => LocalPackages.Regular.CollectionConcat(AllWorkshopRegularPackages);
 
         public static IEnumerable<ContentPackage> AllPackages
-            => VanillaCorePackage.ToEnumerable().CollectionConcat(LocalPackages).CollectionConcat(WorkshopPackages)
-                .OfType<ContentPackage>();
+        {
+            get
+            {
+                var packages = VanillaCorePackage.ToEnumerable()
+                    .CollectionConcat(LocalPackages)
+                    .CollectionConcat(WorkshopPackages);
+
+                if (LegacyWorkshopPackages != null)
+                {
+                    packages = packages.CollectionConcat(LegacyWorkshopPackages);
+                }
+
+                return packages.OfType<ContentPackage>();
+            }
+        }
 
         public static void UpdateContentPackageList()
         {
             LocalPackages.Refresh();
             WorkshopPackages.Refresh();
+            LegacyWorkshopPackages?.Refresh();  // Also refresh legacy location if available
             EnabledPackages.DisableRemovedMods();
         }
 
