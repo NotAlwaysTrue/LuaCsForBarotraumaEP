@@ -25,7 +25,7 @@ namespace Barotrauma
 
         private static readonly ParallelOptions parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Environment.ProcessorCount > 0 ? Environment.ProcessorCount  * 2 : 16,
+            MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount - 1)
         };
 
 #if CLIENT
