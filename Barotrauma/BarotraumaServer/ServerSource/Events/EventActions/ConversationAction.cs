@@ -82,10 +82,13 @@ namespace Barotrauma
 
         private bool IsBlockedByAnotherConversation(IEnumerable<Entity> targets, float duration)
         {
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+            
             if (targets == null || targets.None())
             {
                 //if the action doesn't target anyone in specific, it's shown to every client
-                foreach (var client in GameMain.Server.ConnectedClients)
+                foreach (var client in clients)
                 {
                     if (IsBlockedByAnotherConversation(client, duration)) { return true; }
                 }
@@ -95,7 +98,7 @@ namespace Barotrauma
                 foreach (Entity e in targets)
                 {
                     if (e is not Character character || !character.IsRemotePlayer) { continue; }
-                    Client targetClient = GameMain.Server.ConnectedClients.Find(c => c.Character == character);
+                    Client targetClient = clients.FirstOrDefault(c => c.Character == character);
                     if (targetClient != null && IsBlockedByAnotherConversation(targetClient, duration)) { return true; }                    
                 }
             }
@@ -117,13 +120,16 @@ namespace Barotrauma
         partial void ShowDialog(Character speaker, Character targetCharacter)
         {
             targetClients.Clear();
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+            
             if (!TargetTag.IsEmpty)
             {
                 IEnumerable<Entity> entities = ParentEvent.GetTargets(TargetTag);
                 foreach (Entity e in entities)
                 {
                     if (e is not Character character || !character.IsRemotePlayer) { continue; }
-                    Client targetClient = GameMain.Server.ConnectedClients.Find(c => c.Character == character);
+                    Client targetClient = clients.FirstOrDefault(c => c.Character == character);
                     if (targetClient != null) 
                     {
                         targetClients.Add(targetClient);
@@ -135,7 +141,7 @@ namespace Barotrauma
             }
             else
             {
-                foreach (Client c in GameMain.Server.ConnectedClients)
+                foreach (Client c in clients)
                 {
                     if (CanClientReceive(c))
                     {

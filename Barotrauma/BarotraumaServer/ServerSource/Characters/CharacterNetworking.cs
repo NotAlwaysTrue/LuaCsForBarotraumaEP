@@ -490,7 +490,9 @@ namespace Barotrauma
                 case ControlEventData controlEventData:
                     Client owner = controlEventData.Owner;
                     msg.WriteBoolean(owner == c && owner.Character == this);
-                    msg.WriteByte(owner != null && owner.Character == this && GameMain.Server.ConnectedClients.Contains(owner) ? owner.SessionId : (byte)0);
+                    // Create snapshot to avoid concurrent access issues during parallel updates
+                    var connectedClients = GameMain.Server.ConnectedClients.ToArray();
+                    msg.WriteByte(owner != null && owner.Character == this && connectedClients.Contains(owner) ? owner.SessionId : (byte)0);
                     msg.WriteBoolean(info is { RenamingEnabled: true });
                     break;
                 case CharacterStatusEventData statusEventData:
@@ -746,7 +748,9 @@ namespace Barotrauma
                 return;
             }
 
-            Client ownerClient = GameMain.Server.ConnectedClients.Find(c => c.Character == this && (!c.SpectateOnly || !GameMain.Server.ServerSettings.AllowSpectating));
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+            Client ownerClient = clients.FirstOrDefault(c => c.Character == this && (!c.SpectateOnly || !GameMain.Server.ServerSettings.AllowSpectating));
             if (ownerClient != null)
             {
                 msg.WriteBoolean(true);

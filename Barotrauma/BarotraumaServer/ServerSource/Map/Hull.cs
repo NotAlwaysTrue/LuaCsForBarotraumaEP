@@ -29,7 +29,9 @@ namespace Barotrauma
 
             //don't create updates if all clients are very far from the hull
             float hullUpdateDistanceSqr = NetConfig.HullUpdateDistance * NetConfig.HullUpdateDistance;
-            if (!GameMain.Server.ConnectedClients.Any(c => 
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+            if (!clients.Any(c => 
                     (c.Character != null && Vector2.DistanceSquared(c.Character.WorldPosition, WorldPosition) < hullUpdateDistanceSqr) ||
                     (c.SpectatePos != null && Vector2.DistanceSquared(c.SpectatePos.Value, WorldPosition) < hullUpdateDistanceSqr)) )
             {

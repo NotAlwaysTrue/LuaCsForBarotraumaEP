@@ -28,11 +28,14 @@ namespace Barotrauma
                 }
             }
 
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+
             if (GameMain.Server is { ServerSettings.RespawnMode: RespawnMode.Permadeath } && 
                 GameMain.GameSession?.Campaign is MultiPlayerCampaign mpCampaign &&
                 causeOfDeath != CauseOfDeathType.Disconnected)
             {
-                Client ownerClient = GameMain.Server.ConnectedClients.FirstOrDefault(c => c.Character == this);
+                Client ownerClient = clients.FirstOrDefault(c => c.Character == this);
                 if (ownerClient != null)
                 {
                     ownerClient.SpectateOnly = true;
@@ -51,7 +54,7 @@ namespace Barotrauma
 
             if (HasAbilityFlag(AbilityFlags.RetainExperienceForNewCharacter))
             {
-                var ownerClient = GameMain.Server.ConnectedClients.Find(c => c.Character == this);
+                var ownerClient = clients.FirstOrDefault(c => c.Character == this);
                 if (ownerClient != null)
                 {
                     (GameMain.GameSession?.GameMode as MultiPlayerCampaign)?.SaveExperiencePoints(ownerClient);
@@ -62,7 +65,7 @@ namespace Barotrauma
 
             if (CauseOfDeath.Killer != null && CauseOfDeath.Killer.IsTraitor && CauseOfDeath.Killer != this)
             {
-                var owner = GameMain.Server.ConnectedClients.Find(c => c.Character == this);
+                var owner = clients.FirstOrDefault(c => c.Character == this);
                 if (owner != null)
                 {
                     if (!GameMain.LuaCs.Game.overrideTraitors)
@@ -71,7 +74,7 @@ namespace Barotrauma
                     }
                 }
             }
-            foreach (Client client in GameMain.Server.ConnectedClients)
+            foreach (Client client in clients)
             {
                 if (client.InGame)
                 {

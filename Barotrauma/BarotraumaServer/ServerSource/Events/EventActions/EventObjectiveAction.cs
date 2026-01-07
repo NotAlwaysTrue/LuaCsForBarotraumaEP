@@ -1,3 +1,5 @@
+﻿using System.Linq;
+
 namespace Barotrauma
 {
     partial class EventObjectiveAction : EventAction
@@ -13,9 +15,12 @@ namespace Barotrauma
                 ParentObjectiveId,
                 CanBeCompleted);
 
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+
             if (TargetTag.IsEmpty)
             {
-                foreach (var client in GameMain.Server.ConnectedClients)
+                foreach (var client in clients)
                 {
                     if (client.Character == null) { continue; }
                     EventManager.ServerWriteObjective(client, objective);
@@ -26,7 +31,7 @@ namespace Barotrauma
                 foreach (var target in ParentEvent.GetTargets(TargetTag))
                 {
                     if (target is not Character character) { continue; }
-                    var ownerClient = GameMain.Server.ConnectedClients.Find(c => c.Character == character);
+                    var ownerClient = clients.FirstOrDefault(c => c.Character == character);
                     if (ownerClient == null) { continue; }
                     EventManager.ServerWriteObjective(ownerClient, objective);
                 }

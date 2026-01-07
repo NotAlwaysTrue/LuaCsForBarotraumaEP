@@ -4799,7 +4799,9 @@ namespace Barotrauma.Networking
         public static string CharacterLogName(Character character)
         {
             if (character == null) { return "[NULL]"; }
-            Client client = GameMain.Server.ConnectedClients.Find(c => c.Character == character);
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+            Client client = clients.FirstOrDefault(c => c.Character == character);
             return ClientLogName(client, character.LogName);
         }
 
@@ -4810,8 +4812,8 @@ namespace Barotrauma.Networking
             GameMain.LuaCs?.Hook?.Call("serverLog", line, messageType);
 
             GameMain.Server.ServerSettings.ServerLog.WriteLine(line, messageType);
-
-            foreach (Client client in GameMain.Server.ConnectedClients)
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+            foreach (Client client in clients)
             {
                 if (!client.HasPermission(ClientPermissions.ServerLog)) continue;
                 //use sendername as the message type

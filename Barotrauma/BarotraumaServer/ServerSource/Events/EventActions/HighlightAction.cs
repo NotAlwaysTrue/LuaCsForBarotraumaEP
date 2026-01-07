@@ -14,8 +14,10 @@ partial class HighlightAction : EventAction
             IEnumerable<Client>? targetClients = null;
             if (targetCharacters != null)
             {
+                // Create snapshot to avoid concurrent access issues during parallel updates
+                var clients = GameMain.Server.ConnectedClients.ToArray();
                 targetClients = targetCharacters
-                    .Select(c => GameMain.Server.ConnectedClients.FirstOrDefault(client => client.Character == c))
+                    .Select(c => clients.FirstOrDefault(client => client.Character == c))
                     .Where(c => c != null)!;
             }
             GameMain.Server?.CreateEntityEvent(item, new Item.SetHighlightEventData(State, highlightColor, targetClients));

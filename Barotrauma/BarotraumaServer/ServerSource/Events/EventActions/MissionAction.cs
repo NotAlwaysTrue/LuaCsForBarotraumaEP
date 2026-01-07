@@ -1,5 +1,6 @@
-using Barotrauma.Networking;
+﻿using Barotrauma.Networking;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Barotrauma
 {
@@ -22,7 +23,9 @@ namespace Barotrauma
 
         private static void NotifyMissionUnlock(Mission mission)
         {
-            foreach (Client client in GameMain.Server.ConnectedClients)
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+            foreach (Client client in clients)
             {
                 NotifyMissionUnlock(mission, client);
             }

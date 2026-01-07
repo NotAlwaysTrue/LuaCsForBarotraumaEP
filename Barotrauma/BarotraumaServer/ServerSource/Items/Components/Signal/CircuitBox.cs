@@ -76,7 +76,9 @@ namespace Barotrauma.Items.Components
         {
             var (msg, deliveryMethod) = PrepareToSend(opcode, data);
 
-            foreach (Client client in GameMain.Server.ConnectedClients)
+            // Create snapshot to avoid concurrent access issues during parallel updates
+            var clients = GameMain.Server.ConnectedClients.ToArray();
+            foreach (Client client in clients)
             {
                 if (predicate is not null && !predicate(client)) { continue; }
 

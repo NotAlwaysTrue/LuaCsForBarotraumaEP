@@ -834,6 +834,12 @@ namespace Barotrauma
             if (!IsValidValue(simPosition, "position", -1e10f, 1e10f)) { return false; }
             if (!IsValidValue(rotation, "rotation")) { return false; }
 
+            if (PhysicsBodyQueue.IsInParallelContext)
+            {
+                PhysicsBodyQueue.Enqueue(() => SetTransform(simPosition, rotation, setPrevTransform));
+                return true;
+            }
+
             FarseerBody.SetTransform(simPosition, rotation);
             if (setPrevTransform) { SetPrevTransform(simPosition, rotation); }
             return true;
@@ -847,6 +853,12 @@ namespace Barotrauma
 
             if (!IsValidValue(simPosition, "position", -1e10f, 1e10f)) { return false; }
             if (!IsValidValue(rotation, "rotation")) { return false; }
+
+            if (PhysicsBodyQueue.IsInParallelContext)
+            {
+                PhysicsBodyQueue.Enqueue(() => SetTransformIgnoreContacts(simPosition, rotation, setPrevTransform));
+                return true;
+            }
 
             FarseerBody.SetTransformIgnoreContacts(ref simPosition, rotation);
             if (setPrevTransform) { SetPrevTransform(simPosition, rotation); }

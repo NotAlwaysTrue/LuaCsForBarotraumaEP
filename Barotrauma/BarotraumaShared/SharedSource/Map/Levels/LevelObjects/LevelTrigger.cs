@@ -673,13 +673,17 @@ namespace Barotrauma
             }
         }
 
-        private static readonly List<Entity> triggerersToRemove = new List<Entity>();
         public static void RemoveInActiveTriggerers(PhysicsBody physicsBody, HashSet<Entity> triggerers)
         {
             if (physicsBody == null) { return; }
 
-            triggerersToRemove.Clear();
-            foreach (var triggerer in triggerers)
+            // Use local list instead of static field to avoid concurrent access issues during parallel updates
+            var triggerersToRemove = new List<Entity>();
+            
+            // Create snapshot to avoid concurrent modification during enumeration
+            var triggererSnapshot = triggerers.ToArray();
+            
+            foreach (var triggerer in triggererSnapshot)
             {
                 if (triggerer.Removed)
                 {
