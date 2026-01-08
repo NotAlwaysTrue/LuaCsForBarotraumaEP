@@ -25,7 +25,7 @@ namespace Barotrauma
 
         private static readonly ParallelOptions parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Environment.ProcessorCount > 0 ? Environment.ProcessorCount  * 2 : 16,
+            MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount - 1)
         };
 
 #if CLIENT
@@ -287,6 +287,7 @@ namespace Barotrauma
             Ragdoll.UpdateAll((float)deltaTime, cam);
 #elif SERVER
             Ragdoll.UpdateAll((float)deltaTime, Camera.Instance);
+            SingleThreadWorker.GlobalWorker.RunActions();
 #endif
 
 #if CLIENT
@@ -295,7 +296,7 @@ namespace Barotrauma
             sw.Restart(); 
 #endif
 
-            foreach(Submarine sub in submarines)
+            foreach (Submarine sub in submarines)
             {
                 sub.Update((float)deltaTime);
             }

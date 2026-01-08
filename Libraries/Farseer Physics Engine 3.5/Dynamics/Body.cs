@@ -350,20 +350,6 @@ namespace FarseerPhysics.Dynamics
             }
         }
 
-        private static ConcurrentQueue<Body> DisableQueue = new ConcurrentQueue<Body>();
-
-        public static void QueueDisable()
-        {
-            while (DisableQueue.TryDequeue(out var pendingbody))
-            {
-                pendingbody.Enabled = false;
-            }
-        }
-
-        public void AddToDisableQueue()
-        {
-            DisableQueue.Enqueue(this);
-        }
 
         /// <summary>
         /// Create all proxies.

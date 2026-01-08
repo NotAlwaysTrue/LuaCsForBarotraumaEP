@@ -681,12 +681,12 @@ namespace Barotrauma
                 {
                     // if crashed, go ask the god damn physics engine :(
                     var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
-                    Parallel.ForEach(gapList, parallelOptions, gap =>
+                    Parallel.ForEach(shuffledGaps, parallelOptions, gap =>
                     {
                         gap.ResetWaterFlowThisFrame();
                         gap.Update(deltaTime, cam);
                     });
-                    FarseerPhysics.Dynamics.Body.QueueDisable();
+                    SingleThreadWorker.GlobalWorker.RunActions();
                 },
                 // Powered components update
                 () =>

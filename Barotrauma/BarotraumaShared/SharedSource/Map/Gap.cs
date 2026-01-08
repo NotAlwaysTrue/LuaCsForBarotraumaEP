@@ -812,7 +812,11 @@ namespace Barotrauma
             if (outsideCollisionBlocker == null) { return false; }
             if (IsRoomToRoom || Submarine == null || open <= 0.0f || linkedTo.Count == 0 || linkedTo[0] is not Hull) 
             {
-                outsideCollisionBlocker.AddToDisableQueue();
+                SingleThreadWorker.GlobalWorker.AddAction(() =>
+                {
+                    outsideCollisionBlocker.Enabled = false; 
+                });
+                
                 return false; 
             }
 
