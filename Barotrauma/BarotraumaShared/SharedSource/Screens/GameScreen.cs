@@ -287,6 +287,7 @@ namespace Barotrauma
             Ragdoll.UpdateAll((float)deltaTime, cam);
 #elif SERVER
             Ragdoll.UpdateAll((float)deltaTime, Camera.Instance);
+            SingleThreadWorker.GlobalWorker.RunActions();
 #endif
 
 #if CLIENT
@@ -295,7 +296,7 @@ namespace Barotrauma
             sw.Restart(); 
 #endif
 
-            foreach(Submarine sub in submarines)
+            foreach (Submarine sub in submarines)
             {
                 sub.Update((float)deltaTime);
             }
