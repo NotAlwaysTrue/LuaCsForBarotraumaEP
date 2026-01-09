@@ -345,7 +345,8 @@ namespace Barotrauma.Items.Components
             {
                 Connection recipient = wire.OtherConnection(this);
                 if (recipient == null) { continue; }
-                if (recipient.item == this.item || signal.source?.LastSentSignalRecipients.LastOrDefault() == recipient) { continue; }
+                List<Connection> LastSentSignalRecipientsCopy = signal.source?.LastSentSignalRecipients.ToList();
+                if (recipient.item == this.item || LastSentSignalRecipientsCopy.LastOrDefault() == recipient) { continue; }
 
                 signal.source?.LastSentSignalRecipients.Add(recipient);
 #if CLIENT

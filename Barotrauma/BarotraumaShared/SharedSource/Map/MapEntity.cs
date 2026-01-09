@@ -816,7 +816,7 @@ namespace Barotrauma
 
             // Gap update (has order dependencies, keep random order but execute sequentially)
             var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
-            Parallel.ForEach(gapList, parallelOptions, gap =>
+            Parallel.ForEach(shuffledGaps, parallelOptions, gap =>
             {
                 PhysicsBodyQueue.IsInParallelContext = true;
                 try

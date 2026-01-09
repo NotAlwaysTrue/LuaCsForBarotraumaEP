@@ -126,7 +126,7 @@ namespace Barotrauma
             }
             else
             {
-                Objectives.RemoveAll(o => o.GetType() == type);
+                Objectives.RemoveAll(o => o?.GetType() == type);
             }
             Objectives.Add(objective);
         }

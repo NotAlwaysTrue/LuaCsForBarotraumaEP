@@ -382,8 +382,13 @@ namespace Barotrauma
             }
             steeringBuffer = Math.Clamp(steeringBuffer, minSteeringBuffer, maxSteeringBuffer);
 
-            AnimController.Crouching = shouldCrouch;
-            CheckCrouching(deltaTime);
+            // in case of somehow AnimController was a null, eg. something removed AnimController in the middle of an update
+            if (AnimController != null) 
+            {
+                AnimController.Crouching = shouldCrouch;
+                CheckCrouching(deltaTime);
+            }
+
             Character.ClearInputs();
             
             if (SortTimer > 0.0f)
@@ -1638,7 +1643,8 @@ namespace Barotrauma
             if (mode == AIObjectiveCombat.CombatMode.None) { return; }
             if (Character.IsDead || Character.IsIncapacitated || Character.Removed) { return; }
             if (!Character.IsBot) { return; }
-            if (ObjectiveManager.Objectives.FirstOrDefault(o => o is AIObjectiveCombat) is AIObjectiveCombat combatObjective)
+            List<AIObjective> ObjectivesLocal = ObjectiveManager.Objectives;
+            if (ObjectivesLocal.FirstOrDefault(o => o is AIObjectiveCombat) is AIObjectiveCombat combatObjective)
             {
                 // Don't replace offensive mode with something else
                 if (combatObjective.Mode == AIObjectiveCombat.CombatMode.Offensive && mode != AIObjectiveCombat.CombatMode.Offensive) { return; }

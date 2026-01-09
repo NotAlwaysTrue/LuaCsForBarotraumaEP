@@ -25,7 +25,7 @@ namespace Barotrauma
 
         private static readonly ParallelOptions parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Environment.ProcessorCount * 2,
+            MaxDegreeOfParallelism = Math.Max(4,Environment.ProcessorCount - 1),
         };
 
 #if CLIENT
@@ -259,33 +259,15 @@ namespace Barotrauma
             Character.Controlled?.UpdateLocalCursor(cam);
 
 #elif SERVER
-            Parallel.Invoke(parallelOptions,
-                () => 
-                { 
-                    PhysicsBodyQueue.IsInParallelContext = true;
-                    try
-                    {
-                        if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance);
-                    }
-                    finally
-                    {
-                        PhysicsBodyQueue.IsInParallelContext = false;
-                    }
-                },
-                () => 
-                {
-                    PhysicsBodyQueue.IsInParallelContext = true;
-                    try
-                    {
-                        Character.UpdateAll((float)deltaTime, Camera.Instance);
-                    }
-                    finally
-                    {
-                        PhysicsBodyQueue.IsInParallelContext = false;
-                    }
-                }
-            );
-            
+            // DO NOT PARALLELIZE THESE TWO OR IT MAY STUCK HERE
+            // SO FOLLOW THE ORIGINAL SINGLE-THREAD LOGIC STRICTLY
+
+            if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance);
+
+            Character.UpdateAll((float)deltaTime, Camera.Instance);
+
+            StatusEffect.UpdateAll((float)deltaTime);
+
             PhysicsBodyQueue.ProcessPendingOperations();
 #endif
 
@@ -310,8 +292,6 @@ namespace Barotrauma
 
             MapEntity.UpdateAll((float)deltaTime, Camera.Instance, parallelOptions);
 
-            StatusEffect.UpdateAll((float)deltaTime);
-
 #endif
 
 #if CLIENT
@@ -321,6 +301,7 @@ namespace Barotrauma
 #endif
             //Character.UpdateAnimAll is not thread-safe and must be executed on the main thread
             Character.UpdateAnimAll((float)deltaTime);
+            PhysicsBodyQueue.ProcessPendingOperations();
 
 #if CLIENT
             Ragdoll.UpdateAll((float)deltaTime, cam);
