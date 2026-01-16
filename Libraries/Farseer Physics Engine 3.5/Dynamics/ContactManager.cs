@@ -27,9 +27,10 @@
 * 3. This notice may not be removed or altered from any source distribution. 
 */
 
-using System.Collections.Generic;
 using FarseerPhysics.Collision;
 using FarseerPhysics.Dynamics.Contacts;
+using System.Collections.Generic;
+using System.Threading;
 
 namespace FarseerPhysics.Dynamics
 {
@@ -61,6 +62,8 @@ namespace FarseerPhysics.Dynamics
         public int CollideMultithreadThreshold = 64;
         #endregion
 
+        // This will ensure only one thread will work on ContactList so that we wont mess up these stuff
+        private readonly SemaphoreSlim contactManagerSignal = new SemaphoreSlim(1);
 
         /// <summary>
         /// Fires when a contact is created
@@ -249,6 +252,8 @@ namespace FarseerPhysics.Dynamics
 
         internal void Destroy(Contact contact)
         {
+            contactManagerSignal.Wait(100);
+
             Fixture fixtureA = contact.FixtureA;
             Fixture fixtureB = contact.FixtureB;
             Body bodyA = fixtureA.Body;
@@ -310,6 +315,8 @@ namespace FarseerPhysics.Dynamics
             // Insert into the pool.
             contact.Next = _contactPoolList.Next;
             _contactPoolList.Next = contact;
+
+            contactManagerSignal.Release();
         }
 
         internal void Collide()
