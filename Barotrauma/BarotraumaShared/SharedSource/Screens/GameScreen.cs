@@ -338,7 +338,8 @@ namespace Barotrauma
                 GameAnalyticsManager.AddErrorEventOnce("GameScreen.Update:WorldLockedException" + e.Message, GameAnalyticsManager.ErrorSeverity.Critical, errorMsg);
             }
 #endif
-
+            // Run at the end of the update to avoid missing something
+            PhysicsBodyQueue.ProcessPendingCreations();
 #if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Physics", sw.ElapsedTicks);

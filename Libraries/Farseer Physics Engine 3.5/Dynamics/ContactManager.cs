@@ -63,7 +63,7 @@ namespace FarseerPhysics.Dynamics
         #endregion
 
         // This will ensure only one thread will work on ContactList so that we wont mess up these stuff
-        private readonly SemaphoreSlim contactManagerSignal = new SemaphoreSlim(1);
+        private readonly SemaphoreSlim contactManagerSignal = new SemaphoreSlim(1,1);
 
         /// <summary>
         /// Fires when a contact is created
@@ -129,119 +129,127 @@ namespace FarseerPhysics.Dynamics
         // Broad-phase callback.
         private void AddPair(int proxyIdA, int proxyIdB)
         {
-            FixtureProxy proxyA = BroadPhase.GetProxy(proxyIdA);
-            FixtureProxy proxyB = BroadPhase.GetProxy(proxyIdB);
-
-            Body bodyA = proxyA.Body;
-            Body bodyB = proxyB.Body;
-
-            // Are the fixtures on the same body?
-            if (bodyA == bodyB)
+            contactManagerSignal.Wait(100);
+            try
             {
-                return;
-            }
+                FixtureProxy proxyA = BroadPhase.GetProxy(proxyIdA);
+                FixtureProxy proxyB = BroadPhase.GetProxy(proxyIdB);
 
-            Fixture fixtureA = proxyA.Fixture;
-            Fixture fixtureB = proxyB.Fixture;
+                Body bodyA = proxyA.Body;
+                Body bodyB = proxyB.Body;
 
-            int indexA = proxyA.ChildIndex;
-            int indexB = proxyB.ChildIndex;
-
-            // Does a contact already exist?
-            for (ContactEdge ceB = bodyB.ContactList; ceB != null; ceB = ceB.Next)
-            {
-                if (ceB.Other == bodyA)
+                // Are the fixtures on the same body?
+                if (bodyA == bodyB)
                 {
-                    Fixture fA = ceB.Contact.FixtureA;
-                    Fixture fB = ceB.Contact.FixtureB;
-                    int iA = ceB.Contact.ChildIndexA;
-                    int iB = ceB.Contact.ChildIndexB;
+                    return;
+                }
 
-                    if (fA == fixtureA && fB == fixtureB && iA == indexA && iB == indexB)
-                    {
-                        // A contact already exists.
-                        return;
-                    }
+                Fixture fixtureA = proxyA.Fixture;
+                Fixture fixtureB = proxyB.Fixture;
 
-                    if (fA == fixtureB && fB == fixtureA && iA == indexB && iB == indexA)
+                int indexA = proxyA.ChildIndex;
+                int indexB = proxyB.ChildIndex;
+
+                // Does a contact already exist?
+                for (ContactEdge ceB = bodyB.ContactList; ceB != null; ceB = ceB.Next)
+                {
+                    if (ceB.Other == bodyA)
                     {
-                        // A contact already exists.
-                        return;
+                        Fixture fA = ceB.Contact.FixtureA;
+                        Fixture fB = ceB.Contact.FixtureB;
+                        int iA = ceB.Contact.ChildIndexA;
+                        int iB = ceB.Contact.ChildIndexB;
+
+                        if (fA == fixtureA && fB == fixtureB && iA == indexA && iB == indexB)
+                        {
+                            // A contact already exists.
+                            return;
+                        }
+
+                        if (fA == fixtureB && fB == fixtureA && iA == indexB && iB == indexA)
+                        {
+                            // A contact already exists.
+                            return;
+                        }
                     }
                 }
+
+                // Does a joint override collision? Is at least one body dynamic?
+                if (bodyB.ShouldCollide(bodyA) == false)
+                    return;
+
+                if (ShouldCollide(fixtureA, fixtureB) == false)
+                    return;
+
+                // Check user filtering.
+                if (ContactFilter != null && ContactFilter(fixtureA, fixtureB) == false)
+                    return;
+
+                //FPE feature: BeforeCollision delegate
+                if (fixtureA.BeforeCollision != null && fixtureA.BeforeCollision(fixtureA, fixtureB) == false)
+                    return;
+
+                if (fixtureB.BeforeCollision != null && fixtureB.BeforeCollision(fixtureB, fixtureA) == false)
+                    return;
+
+                // Call the factory.
+                Contact c = Contact.Create(this, fixtureA, indexA, fixtureB, indexB);
+
+                if (c == null)
+                    return;
+
+                // Contact creation may swap fixtures.
+                fixtureA = c.FixtureA;
+                fixtureB = c.FixtureB;
+                bodyA = fixtureA.Body;
+                bodyB = fixtureB.Body;
+
+                // Insert into the world.
+                c.Prev = ContactList;
+                c.Next = c.Prev.Next;
+                c.Prev.Next = c;
+                c.Next.Prev = c;
+                ContactCount++;
+
+    #if USE_ACTIVE_CONTACT_SET
+			    ActiveContacts.Add(c);
+    #endif
+                // Connect to island graph.
+
+                // Connect to body A
+                c._nodeA.Contact = c;
+                c._nodeA.Other = bodyB;
+
+                c._nodeA.Prev = null;
+                c._nodeA.Next = bodyA.ContactList;
+                if (bodyA.ContactList != null)
+                {
+                    bodyA.ContactList.Prev = c._nodeA;
+                }
+                bodyA.ContactList = c._nodeA;
+
+                // Connect to body B
+                c._nodeB.Contact = c;
+                c._nodeB.Other = bodyA;
+
+                c._nodeB.Prev = null;
+                c._nodeB.Next = bodyB.ContactList;
+                if (bodyB.ContactList != null)
+                {
+                    bodyB.ContactList.Prev = c._nodeB;
+                }
+                bodyB.ContactList = c._nodeB;
+
+                // Wake up the bodies
+                if (fixtureA.IsSensor == false && fixtureB.IsSensor == false)
+                {
+                    bodyA.Awake = true;
+                    bodyB.Awake = true;
+                }
             }
-
-            // Does a joint override collision? Is at least one body dynamic?
-            if (bodyB.ShouldCollide(bodyA) == false)
-                return;
-
-            if (ShouldCollide(fixtureA, fixtureB) == false)
-                return;
-
-            // Check user filtering.
-            if (ContactFilter != null && ContactFilter(fixtureA, fixtureB) == false)
-                return;
-
-            //FPE feature: BeforeCollision delegate
-            if (fixtureA.BeforeCollision != null && fixtureA.BeforeCollision(fixtureA, fixtureB) == false)
-                return;
-
-            if (fixtureB.BeforeCollision != null && fixtureB.BeforeCollision(fixtureB, fixtureA) == false)
-                return;
-
-            // Call the factory.
-            Contact c = Contact.Create(this, fixtureA, indexA, fixtureB, indexB);
-
-            if (c == null)
-                return;
-
-            // Contact creation may swap fixtures.
-            fixtureA = c.FixtureA;
-            fixtureB = c.FixtureB;
-            bodyA = fixtureA.Body;
-            bodyB = fixtureB.Body;
-
-            // Insert into the world.
-            c.Prev = ContactList;
-            c.Next = c.Prev.Next;
-            c.Prev.Next = c;
-            c.Next.Prev = c;
-            ContactCount++;
-
-#if USE_ACTIVE_CONTACT_SET
-			ActiveContacts.Add(c);
-#endif
-            // Connect to island graph.
-
-            // Connect to body A
-            c._nodeA.Contact = c;
-            c._nodeA.Other = bodyB;
-
-            c._nodeA.Prev = null;
-            c._nodeA.Next = bodyA.ContactList;
-            if (bodyA.ContactList != null)
+            finally
             {
-                bodyA.ContactList.Prev = c._nodeA;
-            }
-            bodyA.ContactList = c._nodeA;
-
-            // Connect to body B
-            c._nodeB.Contact = c;
-            c._nodeB.Other = bodyA;
-
-            c._nodeB.Prev = null;
-            c._nodeB.Next = bodyB.ContactList;
-            if (bodyB.ContactList != null)
-            {
-                bodyB.ContactList.Prev = c._nodeB;
-            }
-            bodyB.ContactList = c._nodeB;
-
-            // Wake up the bodies
-            if (fixtureA.IsSensor == false && fixtureB.IsSensor == false)
-            {
-                bodyA.Awake = true;
-                bodyB.Awake = true;
+                contactManagerSignal.Release();
             }
         }
 
@@ -253,70 +261,74 @@ namespace FarseerPhysics.Dynamics
         internal void Destroy(Contact contact)
         {
             contactManagerSignal.Wait(100);
-
-            Fixture fixtureA = contact.FixtureA;
-            Fixture fixtureB = contact.FixtureB;
-            Body bodyA = fixtureA.Body;
-            Body bodyB = fixtureB.Body;
-
-            if (contact.IsTouching)
+            try 
             {
-                //Report the separation to both participants:
-                if (fixtureA != null && fixtureA.OnSeparation != null)
-                    fixtureA.OnSeparation(fixtureA, fixtureB, contact);
+                Fixture fixtureA = contact.FixtureA;
+                Fixture fixtureB = contact.FixtureB;
+                Body bodyA = fixtureA.Body;
+                Body bodyB = fixtureB.Body;
 
-                //Reverse the order of the reported fixtures. The first fixture is always the one that the
-                //user subscribed to.
-                if (fixtureB != null && fixtureB.OnSeparation != null)
-                    fixtureB.OnSeparation(fixtureB, fixtureA, contact);
+                if (contact.IsTouching)
+                {
+                    //Report the separation to both participants:
+                    if (fixtureA != null && fixtureA.OnSeparation != null)
+                        fixtureA.OnSeparation(fixtureA, fixtureB, contact);
 
-                //Report the separation to both bodies:
-                if (fixtureA != null && fixtureA.Body != null && fixtureA.Body.onSeparationEventHandler != null)
-                    fixtureA.Body.onSeparationEventHandler(fixtureA, fixtureB, contact);
+                    //Reverse the order of the reported fixtures. The first fixture is always the one that the
+                    //user subscribed to.
+                    if (fixtureB != null && fixtureB.OnSeparation != null)
+                        fixtureB.OnSeparation(fixtureB, fixtureA, contact);
 
-                //Reverse the order of the reported fixtures. The first fixture is always the one that the
-                //user subscribed to.
-                if (fixtureB != null && fixtureB.Body != null && fixtureB.Body.onSeparationEventHandler != null)
-                    fixtureB.Body.onSeparationEventHandler(fixtureB, fixtureA, contact);
+                    //Report the separation to both bodies:
+                    if (fixtureA != null && fixtureA.Body != null && fixtureA.Body.onSeparationEventHandler != null)
+                        fixtureA.Body.onSeparationEventHandler(fixtureA, fixtureB, contact);
 
-                if (EndContact != null)
-                    EndContact(contact);
-            }
+                    //Reverse the order of the reported fixtures. The first fixture is always the one that the
+                    //user subscribed to.
+                    if (fixtureB != null && fixtureB.Body != null && fixtureB.Body.onSeparationEventHandler != null)
+                        fixtureB.Body.onSeparationEventHandler(fixtureB, fixtureA, contact);
 
-            // Remove from the world.
-            contact.Prev.Next = contact.Next;
-            contact.Next.Prev = contact.Prev;
-            contact.Next = null;
-            contact.Prev = null;
-            ContactCount--;
+                    if (EndContact != null)
+                        EndContact(contact);
+                }
 
-            // Remove from body 1
-            if (contact._nodeA == bodyA.ContactList)
-                bodyA.ContactList = contact._nodeA.Next;
-            if (contact._nodeA.Prev != null)
-                contact._nodeA.Prev.Next = contact._nodeA.Next;
-            if (contact._nodeA.Next != null)
-                contact._nodeA.Next.Prev = contact._nodeA.Prev;
+                // Remove from the world.
+                contact.Prev.Next = contact.Next;
+                contact.Next.Prev = contact.Prev;
+                contact.Next = null;
+                contact.Prev = null;
+                ContactCount--;
 
-            // Remove from body 2
-            if (contact._nodeB == bodyB.ContactList)
-                bodyB.ContactList = contact._nodeB.Next;
-            if (contact._nodeB.Prev != null)
-                contact._nodeB.Prev.Next = contact._nodeB.Next;
-            if (contact._nodeB.Next != null)
-                contact._nodeB.Next.Prev = contact._nodeB.Prev;
+                // Remove from body 1
+                if (contact._nodeA == bodyA.ContactList)
+                    bodyA.ContactList = contact._nodeA.Next;
+                if (contact._nodeA.Prev != null)
+                    contact._nodeA.Prev.Next = contact._nodeA.Next;
+                if (contact._nodeA.Next != null)
+                    contact._nodeA.Next.Prev = contact._nodeA.Prev;
 
-#if USE_ACTIVE_CONTACT_SET
-			if (ActiveContacts.Contains(contact))
-				ActiveContacts.Remove(contact);
-#endif
-            contact.Destroy();
+                // Remove from body 2
+                if (contact._nodeB == bodyB.ContactList)
+                    bodyB.ContactList = contact._nodeB.Next;
+                if (contact._nodeB.Prev != null)
+                    contact._nodeB.Prev.Next = contact._nodeB.Next;
+                if (contact._nodeB.Next != null)
+                    contact._nodeB.Next.Prev = contact._nodeB.Prev;
+
+    #if USE_ACTIVE_CONTACT_SET
+			    if (ActiveContacts.Contains(contact))
+				    ActiveContacts.Remove(contact);
+    #endif
+                contact.Destroy();
             
-            // Insert into the pool.
-            contact.Next = _contactPoolList.Next;
-            _contactPoolList.Next = contact;
-
-            contactManagerSignal.Release();
+                // Insert into the pool.
+                contact.Next = _contactPoolList.Next;
+                _contactPoolList.Next = contact;
+            }
+            finally 
+            {
+                contactManagerSignal.Release();
+            }
         }
 
         internal void Collide()
