@@ -46,6 +46,7 @@ using FarseerPhysics.Diagnostics;
 using FarseerPhysics.Dynamics.Contacts;
 using FarseerPhysics.Dynamics.Joints;
 using FarseerPhysics.Fluids;
+using System.Threading;
 
 namespace FarseerPhysics.Dynamics
 {    
@@ -151,11 +152,14 @@ namespace FarseerPhysics.Dynamics
         /// </summary>
         public ControllerDelegate ControllerRemoved;
 
+        private static SemaphoreSlim RayCastSignal;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="World"/> class.
         /// </summary>
         public World()
         {
+            RayCastSignal = new SemaphoreSlim(1);
             Island = new Island();
             Enabled = true;
             ControllerList = new List<Controller>();
@@ -1562,9 +1566,13 @@ namespace FarseerPhysics.Dynamics
             input.Point1 = point1;
             input.Point2 = point2;
 
+            RayCastSignal.Wait(100);
+
             _rayCastCallback = callback;
             ContactManager.BroadPhase.RayCast(_rayCastCallbackWrapper, ref input, collisionCategory);
             _rayCastCallback = null;
+
+            RayCastSignal.Release();
         }
 
         public List<Fixture> RayCast(Vector2 point1, Vector2 point2)
