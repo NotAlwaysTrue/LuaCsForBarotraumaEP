@@ -3744,7 +3744,7 @@ namespace Barotrauma
 
         public void AddAttacker(Character character, float damage)
         {
-            Attacker attacker = lastAttackers.FirstOrDefault(a => a.Character == character);
+            Attacker attacker = lastAttackers.FirstOrDefault(a => a?.Character == character);
             if (attacker != null)
             {
                 lastAttackers.Remove(attacker);
