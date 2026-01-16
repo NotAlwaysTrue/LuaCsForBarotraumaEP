@@ -841,7 +841,6 @@ namespace Barotrauma
             // Item update (Item.Update() is not thread-safe and must be executed on the main thread)
             Item.UpdatePendingConditionUpdates(deltaTime);
 
-            float scaledDeltaTime = deltaTime * MapEntityUpdateInterval;
             Item lastUpdatedItem = null;
 
             try
@@ -852,7 +851,7 @@ namespace Barotrauma
                     try
                     {
                         lastUpdatedItem = item;
-                        item.Update(scaledDeltaTime, cam);
+                        item.Update(deltaTime, cam);
                     }
                     finally
                     {
