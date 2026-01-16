@@ -872,7 +872,7 @@ namespace Barotrauma
             // This must be done on the main thread because Farseer Physics is not thread-safe.
             PhysicsBodyQueue.ProcessPendingOperations();
 
-            UpdateAllProjSpecific(scaledDeltaTime);
+            UpdateAllProjSpecific(deltaTime);
             Spawner?.Update();
 
 #if CLIENT
