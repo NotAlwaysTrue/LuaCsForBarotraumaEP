@@ -758,44 +758,41 @@ namespace Barotrauma
 
             // First phase: parallel updates that have no order dependencies
             Parallel.Invoke(parallelOptions,
-                // Hull parallel update
+                // Hull update
                 () =>
                 {
-                    Parallel.ForEach(hullList, parallelOptions, hull =>
+                    // IT IS NOT THREAD-SAFE
+                    // Fire, decal, etc... deal with them before doing it here
+                    foreach(Hull hull in hullList)
+                    {
+                        hull.Update(deltaTime, cam);
+                    }
+                },
+                // Structure update
+                () =>
+                {
+                    // Unnecessary to parallelize it
+                    foreach (Structure structure in structureList)
+                    {
+                        structure.Update(deltaTime, cam);
+                    }
+                },
+                // Gap update
+                () =>
+                {
+                    var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
+                    Parallel.ForEach(shuffledGaps, parallelOptions, gap =>
                     {
                         PhysicsBodyQueue.IsInParallelContext = true;
                         try
                         {
-                            hull.Update(deltaTime, cam);
+                            gap.ResetWaterFlowThisFrame();
+                            gap.Update(deltaTime, cam);
                         }
                         finally
                         {
                             PhysicsBodyQueue.IsInParallelContext = false;
                         }
-                    });
-                },
-                // Structure parallel update
-                () =>
-                {
-                    Parallel.ForEach(structureList, parallelOptions, structure =>
-                    {
-                        PhysicsBodyQueue.IsInParallelContext = true;
-                        try
-                        {
-                            structure.Update(deltaTime, cam);
-                        }
-                        finally
-                        {
-                            PhysicsBodyQueue.IsInParallelContext = false;
-                        }
-                    });
-                },
-                // Gap reset (must be done before update)
-                () =>
-                {
-                    Parallel.ForEach(gapList, parallelOptions, gap =>
-                    {
-                        gap.ResetWaterFlowThisFrame();
                     });
                 },
                 // Powered components update
@@ -805,34 +802,13 @@ namespace Barotrauma
                 }
             );
 
-            // Process any physics operations queued during Hull/Structure updates.
-            // BallastFlora growth (from Hull.Update) may queue physics body creations/transforms.
+            // Process any physics operations queued during Hull/Structure/Gap updates.
+            // A bunch of methods will add something to here
             PhysicsBodyQueue.ProcessPendingOperations();
 
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
             Hull.UpdateCheats(deltaTime, cam);
-#endif
-
-            // Gap update (has order dependencies, keep random order but execute sequentially)
-            var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
-            Parallel.ForEach(shuffledGaps, parallelOptions, gap =>
-            {
-                PhysicsBodyQueue.IsInParallelContext = true;
-                try
-                {
-                    gap.Update(deltaTime, cam);
-                }
-                finally
-                {
-                    PhysicsBodyQueue.IsInParallelContext = false;
-                }
-            });
-            
-            // Process any physics operations queued during Gap updates.
-            PhysicsBodyQueue.ProcessPendingOperations();
-
-#if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:MapEntity:Misc", sw.ElapsedTicks);
             sw.Restart();

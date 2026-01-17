@@ -908,7 +908,8 @@ namespace Barotrauma
             {
                 if (cell.IsPointInside(WorldPosition))
                 {
-                    outsideCollisionBlocker.Enabled = true;
+                    PhysicsBodyQueue.ExecuteOrDefer(() =>
+                    { outsideCollisionBlocker.Enabled = true; });
                     Vector2 colliderPos = rayStart - Submarine.SimPosition;
                     float colliderRotation = MathUtils.VectorToAngle(rayDir) - MathHelper.PiOver2;
                     outsideCollisionBlocker.SetTransformIgnoreContacts(ref colliderPos, colliderRotation);
@@ -921,14 +922,16 @@ namespace Barotrauma
             {
                 //if the ray hit the body of the submarine itself (for example, if there's 2 layers of walls) we can ignore it
                 if (blockingBody.UserData == Submarine) { return; }
-                outsideCollisionBlocker.Enabled = true;
+                PhysicsBodyQueue.ExecuteOrDefer(() =>
+                { outsideCollisionBlocker.Enabled = true; });
                 Vector2 colliderPos = Submarine.LastPickedPosition - Submarine.SimPosition;
                 float colliderRotation = MathUtils.VectorToAngle(Submarine.LastPickedNormal) - MathHelper.PiOver2;
                 outsideCollisionBlocker.SetTransformIgnoreContacts(ref colliderPos, colliderRotation);
             }
             else
             {
-                outsideCollisionBlocker.Enabled = false;
+                PhysicsBodyQueue.ExecuteOrDefer(() =>
+                { outsideCollisionBlocker.Enabled = false; });
             }
         }
 
