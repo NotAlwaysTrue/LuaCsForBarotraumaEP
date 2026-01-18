@@ -2509,6 +2509,7 @@ namespace Barotrauma
         private bool UpdateLimbAttack(float deltaTime, Vector2 attackSimPos, IDamageable damageTarget, float distance = -1, Limb targetLimb = null)
         {
             if (SelectedAiTarget?.Entity == null) { return false; }
+            if (AttackLimb == null) { return false; }
             if (AttackLimb?.attack == null) { return false; }
             ISpatialEntity spatialTarget = wallTarget != null ? wallTarget.Structure : SelectedAiTarget.Entity as ISpatialEntity;
             if (spatialTarget == null) { return false; }

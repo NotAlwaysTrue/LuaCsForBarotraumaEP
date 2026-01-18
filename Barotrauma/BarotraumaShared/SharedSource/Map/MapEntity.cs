@@ -709,7 +709,6 @@ namespace Barotrauma
             // Item update (Item.Update() is not thread-safe and must be executed on the main thread)
             Item.UpdatePendingConditionUpdates(deltaTime);
 
-            float scaledDeltaTime = deltaTime * MapEntityUpdateInterval;
             Item lastUpdatedItem = null;
 
             try
@@ -717,7 +716,7 @@ namespace Barotrauma
                 foreach (Item item in itemList)
                 {
                     lastUpdatedItem = item;
-                    item.Update(scaledDeltaTime, cam);
+                    item.Update(deltaTime, cam);
                 }
             }
             catch (InvalidOperationException e)
@@ -729,7 +728,7 @@ namespace Barotrauma
                 throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
             }
 
-            UpdateAllProjSpecific(scaledDeltaTime);
+            UpdateAllProjSpecific(deltaTime);
             Spawner?.Update();
 
 #if CLIENT
