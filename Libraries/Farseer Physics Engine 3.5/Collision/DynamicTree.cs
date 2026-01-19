@@ -84,8 +84,6 @@ namespace FarseerPhysics.Collision
         private static Stack<int> RaycastStack => _raycastStack ??= new Stack<int>(256);
         private static Stack<int> QueryStack => _queryStack ??= new Stack<int>(256);
         
-        private static readonly SemaphoreSlim DynamicTreeSignal = new SemaphoreSlim(1, 1);
-
         private int _freeList;
         private int _nodeCapacity;
         private int _nodeCount;
@@ -540,195 +538,225 @@ namespace FarseerPhysics.Collision
 
         private int AllocateNode()
         {
-            DynamicTreeSignal.Wait(100);
-            try
+            // Expand the node pool as needed.
+            if (_freeList == NullNode)
             {
-                // Expand the node pool as needed.
-                if (_freeList == NullNode)
+                Debug.Assert(_nodeCount == _nodeCapacity);
+
+                // The free list is empty. Rebuild a bigger pool.
+                TreeNode<T>[] oldNodes = _nodes;
+                _nodeCapacity *= 2;
+                _nodes = new TreeNode<T>[_nodeCapacity];
+                Array.Copy(oldNodes, _nodes, _nodeCount);
+
+                // Build a linked list for the free list. The parent
+                // pointer becomes the "next" pointer.
+                for (int i = _nodeCount; i < _nodeCapacity - 1; ++i)
                 {
-                    Debug.Assert(_nodeCount == _nodeCapacity);
-
-                    // The free list is empty. Rebuild a bigger pool.
-                    TreeNode<T>[] oldNodes = _nodes;
-                    _nodeCapacity *= 2;
-                    _nodes = new TreeNode<T>[_nodeCapacity];
-                    Array.Copy(oldNodes, _nodes, _nodeCount);
-
-                    // Build a linked list for the free list. The parent
-                    // pointer becomes the "next" pointer.
-                    for (int i = _nodeCount; i < _nodeCapacity - 1; ++i)
-                    {
-                        _nodes[i].ParentOrNext = i + 1;
-                        _nodes[i].Height = -1;
-                    }
-                    _nodes[_nodeCapacity - 1].ParentOrNext = NullNode;
-                    _nodes[_nodeCapacity - 1].Height = -1;
-                    _freeList = _nodeCount;
+                    _nodes[i].ParentOrNext = i + 1;
+                    _nodes[i].Height = -1;
                 }
+                _nodes[_nodeCapacity - 1].ParentOrNext = NullNode;
+                _nodes[_nodeCapacity - 1].Height = -1;
+                _freeList = _nodeCount;
+            }
 
-                // Peel a node off the free list.
-                int nodeId = _freeList;
-                _freeList = _nodes[nodeId].ParentOrNext;
-                _nodes[nodeId].ParentOrNext = NullNode;
-                _nodes[nodeId].Child1 = NullNode;
-                _nodes[nodeId].Child2 = NullNode;
-                _nodes[nodeId].Height = 0;
-                _nodes[nodeId].UserData = default(T);
-                ++_nodeCount;
-                return nodeId;
-            }
-            finally
-            {
-                DynamicTreeSignal.Release();
-            }
+            // Peel a node off the free list.
+            int nodeId = _freeList;
+            _freeList = _nodes[nodeId].ParentOrNext;
+            _nodes[nodeId].ParentOrNext = NullNode;
+            _nodes[nodeId].Child1 = NullNode;
+            _nodes[nodeId].Child2 = NullNode;
+            _nodes[nodeId].Height = 0;
+            _nodes[nodeId].UserData = default(T);
+            ++_nodeCount;
+            return nodeId;
         }
 
         private void FreeNode(int nodeId)
         {
-            DynamicTreeSignal.Wait(100);
-            try
-            {
-                Debug.Assert(0 <= nodeId && nodeId < _nodeCapacity);
-                Debug.Assert(0 < _nodeCount);
-                _nodes[nodeId].ParentOrNext = _freeList;
-                _nodes[nodeId].Height = -1;
-                _freeList = nodeId;
-                --_nodeCount;
-            }
-            finally
-            {
-                DynamicTreeSignal.Release();
-            }
+            Debug.Assert(0 <= nodeId && nodeId < _nodeCapacity);
+            Debug.Assert(0 < _nodeCount);
+            _nodes[nodeId].ParentOrNext = _freeList;
+            _nodes[nodeId].Height = -1;
+            _freeList = nodeId;
+            --_nodeCount;
         }
 
         private void InsertLeaf(int leaf)
         {
-            DynamicTreeSignal.Wait(100);
-            try
+            if (_root == NullNode)
             {
-                if (_root == NullNode)
+                _root = leaf;
+                _nodes[_root].ParentOrNext = NullNode;
+                return;
+            }
+
+            // Find the best sibling for this node
+            AABB leafAABB = _nodes[leaf].AABB;
+            int index = _root;
+            while (_nodes[index].IsLeaf() == false)
+            {
+                int child1 = _nodes[index].Child1;
+                int child2 = _nodes[index].Child2;
+
+                float area = _nodes[index].AABB.Perimeter;
+
+                AABB combinedAABB = new AABB();
+                combinedAABB.Combine(ref _nodes[index].AABB, ref leafAABB);
+                float combinedArea = combinedAABB.Perimeter;
+
+                // Cost of creating a new parent for this node and the new leaf
+                float cost = 2.0f * combinedArea;
+
+                // Minimum cost of pushing the leaf further down the tree
+                float inheritanceCost = 2.0f * (combinedArea - area);
+
+                // Cost of descending into child1
+                float cost1;
+                if (_nodes[child1].IsLeaf())
                 {
-                    _root = leaf;
-                    _nodes[_root].ParentOrNext = NullNode;
-                    return;
-                }
-
-                // Find the best sibling for this node
-                AABB leafAABB = _nodes[leaf].AABB;
-                int index = _root;
-                while (_nodes[index].IsLeaf() == false)
-                {
-                    int child1 = _nodes[index].Child1;
-                    int child2 = _nodes[index].Child2;
-
-                    float area = _nodes[index].AABB.Perimeter;
-
-                    AABB combinedAABB = new AABB();
-                    combinedAABB.Combine(ref _nodes[index].AABB, ref leafAABB);
-                    float combinedArea = combinedAABB.Perimeter;
-
-                    // Cost of creating a new parent for this node and the new leaf
-                    float cost = 2.0f * combinedArea;
-
-                    // Minimum cost of pushing the leaf further down the tree
-                    float inheritanceCost = 2.0f * (combinedArea - area);
-
-                    // Cost of descending into child1
-                    float cost1;
-                    if (_nodes[child1].IsLeaf())
-                    {
-                        AABB aabb = new AABB();
-                        aabb.Combine(ref leafAABB, ref _nodes[child1].AABB);
-                        cost1 = aabb.Perimeter + inheritanceCost;
-                    }
-                    else
-                    {
-                        AABB aabb = new AABB();
-                        aabb.Combine(ref leafAABB, ref _nodes[child1].AABB);
-                        float oldArea = _nodes[child1].AABB.Perimeter;
-                        float newArea = aabb.Perimeter;
-                        cost1 = (newArea - oldArea) + inheritanceCost;
-                    }
-
-                    // Cost of descending into child2
-                    float cost2;
-                    if (_nodes[child2].IsLeaf())
-                    {
-                        AABB aabb = new AABB();
-                        aabb.Combine(ref leafAABB, ref _nodes[child2].AABB);
-                        cost2 = aabb.Perimeter + inheritanceCost;
-                    }
-                    else
-                    {
-                        AABB aabb = new AABB();
-                        aabb.Combine(ref leafAABB, ref _nodes[child2].AABB);
-                        float oldArea = _nodes[child2].AABB.Perimeter;
-                        float newArea = aabb.Perimeter;
-                        cost2 = newArea - oldArea + inheritanceCost;
-                    }
-
-                    // Descend according to the minimum cost.
-                    if (cost < cost1 && cost1 < cost2)
-                    {
-                        break;
-                    }
-
-                    // Descend
-                    if (cost1 < cost2)
-                    {
-                        index = child1;
-                    }
-                    else
-                    {
-                        index = child2;
-                    }
-                }
-
-                int sibling = index;
-
-                // Create a new parent.
-                int oldParent = _nodes[sibling].ParentOrNext;
-
-                DynamicTreeSignal.Release();
-
-                int newParent = AllocateNode();
-
-                DynamicTreeSignal.Wait(100);
-
-                _nodes[newParent].ParentOrNext = oldParent;
-                _nodes[newParent].UserData = default(T);
-                _nodes[newParent].AABB.Combine(ref leafAABB, ref _nodes[sibling].AABB);
-                _nodes[newParent].Height = _nodes[sibling].Height + 1;
-
-                if (oldParent != NullNode)
-                {
-                    // The sibling was not the root.
-                    if (_nodes[oldParent].Child1 == sibling)
-                    {
-                        _nodes[oldParent].Child1 = newParent;
-                    }
-                    else
-                    {
-                        _nodes[oldParent].Child2 = newParent;
-                    }
-
-                    _nodes[newParent].Child1 = sibling;
-                    _nodes[newParent].Child2 = leaf;
-                    _nodes[sibling].ParentOrNext = newParent;
-                    _nodes[leaf].ParentOrNext = newParent;
+                    AABB aabb = new AABB();
+                    aabb.Combine(ref leafAABB, ref _nodes[child1].AABB);
+                    cost1 = aabb.Perimeter + inheritanceCost;
                 }
                 else
                 {
-                    // The sibling was the root.
-                    _nodes[newParent].Child1 = sibling;
-                    _nodes[newParent].Child2 = leaf;
-                    _nodes[sibling].ParentOrNext = newParent;
-                    _nodes[leaf].ParentOrNext = newParent;
-                    _root = newParent;
+                    AABB aabb = new AABB();
+                    aabb.Combine(ref leafAABB, ref _nodes[child1].AABB);
+                    float oldArea = _nodes[child1].AABB.Perimeter;
+                    float newArea = aabb.Perimeter;
+                    cost1 = (newArea - oldArea) + inheritanceCost;
                 }
 
-                // Walk back up the tree fixing heights and AABBs
-                index = _nodes[leaf].ParentOrNext;
+                // Cost of descending into child2
+                float cost2;
+                if (_nodes[child2].IsLeaf())
+                {
+                    AABB aabb = new AABB();
+                    aabb.Combine(ref leafAABB, ref _nodes[child2].AABB);
+                    cost2 = aabb.Perimeter + inheritanceCost;
+                }
+                else
+                {
+                    AABB aabb = new AABB();
+                    aabb.Combine(ref leafAABB, ref _nodes[child2].AABB);
+                    float oldArea = _nodes[child2].AABB.Perimeter;
+                    float newArea = aabb.Perimeter;
+                    cost2 = newArea - oldArea + inheritanceCost;
+                }
+
+                // Descend according to the minimum cost.
+                if (cost < cost1 && cost1 < cost2)
+                {
+                    break;
+                }
+
+                // Descend
+                if (cost1 < cost2)
+                {
+                    index = child1;
+                }
+                else
+                {
+                    index = child2;
+                }
+            }
+
+            int sibling = index;
+
+            // Create a new parent.
+            int oldParent = _nodes[sibling].ParentOrNext;
+            int newParent = AllocateNode();
+            _nodes[newParent].ParentOrNext = oldParent;
+            _nodes[newParent].UserData = default(T);
+            _nodes[newParent].AABB.Combine(ref leafAABB, ref _nodes[sibling].AABB);
+            _nodes[newParent].Height = _nodes[sibling].Height + 1;
+
+            if (oldParent != NullNode)
+            {
+                // The sibling was not the root.
+                if (_nodes[oldParent].Child1 == sibling)
+                {
+                    _nodes[oldParent].Child1 = newParent;
+                }
+                else
+                {
+                    _nodes[oldParent].Child2 = newParent;
+                }
+
+                _nodes[newParent].Child1 = sibling;
+                _nodes[newParent].Child2 = leaf;
+                _nodes[sibling].ParentOrNext = newParent;
+                _nodes[leaf].ParentOrNext = newParent;
+            }
+            else
+            {
+                // The sibling was the root.
+                _nodes[newParent].Child1 = sibling;
+                _nodes[newParent].Child2 = leaf;
+                _nodes[sibling].ParentOrNext = newParent;
+                _nodes[leaf].ParentOrNext = newParent;
+                _root = newParent;
+            }
+
+            // Walk back up the tree fixing heights and AABBs
+            index = _nodes[leaf].ParentOrNext;
+            while (index != NullNode)
+            {
+                index = Balance(index);
+
+                int child1 = _nodes[index].Child1;
+                int child2 = _nodes[index].Child2;
+
+                Debug.Assert(child1 != NullNode);
+                Debug.Assert(child2 != NullNode);
+
+                _nodes[index].Height = 1 + Math.Max(_nodes[child1].Height, _nodes[child2].Height);
+                _nodes[index].AABB.Combine(ref _nodes[child1].AABB, ref _nodes[child2].AABB);
+
+                index = _nodes[index].ParentOrNext;
+            }
+
+            //Validate();
+        }
+
+        private void RemoveLeaf(int leaf)
+        {
+            if (leaf == _root)
+            {
+                _root = NullNode;
+                return;
+            }
+
+            int parent = _nodes[leaf].ParentOrNext;
+            int grandParent = _nodes[parent].ParentOrNext;
+            int sibling;
+            if (_nodes[parent].Child1 == leaf)
+            {
+                sibling = _nodes[parent].Child2;
+            }
+            else
+            {
+                sibling = _nodes[parent].Child1;
+            }
+
+            if (grandParent != NullNode)
+            {
+                // Destroy parent and connect sibling to grandParent.
+                if (_nodes[grandParent].Child1 == parent)
+                {
+                    _nodes[grandParent].Child1 = sibling;
+                }
+                else
+                {
+                    _nodes[grandParent].Child2 = sibling;
+                }
+                _nodes[sibling].ParentOrNext = grandParent;
+                FreeNode(parent);
+
+                // Adjust ancestor bounds.
+                int index = grandParent;
                 while (index != NullNode)
                 {
                     index = Balance(index);
@@ -736,94 +764,20 @@ namespace FarseerPhysics.Collision
                     int child1 = _nodes[index].Child1;
                     int child2 = _nodes[index].Child2;
 
-                    Debug.Assert(child1 != NullNode);
-                    Debug.Assert(child2 != NullNode);
-
-                    _nodes[index].Height = 1 + Math.Max(_nodes[child1].Height, _nodes[child2].Height);
                     _nodes[index].AABB.Combine(ref _nodes[child1].AABB, ref _nodes[child2].AABB);
+                    _nodes[index].Height = 1 + Math.Max(_nodes[child1].Height, _nodes[child2].Height);
 
                     index = _nodes[index].ParentOrNext;
                 }
             }
-            finally
+            else
             {
-                DynamicTreeSignal.Release();
+                _root = sibling;
+                _nodes[sibling].ParentOrNext = NullNode;
+                FreeNode(parent);
             }
-        }
 
-        private void RemoveLeaf(int leaf)
-        {
-            DynamicTreeSignal.Wait(100);
-            try
-            {
-                if (leaf == _root)
-                {
-                    _root = NullNode;
-                    return;
-                }
-
-                int parent = _nodes[leaf].ParentOrNext;
-                int grandParent = _nodes[parent].ParentOrNext;
-                int sibling;
-                if (_nodes[parent].Child1 == leaf)
-                {
-                    sibling = _nodes[parent].Child2;
-                }
-                else
-                {
-                    sibling = _nodes[parent].Child1;
-                }
-
-                if (grandParent != NullNode)
-                {
-                    // Destroy parent and connect sibling to grandParent.
-                    if (_nodes[grandParent].Child1 == parent)
-                    {
-                        _nodes[grandParent].Child1 = sibling;
-                    }
-                    else
-                    {
-                        _nodes[grandParent].Child2 = sibling;
-                    }
-                    _nodes[sibling].ParentOrNext = grandParent;
-
-                    DynamicTreeSignal.Release();
-
-                    FreeNode(parent);
-
-                    DynamicTreeSignal.Wait(100);
-
-                    // Adjust ancestor bounds.
-                    int index = grandParent;
-                    while (index != NullNode)
-                    {
-                        index = Balance(index);
-
-                        int child1 = _nodes[index].Child1;
-                        int child2 = _nodes[index].Child2;
-
-                        _nodes[index].AABB.Combine(ref _nodes[child1].AABB, ref _nodes[child2].AABB);
-                        _nodes[index].Height = 1 + Math.Max(_nodes[child1].Height, _nodes[child2].Height);
-
-                        index = _nodes[index].ParentOrNext;
-                    }
-                }
-                else
-                {
-                    _root = sibling;
-                    _nodes[sibling].ParentOrNext = NullNode;
-
-                    DynamicTreeSignal.Release();
-
-                    FreeNode(parent);
-
-                    DynamicTreeSignal.Wait(100);
-                }
-            }
-            finally
-            {
-                DynamicTreeSignal.Release();
-            }
+            //Validate();
         }
 
         /// <summary>
