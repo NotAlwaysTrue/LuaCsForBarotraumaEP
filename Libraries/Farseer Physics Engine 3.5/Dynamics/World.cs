@@ -1566,7 +1566,7 @@ namespace FarseerPhysics.Dynamics
             input.Point1 = point1;
             input.Point2 = point2;
 
-            RayCastSignal.Wait(100);
+            RayCastSignal.Wait(5);
 
             _rayCastCallback = callback;
             ContactManager.BroadPhase.RayCast(_rayCastCallbackWrapper, ref input, collisionCategory);
