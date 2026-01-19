@@ -23,9 +23,10 @@ namespace Barotrauma
         private object updateLock = new object();
         private double physicsTime;
 
+        // -2 here bcuz we alread have a SEEM thread there
         private static readonly ParallelOptions parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount - 1)
+            MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount - 2)
         };
 
 #if CLIENT
