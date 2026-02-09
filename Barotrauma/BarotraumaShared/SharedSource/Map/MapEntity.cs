@@ -651,7 +651,7 @@ namespace Barotrauma
             var hullList = Hull.HullList.ToList();
             var structureList = Structure.WallList.ToList();
             // First, WHY THIS LINQ GOT A NULL ERROR? Second, WHY??
-            List<Gap> shuffledGaps = Gap.GapList?.OrderBy(g => Rand.Int(int.MaxValue)).ToList() ?? Gap.GapList;
+            List<Gap> shuffledGaps = Gap.GapList?.OrderBy(g => Rand.Int(int.MaxValue)).ToList() ?? Gap.GapList.ToList();
             var itemList = Item.ItemList.ToList();
 
             // First phase: parallel updates that have no order dependencies
