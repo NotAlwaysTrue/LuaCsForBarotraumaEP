@@ -1,6 +1,4 @@
-﻿//#define RUN_PHYSICS_IN_SEPARATE_THREAD
-
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using System.Threading;
 using FarseerPhysics.Dynamics;
 using FarseerPhysics;
@@ -79,14 +77,6 @@ namespace Barotrauma
 
             MapEntity.ClearHighlightedEntities();
 
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-            var physicsThread = new Thread(ExecutePhysics)
-            {
-                Name = "Physics thread",
-                IsBackground = true
-            };
-            physicsThread.Start();
-#endif
         }
 
         public override void Deselect()
@@ -115,14 +105,10 @@ namespace Barotrauma
         public override void Update(double deltaTime)
         {
 
+            var submarines = Submarine.Loaded.ToList();
+            var physicsBodies = PhysicsBody.List.ToList();
+
 #warning For now CL side performance counter is partly useless bucz multiple changes on such things. Need time to take care of it
-
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-            physicsTime += deltaTime;
-            lock (updateLock)
-            { 
-#endif
-
 
 #if DEBUG && CLIENT
             if (GameMain.GameSession != null && !DebugConsole.IsOpen && GUI.KeyboardDispatcher.Subscriber == null)
@@ -151,8 +137,6 @@ namespace Barotrauma
 
             GameTime += deltaTime;
 
-            var physicsBodies = PhysicsBody.List.ToList();
-
             Parallel.ForEach(physicsBodies, parallelOptions, body =>
             {
                 if ((body.Enabled || body.UserData is Character) &&
@@ -162,14 +146,6 @@ namespace Barotrauma
                 }
             });
             GameMain.GameSession?.Update((float)deltaTime);
-
-            Parallel.ForEach(physicsBodies, parallelOptions, body =>
-            {
-                if (body.Enabled && body.BodyType != BodyType.Static)
-                {
-                    body.SetPrevTransform(body.SimPosition, body.Rotation);
-                }
-            });
 
             MapEntity.ClearHighlightedEntities();
 
@@ -255,20 +231,19 @@ namespace Barotrauma
             StatusEffect.UpdateAll((float)deltaTime);
 #endif
 
-            var submarines = Submarine.Loaded.ToList();
-
-            Parallel.ForEach(submarines, parallelOptions, sub =>
+            foreach (Submarine sub in submarines)
             {
                 sub.SetPrevTransform(sub.Position);
-            });
+            }
 
-            Parallel.ForEach(physicsBodies, parallelOptions, body =>
+            foreach (var body in physicsBodies)
             {
-                if (body.Enabled && body.BodyType != FarseerPhysics.BodyType.Static) 
-                { 
-                    body.SetPrevTransform(body.SimPosition, body.Rotation); 
+                if (body.Enabled && body.BodyType != FarseerPhysics.BodyType.Static)
+                {
+                    body.SetPrevTransform(body.SimPosition, body.Rotation);
                 }
-            });
+            }
+
 
 #if CLIENT
             MapEntity.UpdateAll((float)deltaTime, cam, parallelOptions);
@@ -307,8 +282,6 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Submarine", sw.ElapsedTicks);
             sw.Restart();
 #endif
-
-#if !RUN_PHYSICS_IN_SEPARATE_THREAD
             try
             {
                 GameMain.World.Step((float)Timing.Step);
@@ -319,17 +292,12 @@ namespace Barotrauma
                 DebugConsole.ThrowError(errorMsg, e);
                 GameAnalyticsManager.AddErrorEventOnce("GameScreen.Update:WorldLockedException" + e.Message, GameAnalyticsManager.ErrorSeverity.Critical, errorMsg);
             }
-#endif
 
 #if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Physics", sw.ElapsedTicks);
 #endif
             UpdateProjSpecific(deltaTime);
-
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-            }
-#endif
         }
 
         partial void UpdateProjSpecific(double deltaTime);

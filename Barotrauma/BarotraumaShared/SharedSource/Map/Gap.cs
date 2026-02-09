@@ -814,6 +814,7 @@ namespace Barotrauma
             {
                 SingleThreadWorker.GlobalWorker.AddAction(() =>
                 {
+                    if (outsideCollisionBlocker == null) { return; }
                     outsideCollisionBlocker.Enabled = false; 
                 });
                 
