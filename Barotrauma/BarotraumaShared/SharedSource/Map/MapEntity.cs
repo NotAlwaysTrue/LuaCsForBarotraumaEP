@@ -650,7 +650,8 @@ namespace Barotrauma
             // Buffer lists to avoid repeated allocations
             var hullList = Hull.HullList.ToList();
             var structureList = Structure.WallList.ToList();
-            var gapList = Gap.GapList.ToList();
+            // First, WHY THIS LINQ GOT A NULL ERROR? Second, WHY??
+            List<Gap> shuffledGaps = Gap.GapList?.OrderBy(g => Rand.Int(int.MaxValue)).ToList() ?? Gap.GapList;
             var itemList = Item.ItemList.ToList();
 
             // First phase: parallel updates that have no order dependencies
@@ -679,14 +680,12 @@ namespace Barotrauma
 
                 // moved waterflow reset here to see if we can reduce at least some time
                 {
-                    // if crashed, go ask the god damn physics engine :(
-                    var shuffledGaps = gapList.OrderBy(g => Rand.Int(int.MaxValue)).ToList();
+                    if (shuffledGaps == null) { shuffledGaps = Gap.GapList; }
                     Parallel.ForEach(shuffledGaps, parallelOptions, gap =>
                     {
                         gap.ResetWaterFlowThisFrame();
                         gap.Update(deltaTime, cam);
                     });
-                    SingleThreadWorker.GlobalWorker.RunActions();
                 },
                 // Powered components update
                 () =>
@@ -694,6 +693,8 @@ namespace Barotrauma
                     Powered.UpdatePower(deltaTime);
                 }
             );
+
+            SingleThreadWorker.GlobalWorker.RunActions();
 
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
