@@ -650,8 +650,12 @@ namespace Barotrauma
             // Buffer lists to avoid repeated allocations
             var hullList = Hull.HullList.ToList();
             var structureList = Structure.WallList.ToList();
-            // First, WHY THIS LINQ GOT A NULL ERROR? Second, WHY??
-            List<Gap> shuffledGaps = Gap.GapList?.OrderBy(g => Rand.Int(int.MaxValue)).ToList() ?? Gap.GapList.ToList();
+
+            List<Gap> gapList = Gap.GapList.ToList();
+            List<Gap> shuffledGaps = new List<Gap>(gapList?.OrderBy(g => Rand.Int(int.MaxValue)));
+            // In case if it failed, but why it would fail?
+            shuffledGaps = shuffledGaps ?? gapList;
+
             var itemList = Item.ItemList.ToList();
 
             // First phase: parallel updates that have no order dependencies
@@ -680,7 +684,7 @@ namespace Barotrauma
 
                 // moved waterflow reset here to see if we can reduce at least some time
                 {
-                    if (shuffledGaps == null) { shuffledGaps = Gap.GapList; }
+                    // PLEASE WORK
                     Parallel.ForEach(shuffledGaps, parallelOptions, gap =>
                     {
                         gap.ResetWaterFlowThisFrame();
