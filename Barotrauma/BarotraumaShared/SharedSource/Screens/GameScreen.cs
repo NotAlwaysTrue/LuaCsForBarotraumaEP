@@ -236,13 +236,13 @@ namespace Barotrauma
                 sub.SetPrevTransform(sub.Position);
             }
 
-            foreach (var body in physicsBodies)
+            Parallel.ForEach(physicsBodies, parallelOptions, body =>
             {
                 if (body.Enabled && body.BodyType != FarseerPhysics.BodyType.Static)
                 {
                     body.SetPrevTransform(body.SimPosition, body.Rotation);
                 }
-            }
+            });
 
 
 #if CLIENT

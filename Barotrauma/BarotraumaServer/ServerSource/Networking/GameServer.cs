@@ -1154,7 +1154,9 @@ namespace Barotrauma.Networking
             }
             else
             {
-                KickClient(c, errorStr);
+                //Is it necessary to kick a client for a non-existing entity?
+                //there are plenty of things have been done if received an non-existing entity update.
+                //KickClient(c, errorStr);
             }
         }
 
