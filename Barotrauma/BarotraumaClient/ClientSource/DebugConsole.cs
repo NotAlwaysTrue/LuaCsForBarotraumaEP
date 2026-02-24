@@ -3553,6 +3553,11 @@ namespace Barotrauma
                  ContentPackageManager.RegularPackages.Select(p => p.Name).ToArray() 
             }));
 
+            commands.Add(new Command("ShowServerPerf", "Immediately log server performance info", (string[] args) =>
+            {
+                // TODO: Not yet :)
+            }));
+
 #if WINDOWS
             commands.Add(new Command("startdedicatedserver", "", (string[] args) =>
             {
@@ -3585,6 +3590,14 @@ namespace Barotrauma
                     NewMessage("Disabled ingame mod swapping");
                 }
             }));*/
+
+            AssignOnClientExecute(
+                "ShowServerPerf",
+                (string[] args) =>
+                {
+                    GameMain.Client?.SendConsoleCommand("ShowServerPerf");
+                }
+            );
 
             AssignOnClientExecute(
                 "giveperm",
