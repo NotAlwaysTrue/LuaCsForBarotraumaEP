@@ -1317,7 +1317,7 @@ namespace Barotrauma
                 GameMain.LuaCs.ToggleDebugger(port);
             }));
 
-            commands.Add(new Command("install_cl_lua|install_cl|install_cl_cs|install_cl_luacs", "Installs Client-Side LuaCs into your client.", (string[] args) =>
+            commands.Add(new Command("install_cl_ep", "Installs Client-Side ProjectEP into your client.", (string[] args) =>
             {
                 LuaCsInstaller.Install();
             }));
@@ -2772,8 +2772,15 @@ namespace Barotrauma
             commands.Add(new Command("ShowServerPerf", "Immediately log server performance info in ServerMessage", (string[] args) =>
             {
                 GameServer.Log(PerformanceMonitor.PM.ToString(), ServerLog.MessageType.ServerMessage);
-                NewMessage(PerformanceMonitor.PM.ToString(), Color.Green);
             }));
+
+            AssignOnClientRequestExecute(
+                "ShowServerPerf",
+                (senderClient, cursorWorldPos, args) =>
+                {
+                    GameMain.Server.SendConsoleMessage(PerformanceMonitor.PM.ToString(), senderClient);
+                }
+            );
 
 #if DEBUG
             commands.Add(new Command("spamevents", "A debug command that creates a ton of entity events.", (string[] args) =>

@@ -40,12 +40,10 @@ env:
     windows:server:Windows/Server
     linux:server:Linux/Server
     mac:server:Mac/Server
+    windows:client:Windows/Client
+    linux:client:Linux/Client
+    mac:client:Mac/Client/Barotrauma.app/Contents/MacOS
   ARCHIVE_BASE_NAME: luacsforbarotraumaEP
-  # Clients are removed cuz we dont actually have one :(
-  # windows:client:Windows/Client
-  # linux:client:Linux/Client
-  # mac:client:Mac/Client/Barotrauma.app/Contents/MacOS
-
   # XXX: these file names are subject to shell expansion.
   # Be careful when using special characters.
   ARCHIVE_FILES_SERVER: |

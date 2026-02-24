@@ -82,9 +82,9 @@ namespace Barotrauma
                 }
             };
 
-            new GUIButton(new RectTransform(new Vector2(1f, 0.1f), list.Content.RectTransform), $"Remove Client-Side LuaCs", style: "GUIButtonSmall")
+            new GUIButton(new RectTransform(new Vector2(1f, 0.1f), list.Content.RectTransform), $"Remove Client-Side ProjectEP", style: "GUIButtonSmall")
             {
-                ToolTip = "Remove Client-Side LuaCs.",
+                ToolTip = "Remove Client-Side ProjectEP.",
                 OnClicked = (tb, userdata) =>
                 {
                     LuaCsInstaller.Uninstall();

@@ -15,7 +15,7 @@ namespace Barotrauma
                 return;
             }
 
-            var msg = new GUIMessageBox("Confirm", "Are you sure you want to remove Client-Side LuaCs?", new LocalizedString[2] { TextManager.Get("Yes"), TextManager.Get("Cancel") });
+            var msg = new GUIMessageBox("Confirm", "Are you sure you want to remove Client-Side ProjectEP?", new LocalizedString[2] { TextManager.Get("Yes"), TextManager.Get("Cancel") });
 
             msg.Buttons[0].OnClicked = (GUIButton button, object obj) =>
             {
