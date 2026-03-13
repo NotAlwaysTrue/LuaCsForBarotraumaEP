@@ -153,7 +153,7 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:GameSession", sw.ElapsedTicks);
             sw.Restart(); 
 
-            GameMain.ParticleManager.Update((float)deltaTime);
+            GameMain.ParticleManager?.Update((float)deltaTime);
 
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Particle", sw.ElapsedTicks);

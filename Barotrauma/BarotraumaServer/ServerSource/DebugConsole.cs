@@ -1317,10 +1317,14 @@ namespace Barotrauma
                 GameMain.LuaCs.ToggleDebugger(port);
             }));
 
+            /*
             commands.Add(new Command("install_cl_ep", "Installs Client-Side ProjectEP into your client.", (string[] args) =>
             {
                 LuaCsInstaller.Install();
             }));
+            */
+            // Removed due to critical partical issues
+            // TODO: Partical manager requires a refactor to solve race condition
 
             commands.Add(new Command("randomizeseed", "randomizeseed: Toggles level seed randomization on/off.", (string[] args) =>
             {
