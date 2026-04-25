@@ -29,7 +29,7 @@ namespace Barotrauma
         {
             if (pump?.Item == null || pump.Item.Removed) { return false; }
             if (pump.Item.IgnoreByAI(character)) { return false; }
-            if (!pump.Item.IsInteractable(character)) { return false; }
+            if (!pump.Item.IsInteractable(character) || !pump.CanBeSelected) { return false; }
             if (pump.IsAutoControlled) { return false; }
             if (pump.Item.ConditionPercentage <= 0) { return false; }
             if (pump.Item.CurrentHull == null) { return false; }

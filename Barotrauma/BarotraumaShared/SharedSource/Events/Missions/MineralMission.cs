@@ -1,4 +1,4 @@
-using Barotrauma.Extensions;
+﻿using Barotrauma.Extensions;
 using Barotrauma.Items.Components;
 using Microsoft.Xna.Framework;
 using System;
@@ -46,6 +46,12 @@ namespace Barotrauma
                     .Select(p => (ModifyMessage(Prefab.SonarLabel, color: false), p.Position));
             }
         }
+
+        /// <summary>
+        /// Minerals spawned by the mission. Note that minerals that were already present in the level may have also been used as targets.
+        /// Each list of items represents a separate cluster of minerals.
+        /// </summary>
+        public IEnumerable<List<Item>> SpawnedResources => spawnedResources.Values;
 
         public override LocalizedString SuccessMessage => ModifyMessage(base.SuccessMessage);
         public override LocalizedString FailureMessage => ModifyMessage(base.FailureMessage);
@@ -169,7 +175,7 @@ namespace Barotrauma
             }
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             return EnoughHaveBeenCollected();
         }

@@ -72,6 +72,7 @@ namespace Barotrauma
                     EnableSplashScreen = true,
                     PauseOnFocusLost = true,
                     RemoteMainMenuContentUrl = "https://www.barotraumagame.com/gamedata/",
+                    RemoteContentTimeoutSeconds = 15f,
                     AimAssistAmount = DefaultAimAssist,
                     ShowEnemyHealthBars = EnemyHealthBarMode.ShowAll,
                     ChatSpeechBubbles = true,
@@ -167,6 +168,17 @@ namespace Barotrauma
             public bool EnableSubmarineAutoSave;
             public Identifier QuickStartSub;
             public string RemoteMainMenuContentUrl;
+
+            /// <summary>
+            /// Timeout in seconds for HTTP requests to remote content servers.
+            /// </summary>
+            public float RemoteContentTimeoutSeconds;
+
+            /// <summary>
+            /// Returns <see cref="RemoteContentTimeoutSeconds"/> converted to milliseconds needed by eg. RestSharp.
+            /// </summary>
+            public readonly int RemoteContentTimeoutMs => (int)(RemoteContentTimeoutSeconds * 1000);
+
 #if CLIENT
             public Eos.EosSteamPrimaryLogin.CrossplayChoice CrossplayChoice;
             public XElement SavedCampaignSettings;

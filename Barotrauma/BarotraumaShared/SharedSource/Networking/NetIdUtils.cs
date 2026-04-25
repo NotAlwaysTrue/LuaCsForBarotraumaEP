@@ -33,13 +33,7 @@ namespace Barotrauma.Networking
         /// regarding its relation to values other than the input.
         /// </summary>
         public static ushort GetIdOlderThan(ushort id)
-#if DEBUG
-            // Debug implementation has some RNG to discourage bad assumptions about the return value
-            => unchecked((ushort)(id - 1 - Rand.Int(500, sync: Rand.RandSync.Unsynced)));
-#else
-            // Release implementation favors performance
             => unchecked((ushort)(id - 1));
-#endif
 
         public static ushort Difference(ushort id1, ushort id2)
         {

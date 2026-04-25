@@ -257,6 +257,7 @@ namespace Barotrauma
                     {
                         DialogueIdentifier = AIObjectiveGoTo.DialogCannotReachTarget,
                         TargetName = target.Item.Name,
+                        ForceWalkPermanently = ForceWalk,
                         endNodeFilter = EndNodeFilter ?? AIObjectiveGetItem.CreateEndNodeFilter(target.Item)
                     },
                         onAbandon: () => Abandon = true,

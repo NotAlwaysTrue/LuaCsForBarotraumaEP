@@ -547,7 +547,7 @@ namespace Barotrauma
             }
         }
 
-        public void Draw(SpriteBatch spriteBatch, Camera cam)
+        public void Draw(SpriteBatch spriteBatch, Camera cam, bool onlyDrawSeveredLimbs)
         {
             if (simplePhysicsEnabled) { return; }
 
@@ -573,8 +573,12 @@ namespace Barotrauma
             {
                 foreach (Limb limb in limbs) { limb.ActiveSprite.Depth += depthOffset; }
             }
-            for (int i = 0; i < limbs.Length; i++)
+            for (int i = 0; i < inversedLimbDrawOrder.Length; i++)
             {
+                if (onlyDrawSeveredLimbs && !inversedLimbDrawOrder[i].IsSevered) 
+                {
+                    continue; 
+                }
                 inversedLimbDrawOrder[i].Draw(spriteBatch, cam, color);
             }
             if (!MathUtils.NearlyEqual(depthOffset, 0.0f))

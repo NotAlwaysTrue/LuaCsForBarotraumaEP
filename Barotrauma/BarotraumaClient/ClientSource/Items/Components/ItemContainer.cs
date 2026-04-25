@@ -552,9 +552,9 @@ namespace Barotrauma.Items.Components
                 if (flippedY) { origin.Y = contained.Item.Sprite.SourceRect.Height - origin.Y; }
 
                 float containedSpriteDepth = ContainedSpriteDepth < 0.0f ? contained.Item.Sprite.Depth : ContainedSpriteDepth;
-                if (i < containedSpriteDepths.Length)
+                if (targetSlotIndex < containedSpriteDepths.Length)
                 {
-                    containedSpriteDepth = containedSpriteDepths[i];
+                    containedSpriteDepth = containedSpriteDepths[targetSlotIndex];
                 }
                 containedSpriteDepth = itemDepth + (containedSpriteDepth - (item.Sprite?.Depth ?? item.SpriteDepth)) / 10000.0f;
                 

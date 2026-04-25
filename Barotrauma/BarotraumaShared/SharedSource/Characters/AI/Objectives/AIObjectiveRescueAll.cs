@@ -136,7 +136,7 @@ namespace Barotrauma
         public static bool IsValidTarget(Character target, Character character, out bool ignoredAsMinorWounds)
         {
             ignoredAsMinorWounds = false;
-            if (target == null || target.IsDead || target.Removed) { return false; }
+            if (target == null || target.IsDead || target.Removed || target.InvisibleTimer > 0.0f) { return false; }
             if (target.IsInstigator) { return false; }
             if (target.IsPet) { return false; }
             if (!HumanAIController.IsFriendly(character, target, onlySameTeam: true)) { return false; }

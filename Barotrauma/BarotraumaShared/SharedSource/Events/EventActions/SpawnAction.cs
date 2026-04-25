@@ -271,6 +271,10 @@ namespace Barotrauma
                                 ParentEvent.AddTarget(TargetTag, newCharacter);
                             }
                             spawnedEntity = newCharacter;
+                            if (newCharacter is { AIController: EnemyAIController enemyAi, Submarine: Submarine ownSub })
+                            {
+                                enemyAi.SetUnattackableSubmarines(ownSub);
+                            }
                         });
                     }
                 }

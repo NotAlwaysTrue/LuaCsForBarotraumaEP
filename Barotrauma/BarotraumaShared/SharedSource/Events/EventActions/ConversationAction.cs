@@ -14,6 +14,33 @@ namespace Barotrauma
     /// </summary>
     partial class ConversationAction : EventAction
     {
+        public class OptionActionGroup : SubactionGroup
+        {
+            [Serialize("", IsPropertySaveable.Yes, description: "The text to display in the option.")]
+            public string Text { get; set; }
+
+            [Serialize(false, IsPropertySaveable.Yes, description: "Should this option end the conversation (closing the conversation prompt?). " +
+                "By default, options that don't have any actions inside them, or that only have a GoTo action, end the conversation. " +
+                "But if there are other actions inside the option, the game assumes there may be some kind of a follow-up coming to the conversation, " +
+                "and by default leaves it open.")]
+            public bool EndConversation { get; set; }
+
+            [Serialize(false, IsPropertySaveable.Yes, description: $"If enabled, the player will send the {nameof(Text)} in chat when selecting the option, or if {nameof(ForceSayText)} is not empty, will send that instead.")]
+            public bool ForceSay { get; set; }
+
+            [Serialize(false, IsPropertySaveable.Yes, description: "If enabled, the message sent in chat will be sent in radio chat instead.")]
+            public bool ForceSayInRadio { get; set; }
+
+            [Serialize("", IsPropertySaveable.Yes, description: $"Message sent in chat, if empty, {nameof(Text)} is used instead.")]
+            public string ForceSayText { get; set; }
+
+            [Serialize(true, IsPropertySaveable.Yes, description: "Should the chat message be stripped of any quotation mark characters?")]
+            public bool ForceSayRemoveQuotes { get; set; }
+
+            public OptionActionGroup(ScriptedEvent scriptedEvent, ContentXElement element) : base(scriptedEvent, element)
+            {
+            }
+        }
 
         public enum DialogTypes
         {
@@ -32,6 +59,18 @@ namespace Barotrauma
 
         [Serialize("", IsPropertySaveable.Yes, description: "The text to display in the prompt. Can be the text as-is, or a tag referring to a line in a text file.")]
         public string Text { get; set; }
+
+        [Serialize(false, IsPropertySaveable.Yes, description: $"If enabled, the speaker will send the {nameof(Text)} in chat, or if {nameof(ForceSayText)} is not empty, will send that instead. Note: requires a valid SpeakerTag to be defined.")]
+        public bool ForceSay { get; set; }
+
+        [Serialize(false, IsPropertySaveable.Yes, description: "If enabled, the message sent in chat by the speaker will be sent in radio chat instead.")]
+        public bool ForceSayInRadio { get; set; }
+
+        [Serialize("", IsPropertySaveable.Yes, description: $"Message sent in chat by the speaker, if empty, {nameof(Text)} is used instead.")]
+        public string ForceSayText { get; set; }
+
+        [Serialize(true, IsPropertySaveable.Yes, description: "Should the chat message be stripped of any quotation mark characters?")]
+        public bool ForceSayRemoveQuotes { get; set; }
 
         [Serialize("", IsPropertySaveable.Yes, description: "Tag of the character who's speaking. Makes a speech bubble icon appear above the character to indicate you can speak with them, and stops the character in place when the conversation triggers. Also allows the conversation to be interrupted if the speaker dies or becomes incapacitated mid-conversation.")]
         public Identifier SpeakerTag { get; set; }
@@ -75,7 +114,7 @@ namespace Barotrauma
         private AIObjective prevIdleObjective, prevGotoObjective;
         private AIObjective npcWaitObjective;
 
-        public List<SubactionGroup> Options { get; private set; }
+        public List<OptionActionGroup> Options { get; private set; }
 
         public SubactionGroup Interrupted { get; private set; }
 
@@ -99,12 +138,12 @@ namespace Barotrauma
         {
             actionCount++;
             Identifier = actionCount;
-            Options = new List<SubactionGroup>();
+            Options = new List<OptionActionGroup>();
             foreach (var elem in element.Elements())
             {
                 if (elem.Name.LocalName.Equals("option", StringComparison.OrdinalIgnoreCase))
                 {
-                    Options.Add(new SubactionGroup(ParentEvent, elem));
+                    Options.Add(new OptionActionGroup(ParentEvent, elem));
                 }
                 else if (elem.Name.LocalName.Equals("interrupt", StringComparison.OrdinalIgnoreCase))
                 {
@@ -215,6 +254,10 @@ namespace Barotrauma
             interrupt = false;
             dialogOpened = false;
             Speaker = null;
+#if CLIENT
+            dialogBox?.Close();
+            dialogBox = null;
+#endif
         }
 
         /// <summary>
@@ -292,6 +335,7 @@ namespace Barotrauma
                 if (dialogOpened)
                 {
                     lastActiveTime = Timing.TotalTime;
+
 #if CLIENT
                     if (GUIMessageBox.MessageBoxes.Any(mb => mb.UserData as string == "ConversationAction"))
                     {
@@ -350,7 +394,7 @@ namespace Barotrauma
                 }
                 else
                 {
-                    TryStartConversation(null);
+                    TryStartConversation(Speaker);
                 }
             }
             else
@@ -467,11 +511,26 @@ namespace Barotrauma
                 ParentEvent.AddTarget(InvokerTag, targetCharacter);
             }
 
-            ShowDialog(speaker, targetCharacter);
+            if (ForceSay)
+            {
+                speaker?.ForceSay(
+                    ForceSayText.IsNullOrEmpty() ? TextManager.Get(Text).Fallback(Text) : TextManager.Get(ForceSayText).Fallback(ForceSayText), 
+                    ForceSayInRadio, 
+                    ForceSayRemoveQuotes,
+                    // Small delay so the speaking character doesn't talk at the same time as the player
+                    delay: 0.7f);
+            }
+
+            ShowDialog(Speaker, targetCharacter);
 
             dialogOpened = true;
-            if (speaker != null)
+            if (Speaker != null)
             {
+                Speaker = speaker;
+
+                // Set the Speaker of the child conversation actions so they know which character is speaking
+                Options.SelectMany(static op => op.Actions).OfType<ConversationAction>().ForEach(action => action.Speaker = speaker);
+
                 speaker.CampaignInteractionType = CampaignMode.InteractionType.None;
                 speaker.SetCustomInteract(null, null);
 #if SERVER

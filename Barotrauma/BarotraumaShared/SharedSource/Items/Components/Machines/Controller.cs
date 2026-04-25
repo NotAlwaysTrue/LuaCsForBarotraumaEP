@@ -1,9 +1,12 @@
-﻿using FarseerPhysics;
-using Barotrauma.Networking;
+﻿using Barotrauma.Networking;
+using FarseerPhysics;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Xml.Linq;
 
 namespace Barotrauma.Items.Components
@@ -45,6 +48,39 @@ namespace Barotrauma.Items.Components
         private Camera cam;
 
         private Character user;
+        public Character User
+        {
+            get { return user; }
+            private set
+            {
+                if (user == value)
+                {
+                    return;
+                }
+
+                user = value;
+
+                if (user != null)
+                {
+                    teleportTransition = 0f;
+                    teleportStartPosition = user.WorldPosition;
+                }
+#if SERVER
+                item.CreateServerEvent(this);
+#endif
+
+#if CLIENT
+                UpdateMsg();
+
+                if (HideAllItemComponentHUDs && Character.Controlled == user)
+                {
+                    // Prevents any UIs in this item from briefly showing up when you select this controller, since
+                    // activeHUDs would take a single frame to be updated to not contain any other item component HUD
+                    Item.ClearActiveHUDs();
+                }
+#endif
+            }
+        }
 
         private Item focusTarget;
         private float targetRotation;
@@ -53,11 +89,6 @@ namespace Barotrauma.Items.Components
         {
             get { return userPos; }
             set { userPos = value; }
-        }
-
-        public Character User
-        {
-            get { return user; }
         }
 
         public IEnumerable<LimbPos> LimbPositions { get { return limbPositions; } }
@@ -123,6 +154,13 @@ namespace Barotrauma.Items.Components
             set;
         }
 
+        [Serialize(false, IsPropertySaveable.No, description: "Should the HUDs of all item components in this item be hidden when a character is using this controller.")]
+        public bool HideAllItemComponentHUDs
+        {
+            get;
+            set;
+        }
+
         public enum UseEnvironment
         {
             Air, Water, Both
@@ -150,6 +188,49 @@ namespace Barotrauma.Items.Components
         {
             get;
             set;
+        }
+
+        [Serialize(false, IsPropertySaveable.No, description: "Can a character put another character into this controller by dragging them and selecting this controller?")]
+        public bool AllowPuttingInOtherCharacters
+        {
+            get;
+            set;
+        }
+
+        [Serialize(true, IsPropertySaveable.No, description: "Can a character select this controller by themselves?")]
+        public bool CanBeSelectedByCharacters
+        {
+            get;
+            set;
+        }
+
+        [Serialize(false, IsPropertySaveable.No, description: "If a character selects this controller, but another character already has it selected, should it be kicked out?")]
+        public bool SelectingKicksCharacterOut
+        {
+            get;
+            set;
+        }
+
+        [Serialize("", IsPropertySaveable.No, description: "Message displayed when there's a character inside this controller.")]
+        public string KickOutCharacterMsg
+        {
+            get;
+            set;
+        }
+
+        [Serialize("", IsPropertySaveable.No, description: "Message displayed when you are putting a character into the controller.")]
+        public string PutOtherCharacterMsg
+        {
+            get;
+            set;
+        }
+
+
+        [Serialize("", IsPropertySaveable.No, description: "Spawns this item in the first available item container slot when a character selects this controller, if the item container is full, the character will not be able to select the controller.")]
+        public Identifier SpawnItemOnSelected
+        {
+            get;
+            private set;
         }
 
         public bool ControlCharacterPose
@@ -204,6 +285,23 @@ namespace Barotrauma.Items.Components
             set;
         }
 
+        /// <summary>
+        /// Used to determine how fast the character is teleported
+        /// to the item when they first select the controller.
+        /// Only relevant for <see cref="ForceUserToStayAttached" />
+        /// </summary>
+        private const float TeleportTransitionSpeed = 8f;
+        private float teleportTransition = 0f;
+        private Vector2 teleportStartPosition;
+
+        private readonly ItemPrefab spawnItemOnSelectedPrefab;
+        private readonly ItemContainer containerToSpawnOnSelectedItem;
+
+        /// <summary>
+        /// Item spawned by <see cref="spawnItemOnSelectedPrefab"/>
+        /// </summary>
+        private Item spawnedItemOnSelected = null;
+
         public Controller(Item item, ContentXElement element)
             : base(item, element)
         {
@@ -211,6 +309,18 @@ namespace Barotrauma.Items.Components
             Enum.TryParse(element.GetAttributeString("direction", "None"), out dir);
             LoadLimbPositions(element);
             IsActive = true;
+
+            containerToSpawnOnSelectedItem = item.GetComponent<ItemContainer>();
+
+            if (!SpawnItemOnSelected.IsEmpty && !ItemPrefab.Prefabs.TryGet(SpawnItemOnSelected, out spawnItemOnSelectedPrefab))
+            {
+                DebugConsole.ThrowError($"Failed to find item prefab \"{SpawnItemOnSelected}\"");
+            }
+
+            if (containerToSpawnOnSelectedItem == null && !SpawnItemOnSelected.IsEmpty)
+            {
+                DebugConsole.ThrowError($"Error - Controller has a {nameof(SpawnItemOnSelected)} but no ItemContainer defined");
+            }
         }
 
         /// <summary>
@@ -236,58 +346,77 @@ namespace Barotrauma.Items.Components
                 item.SendSignal(signal, "trigger_out");
             }
 
-            if (forceSelectNextFrame && user != null)
+            if (forceSelectNextFrame && User != null)
             {
-                user.SelectedItem = item;
+                User.SelectedItem = item;
             }
             forceSelectNextFrame = false;
 
             userCanInteractCheckTimer -= deltaTime;
 
-            if (user == null 
-                || user.Removed
-                || !user.IsAnySelectedItem(item)
-                || (item.ParentInventory != null && !IsAttachedUser(user))
-                || (UsableIn == UseEnvironment.Water && !user.AnimController.InWater)
-                || (UsableIn == UseEnvironment.Air && user.AnimController.InWater)
-                || !CheckUserCanInteract())
+            if (User == null 
+                || User.Removed
+                || (((User.Stun <= 0f && !User.IsKnockedDownOrRagdolled && !User.LockHands) || !ForceUserToStayAttached) && (!User.IsAnySelectedItem(item) || !CheckUserCanInteract()))
+                || (item.ParentInventory != null && !IsAttachedUser(User))
+                || (UsableIn == UseEnvironment.Water && !User.AnimController.InWater)
+                || (UsableIn == UseEnvironment.Air && User.AnimController.InWater)
+                || !CheckSpawnItem()
+                )
             {
-                if (user != null)
+                if (User != null)
                 {
-                    CancelUsing(user);
-                    user = null;
+                    CancelUsing(User);
+                    User = null;
                 }
                 if (item.Connections == null || !IsToggle || string.IsNullOrEmpty(signal)) { IsActive = false; }
                 return;
             }
 
-            if (ForceUserToStayAttached && Vector2.DistanceSquared(item.WorldPosition, user.WorldPosition) > 0.1f)
+            if (ForceUserToStayAttached)
             {
-                user.TeleportTo(item.WorldPosition);
-                user.AnimController.Collider.ResetDynamics();
-                foreach (var limb in user.AnimController.Limbs)
+                teleportTransition = MathF.Min(teleportTransition + deltaTime * TeleportTransitionSpeed, 1f);
+
+                if (teleportTransition >= 1f)
                 {
-                    if (limb.Removed || limb.IsSevered) { continue; }
-                    limb.body?.ResetDynamics();
+                    // Transition is complete, if someone was holding this character, force them to deselect
+                    // so they aren't holding the character that is now attached to the controller
+                    if (User.SelectedBy != null)
+                    {
+                        User.SelectedBy.SelectedCharacter = null;
+                    }
+                }
+
+                if (User == Character.Controlled 
+                    || teleportTransition < 1f 
+                    || Vector2.DistanceSquared(item.WorldPosition, User.WorldPosition) > 0.1f)
+                {
+                    var targetPosition = Vector2.Lerp(teleportStartPosition, item.WorldPosition, teleportTransition);
+                    User.TeleportTo(targetPosition);
+                    User.AnimController.Collider.ResetDynamics();
+                    foreach (var limb in User.AnimController.Limbs)
+                    {
+                        if (limb.Removed || limb.IsSevered) { continue; }
+                        limb.body?.ResetDynamics();
+                    }
                 }
             }
 
-            user.AnimController.StartUsingItem();
+            User.AnimController.StartUsingItem();
 
             if (userPos != Vector2.Zero)
             {
-                Vector2 diff = (item.WorldPosition + userPos) - user.WorldPosition;
+                Vector2 diff = (item.WorldPosition + userPos) - User.WorldPosition;
 
-                if (user.AnimController.InWater)
+                if (User.AnimController.InWater)
                 {
                     if (diff.LengthSquared() > 30.0f * 30.0f)
                     {
-                        user.AnimController.TargetMovement = Vector2.Clamp(diff * 0.01f, -Vector2.One, Vector2.One);
-                        user.AnimController.TargetDir = diff.X > 0.0f ? Direction.Right : Direction.Left;
+                        User.AnimController.TargetMovement = Vector2.Clamp(diff * 0.01f, -Vector2.One, Vector2.One);
+                        User.AnimController.TargetDir = diff.X > 0.0f ? Direction.Right : Direction.Left;
                     }
                     else
                     {
-                        user.AnimController.TargetMovement = Vector2.Zero;
+                        User.AnimController.TargetMovement = Vector2.Zero;
                         UserInCorrectPosition = true;
                     }
                 }
@@ -295,10 +424,10 @@ namespace Barotrauma.Items.Components
                 {
                     // Secondary items (like ladders or chairs) will control the character position over primary items
                     // Only control the character position if the character doesn't have another secondary item already controlling it
-                    if (!user.HasSelectedAnotherSecondaryItem(Item))
+                    if (!User.HasSelectedAnotherSecondaryItem(Item))
                     {
                         diff.Y = 0.0f;
-                        if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsClient && user != Character.Controlled)
+                        if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsClient && User != Character.Controlled)
                         {
                             if (Math.Abs(diff.X) > 20.0f)
                             {
@@ -308,48 +437,48 @@ namespace Barotrauma.Items.Components
                             else if (Math.Abs(diff.X) > 0.1f)
                             {
                                 //aim to keep the collider at the correct position once close enough
-                                user.AnimController.Collider.LinearVelocity = new Vector2(
+                                User.AnimController.Collider.LinearVelocity = new Vector2(
                                     diff.X * 0.1f,
-                                    user.AnimController.Collider.LinearVelocity.Y);
+                                    User.AnimController.Collider.LinearVelocity.Y);
                             }
                         }
                         else if (Math.Abs(diff.X) > 10.0f)
                         {
-                            user.AnimController.TargetMovement = Vector2.Normalize(diff);
-                            user.AnimController.TargetDir = diff.X > 0.0f ? Direction.Right : Direction.Left;
+                            User.AnimController.TargetMovement = Vector2.Normalize(diff);
+                            User.AnimController.TargetDir = diff.X > 0.0f ? Direction.Right : Direction.Left;
                             return;
                         }
-                        user.AnimController.TargetMovement = Vector2.Zero;
+                        User.AnimController.TargetMovement = Vector2.Zero;
                     }
                     UserInCorrectPosition = true;
                 }
             }
 
-            ApplyStatusEffects(ActionType.OnActive, deltaTime, user);
+            ApplyStatusEffects(ActionType.OnActive, deltaTime, User);
 
             if (limbPositions.Count == 0) { return; }
 
-            user.AnimController.StartUsingItem();
+            User.AnimController.StartUsingItem();
 
-            if (user.SelectedItem != null)
+            if (User.SelectedItem != null)
             {
-                user.AnimController.ResetPullJoints(l => l.IsLowerBody);
+                User.AnimController.ResetPullJoints(l => l.IsLowerBody);
             }
             else
             {
-                user.AnimController.ResetPullJoints();
+                User.AnimController.ResetPullJoints();
             }
 
-            if (dir != 0) { user.AnimController.TargetDir = dir; }
+            if (dir != 0) { User.AnimController.TargetDir = dir; }
 
             foreach (LimbPos lb in limbPositions)
             {
-                Limb limb = user.AnimController.GetLimb(lb.LimbType);
+                Limb limb = User.AnimController.GetLimb(lb.LimbType);
                 if (limb == null || !limb.body.Enabled) { continue; }
                 // Don't move lower body limbs if there's another selected secondary item that should control them
-                if (limb.IsLowerBody && user.HasSelectedAnotherSecondaryItem(Item)) { continue; }
+                if (limb.IsLowerBody && User.HasSelectedAnotherSecondaryItem(Item)) { continue; }
                 // Don't move hands if there's a selected primary item that should control them
-                if (limb.IsArm && Item == user.SelectedSecondaryItem && user.SelectedItem != null) { continue; }
+                if (limb.IsArm && Item == User.SelectedSecondaryItem && User.SelectedItem != null) { continue; }
                 if (lb.AllowUsingLimb)
                 {
                     switch (lb.LimbType)
@@ -357,12 +486,12 @@ namespace Barotrauma.Items.Components
                         case LimbType.RightHand:
                         case LimbType.RightForearm:
                         case LimbType.RightArm:
-                            if (user.Inventory.GetItemInLimbSlot(InvSlotType.RightHand) != null) { continue; }
+                            if (User.Inventory.GetItemInLimbSlot(InvSlotType.RightHand) != null) { continue; }
                             break;
                         case LimbType.LeftHand:
                         case LimbType.LeftForearm:
                         case LimbType.LeftArm:
-                            if (user.Inventory.GetItemInLimbSlot(InvSlotType.LeftHand) != null) { continue; }
+                            if (User.Inventory.GetItemInLimbSlot(InvSlotType.LeftHand) != null) { continue; }
                             break;
                     }
                 }
@@ -374,15 +503,77 @@ namespace Barotrauma.Items.Components
             }
         }
 
+        private bool IsSpawnContainerFull()
+        {
+            if (spawnItemOnSelectedPrefab == null || containerToSpawnOnSelectedItem == null)
+            {
+                return false;
+            }
+
+            if (containerToSpawnOnSelectedItem.Inventory.IsFull())
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool CheckSpawnItem()
+        {
+            if (spawnItemOnSelectedPrefab == null || containerToSpawnOnSelectedItem == null)
+            {
+                return true;
+            }
+
+            if (containerToSpawnOnSelectedItem.Inventory.AllItems.Any(x => x.Prefab == spawnItemOnSelectedPrefab))
+            {
+                return true;
+            }
+
+            if (spawnedItemOnSelected != null && !spawnedItemOnSelected.Removed)
+            {
+                if (spawnedItemOnSelected.ParentInventory != containerToSpawnOnSelectedItem.Inventory)
+                {
+                    // Item was moved or dropped, force the user in this controller out
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+
+            if (IsSpawnContainerFull())
+            {
+                return false;
+            }
+
+            if (GameMain.NetworkMember == null || GameMain.NetworkMember.IsServer)
+            {
+                Entity.Spawner.AddItemToSpawnQueue(spawnItemOnSelectedPrefab, containerToSpawnOnSelectedItem.Inventory, onSpawned: spawnedItem =>
+                {
+                    spawnedItemOnSelected = spawnedItem;
+
+                    var linkedCharacterComponent = spawnedItem.GetComponent<LinkedControllerCharacterComponent>();
+                    if (linkedCharacterComponent != null)
+                    {
+                        linkedCharacterComponent.UpdateLinkedCharacter(User);
+                    }
+                });
+            }
+
+            return true;
+        }
+
         private bool CheckUserCanInteract()
         {
             //optimization: CanInteractWith is relatively heavy (can involve visibility checks for example), let's not do it every frame
-            if (user != null)
+            if (User != null)
             {
                 if (userCanInteractCheckTimer <= 0.0f)
                 {
                     userCanInteractCheckTimer = UserCanInteractCheckInterval;
-                    return user.CanInteractWith(item);
+                    return User.CanInteractWith(item);
                 }
             }
             //we only do the actual check every UserCanInteractCheckInterval seconds
@@ -394,13 +585,13 @@ namespace Barotrauma.Items.Components
 
         public override bool Use(float deltaTime, Character activator = null)
         {
-            if (activator != user)
+            if (activator != User)
             {
                 return false;
             }
-            if (user == null || user.Removed || !user.IsAnySelectedItem(item) || !user.CanInteractWith(item))
+            if (User == null || User.Removed || !User.IsAnySelectedItem(item) || !User.CanInteractWith(item))
             {
-                user = null;
+                User = null;
                 return false;
             }
 
@@ -419,7 +610,7 @@ namespace Barotrauma.Items.Components
             }
             else if (!string.IsNullOrEmpty(output))
             {
-                item.SendSignal(new Signal(output, sender: user), "trigger_out");
+                item.SendSignal(new Signal(output, sender: User), "trigger_out");
             }
 
             lastUsed = Timing.TotalTime;       
@@ -428,13 +619,13 @@ namespace Barotrauma.Items.Components
                 
         public override bool SecondaryUse(float deltaTime, Character character = null)
         {
-            if (user != character)
+            if (User != character)
             {
                 return false;
             }
-            if (user == null || character.Removed || !user.IsAnySelectedItem(item) || !character.CanInteractWith(item))
+            if (User == null || character.Removed || !User.IsAnySelectedItem(item) || !character.CanInteractWith(item))
             {
-                user = null;
+                User = null;
                 return false;
             }
             if (character == null)
@@ -495,7 +686,7 @@ namespace Barotrauma.Items.Components
 
             if (IsOutOfPower()) { return null; }
 
-            item.SendSignal(new Signal(MathHelper.ToDegrees(targetRotation).ToString("G", CultureInfo.InvariantCulture), sender: user), positionOut);
+            item.SendSignal(new Signal(MathHelper.ToDegrees(targetRotation).ToString("G", CultureInfo.InvariantCulture), sender: User), positionOut);
 
             for (int i = item.LastSentSignalRecipients.Count - 1; i >= 0; i--)
             {
@@ -547,7 +738,19 @@ namespace Barotrauma.Items.Components
 
         private void CancelUsing(Character character)
         {
+            if (GameMain.NetworkMember == null || !GameMain.NetworkMember.IsClient)
+            {
+                if (spawnedItemOnSelected != null)
+                {
+                    Entity.Spawner.AddEntityToRemoveQueue(spawnedItemOnSelected);
+                    spawnedItemOnSelected = null;
+                }
+            }
+
             if (character == null || character.Removed) { return; }
+
+            // Wake character's colliders so they don't just float in the air when taken out of the controller
+            character.AnimController.BodyInRest = false;
 
             foreach (LimbPos lb in limbPositions)
             {
@@ -588,31 +791,80 @@ namespace Barotrauma.Items.Components
                 return false;
             }
 
-            //someone already using the item
-            if (user != null && !user.Removed)
+            // Someone already using the item
+            if (User != null && !User.Removed)
             {
-                if (user == activator)
+                // Let the server handle the logic here
+                if (GameMain.NetworkMember is { IsClient: true })
                 {
-                    IsActive = false;
-                    CancelUsing(user);
-                    user = null;
                     return false;
                 }
-                else if (user.IsBot && !activator.IsBot)
+
+                // Prevent user from kicking character out if they are holding another character
+                if (AllowPuttingInOtherCharacters && CanPutSelectedCharacter(activator.SelectedCharacter))
+                {
+                    return false;
+                }
+
+                if (User == activator || SelectingKicksCharacterOut) 
+                {
+#if SERVER
+                    if (User != activator)
+                    {
+                        GameServer.Log($"{GameServer.CharacterLogName(activator)} removed {GameServer.CharacterLogName(User)} from {item.Name}",
+                            ServerLog.MessageType.Attack);
+                    }
+#endif
+
+                    IsActive = false;
+                    CancelUsing(User);
+                    User = null;
+                    return false;
+                }
+                else if (User.IsBot && !activator.IsBot)
                 {
                     if (AllowSelectingWhenSelectedByBot)
                     {
-                        CancelUsing(user);
-                        user = activator;
+                        CancelUsing(User);
+                        User = activator;
                         IsActive = true;
                         return true;
                     }
                 }
                 return AllowSelectingWhenSelectedByOther;
             }
-            else
+            else if (AllowPuttingInOtherCharacters && CanPutSelectedCharacter(activator.SelectedCharacter))
             {
-                user = activator;
+                // Stun pets longer so they don't immediately get out of the controller
+                if (activator.SelectedCharacter.IsPet)
+                {
+                    activator.SelectedCharacter.SetStun(MathF.Max(activator.SelectedCharacter.Stun, 4f), isNetworkMessage: true);
+                }
+                else
+                {
+                    // Small amount of stun since non-ragdolled characters behave weirdly when syncing the periodic teleportation in multiplayer
+                    activator.SelectedCharacter.SetStun(MathF.Max(activator.SelectedCharacter.Stun, 1f), isNetworkMessage: true);
+                }
+
+#if SERVER
+                GameServer.Log($"{GameServer.CharacterLogName(activator)} forced {GameServer.CharacterLogName(activator.SelectedCharacter)} into {item.Name}",
+                    ServerLog.MessageType.Attack);
+#endif
+
+                User = activator.SelectedCharacter;
+                User.SelectedItem = this.Item;
+                IsActive = true;
+                if (ForceUserToStayAttached && item.Container != null)
+                {
+                    forceSelectNextFrame = true;
+                }
+                return false;
+            }
+            else if (CanBeSelectedByCharacters)
+            {
+                activator.DeselectCharacter();
+
+                User = activator;
                 IsActive = true;
                 if (ForceUserToStayAttached && item.Container != null)
                 {
@@ -621,15 +873,12 @@ namespace Barotrauma.Items.Components
                 }
             }
 
-            //allow the selection logic above to run when out of power, but allow sending signals
+            //allow the selection logic above to run when out of power, but disallow sending signals
             if (IsOutOfPower()) { return false; }
-
-#if SERVER
-            item.CreateServerEvent(this);
-#endif            
+       
             if (!string.IsNullOrEmpty(output))
             {
-                item.SendSignal(new Signal(output, sender: user), "signal_out");
+                item.SendSignal(new Signal(output, sender: User), "signal_out");
             }
             return true;
         }
@@ -639,7 +888,7 @@ namespace Barotrauma.Items.Components
         /// </summary>
         public bool IsAttachedUser(Character character)
         {
-            return character != null && character == user && ForceUserToStayAttached;
+            return character != null && character == User && ForceUserToStayAttached;
         }
 
         public override void FlipX(bool relativeToSub)
@@ -668,10 +917,85 @@ namespace Barotrauma.Items.Components
             }
         }
 
+        public override bool HasRequiredItems(Character character, bool addMessage, LocalizedString msg = null)
+        {
+#if CLIENT
+            UpdateMsg();
+#endif
+
+            bool canPutCharacter = AllowPuttingInOtherCharacters && CanPutSelectedCharacter(character.SelectedCharacter, addMessage);
+            bool canKickCharacter = SelectingKicksCharacterOut && User != null && !User.Removed;
+            bool canUseController = CanBeSelectedByCharacters;
+
+            // Prevent kicking a character out when the user is holding another character to put into the controller.
+            // This avoids accidentally taking out a character (e.g. from a deconstructor).
+            if (canPutCharacter && canKickCharacter)
+            {
+#if CLIENT
+                if (addMessage)
+                {
+                    GUI.AddMessage(TextManager.Get("ItemMsgAlreadyHasCharacterFail"), Color.Red, playSound: false);
+                    SoundPlayer.PlayUISound(GUISoundType.PickItemFail);
+                }
+#endif
+
+                return false;
+            }
+
+            if (!canKickCharacter && !canPutCharacter && !canUseController)
+            {
+                return false;
+            }
+
+            if (IsSpawnContainerFull())
+            {
+#if CLIENT
+                if (addMessage)
+                {
+                    GUI.AddMessage(TextManager.Get("ItemMsgNotEnoughSpaceCharacterFail"), Color.Red, playSound: false);
+                    SoundPlayer.PlayUISound(GUISoundType.PickItemFail);
+                }
+#endif
+
+                return false;
+            }
+
+            return base.HasRequiredItems(character, addMessage, msg);
+        }
+
         public override bool HasAccess(Character character)
         {
             if (!item.IsInteractable(character)) { return false; }
             return base.HasAccess(character);
+        }
+
+        private bool CanPutSelectedCharacter(Character character, bool showMessage = false)
+        {
+            if (character == null)
+            {
+                return false;
+            }
+
+            if (!character.IsContainable)
+            {
+#if CLIENT
+                if (showMessage)
+                {
+                    GUI.AddMessage(TextManager.Get("ItemMsgPutCharacterFail"), Color.Red);
+                }
+#endif
+
+                return false;
+            }
+
+            if (character.IsKnockedDownOrRagdolled) { return true; }
+            if (character.LockHands) { return true; }
+            if (character.IsPet) 
+            { 
+                return true; 
+            }
+
+            return false;
         }
 
         partial void HideHUDs(bool value);

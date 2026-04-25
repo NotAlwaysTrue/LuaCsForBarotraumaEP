@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using Barotrauma.Steam;
 using Barotrauma.Extensions;
+using Barotrauma.LuaCs.Events;
 
 namespace Barotrauma
 {
@@ -1286,45 +1287,6 @@ namespace Barotrauma
             {
                 GameMain.NetLobbyScreen.LevelSeed = string.Join(" ", args);
             }));
-
-
-            commands.Add(new Command("lua", "lua: Runs a string.", (string[] args) =>
-            {
-                try
-                {
-                    GameMain.LuaCs.Lua.DoString(string.Join(" ", args));
-                }
-                catch (Exception ex)
-                {
-                    LuaCsLogger.HandleException(ex, LuaCsMessageOrigin.LuaMod);
-                }
-            }));
-
-            commands.Add(new Command("reloadlua|reloadcs|reloadluacs", "Re-initializes the LuaCs environment.", (string[] args) =>
-            {
-                GameMain.LuaCs.Initialize();
-            }));
-
-            commands.Add(new Command("toggleluadebug", "Toggles the MoonSharp Debug Server.", (string[] args) =>
-            {
-                int port = 41912;
-
-                if (args.Length > 0)
-                {
-                    int.TryParse(args[0], out port);
-                }
-
-                GameMain.LuaCs.ToggleDebugger(port);
-            }));
-
-            /*
-            commands.Add(new Command("install_cl_ep", "Installs Client-Side ProjectEP into your client.", (string[] args) =>
-            {
-                LuaCsInstaller.Install();
-            }));
-            */
-            // Removed due to critical partical issues
-            // TODO: Partical manager requires a refactor to solve race condition
 
             commands.Add(new Command("randomizeseed", "randomizeseed: Toggles level seed randomization on/off.", (string[] args) =>
             {

@@ -448,9 +448,10 @@ namespace Barotrauma.Items.Components
             UpdateProjSpecific(deltaTime);
             IsTinkering = false;
 
-            if (prevSentConditionValue != (int)item.ConditionPercentage || conditionSignal == null)
+            int condition = (int)(item.Condition / (item.MaxCondition / item.MaxRepairConditionMultiplier) * 100f);
+            if (prevSentConditionValue != condition || conditionSignal == null)
             {
-                prevSentConditionValue = (int)item.ConditionPercentage;
+                prevSentConditionValue = condition;
                 conditionSignal = prevSentConditionValue.ToString();
             }
 

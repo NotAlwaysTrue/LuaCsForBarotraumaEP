@@ -46,7 +46,6 @@ namespace Barotrauma.Networking
         TOGGLE_RESERVE_BENCH,
 
         REQUEST_BACKUP_INDICES, // client wants a list of available backups for a save file
-        LUA_NET_MESSAGE
     }
 
     enum ClientNetSegment
@@ -105,8 +104,6 @@ namespace Barotrauma.Networking
         UNLOCKRECIPE,       //unlocking a fabrication recipe
 
         SEND_BACKUP_INDICES, // the server sends a list of available backups for a save file
-    
-        LUA_NET_MESSAGE
     }
     enum ServerNetSegment
     {

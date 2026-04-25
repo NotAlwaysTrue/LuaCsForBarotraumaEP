@@ -49,6 +49,13 @@ namespace Barotrauma
             }
         }
 
+
+        /// <summary>
+        /// A multiplier for the sound range for the purposes of displaying the target on sonar. 
+        /// E.g. a value of 10 would mean the sonar can detect the target from x10 further than monsters.
+        /// </summary>
+        public float SoundRangeOnSonarMultiplier { get; private set; } = 1.0f;
+
         public float SightRange
         {
             get { return sightRange; }
@@ -206,6 +213,7 @@ namespace Barotrauma
             MinSoundRange = element.GetAttributeFloat("minsoundrange", 0f);
             MaxSightRange = element.GetAttributeFloat("maxsightrange", SightRange);
             MaxSoundRange = element.GetAttributeFloat("maxsoundrange", SoundRange);
+            SoundRangeOnSonarMultiplier = element.GetAttributeFloat(nameof(SoundRangeOnSonarMultiplier), 1.0f);
             FadeOutTime = element.GetAttributeFloat("fadeouttime", FadeOutTime);
             Static = element.GetAttributeBool("static", Static);
             StaticSight = element.GetAttributeBool("staticsight", StaticSight);

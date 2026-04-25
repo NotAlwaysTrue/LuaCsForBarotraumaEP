@@ -583,7 +583,11 @@ namespace Barotrauma
                 {
                     for (int dir = -1; dir <= 1; dir += 2)
                     {
-                        WayPoint closest = stairPoints[i].FindClosest(dir, horizontalSearch: true, new Vector2(minDist * 1.5f, minDist / 2));
+                        //connect to the closest waypoint, preferring non-stair waypoyints
+                        //(it's easier for characters to fully get off stairs before moving on to the next set of stairs, than to move directly from one set of stairs to another)
+                        WayPoint closest =
+                            stairPoints[i].FindClosest(dir, horizontalSearch: true, new Vector2(minDist * 1.5f, minDist / 2), filter: wp => wp.Stairs == null) ??
+                            stairPoints[i].FindClosest(dir, horizontalSearch: true, new Vector2(minDist * 1.5f, minDist / 2));
                         if (closest == null) { continue; }
                         stairPoints[i].ConnectTo(closest);
                     }

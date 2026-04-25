@@ -1,0 +1,30 @@
+<Project>
+	<Target Name="CopyPublicizedFilesOnBuild" AfterTargets="Build">
+        <Copy
+                SourceFiles="$(TargetDir)\Publicized\BarotraumaCore.dll"
+                DestinationFiles="$(TargetDir)\LocalMods\LuaCsForBarotrauma\Publicized\BarotraumaCore.dll"
+        />
+        <Copy Condition="$(DefineConstants.Contains('CLIENT'))"
+              SourceFiles="$(TargetDir)\Publicized\Barotrauma.dll"
+              DestinationFiles="$(TargetDir)\LocalMods\LuaCsForBarotrauma\Publicized\Barotrauma.dll"
+        />
+        <Copy   Condition="$(DefineConstants.Contains('SERVER'))"
+                SourceFiles="$(TargetDir)\Publicized\DedicatedServer.dll"
+                DestinationFiles="$(TargetDir)\LocalMods\LuaCsForBarotrauma\Publicized\DedicatedServer.dll"
+        />
+    </Target>
+    <Target Name="CopyPublicizedFilesOnPublish" AfterTargets="Publish">
+        <Copy
+                SourceFiles="$(PublishDir)\Publicized\BarotraumaCore.dll"
+                DestinationFiles="$(PublishDir)\LocalMods\LuaCsForBarotrauma\Publicized\BarotraumaCore.dll"
+        />
+        <Copy   Condition="$(DefineConstants.Contains('CLIENT'))"
+                SourceFiles="$(PublishDir)\Publicized\Barotrauma.dll"
+                DestinationFiles="$(PublishDir)\LocalMods\LuaCsForBarotrauma\Publicized\Barotrauma.dll"
+        />
+        <Copy   Condition="$(DefineConstants.Contains('SERVER'))"
+                SourceFiles="$(PublishDir)\Publicized\DedicatedServer.dll"
+                DestinationFiles="$(PublishDir)\LocalMods\LuaCsForBarotrauma\Publicized\DedicatedServer.dll"
+        />
+    </Target>
+</Project>

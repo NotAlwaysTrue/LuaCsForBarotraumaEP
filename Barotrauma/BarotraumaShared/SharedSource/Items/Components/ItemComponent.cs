@@ -380,7 +380,7 @@ namespace Barotrauma.Items.Components
                         break;
                     case "requireditem":
                     case "requireditems":
-                        SetRequiredItems(subElement);
+                        SetRequiredItems(subElement, allowEmpty: true);
                         break;
                     case "requiredskill":
                     case "requiredskills":
@@ -1102,6 +1102,9 @@ namespace Barotrauma.Items.Components
             foreach (RelatedItem ri in DisabledRequiredItems)
             {
                 XElement newElement = new XElement("requireditem");
+                //if we have some actual requirements, no need to keep the empty requirement
+                //as a "placeholder" for the user to add requirements in the sub editor
+                if (ri.Identifiers.IsEmpty && RequiredItems.Any()) { continue; }
                 ri.Save(newElement);
                 componentElement.Add(newElement);
             }

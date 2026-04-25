@@ -739,6 +739,12 @@ namespace Barotrauma.Items.Components
                 {
                     picker.Inventory.FlashAllowedSlots(item, Color.Red);
                 }
+                else
+                {
+                    //normally this would be done in the base.OnPicked method, but clients don't call it, 
+                    //but instead rely on the server telling them to put the item in the inventory
+                    SoundPlayer.PlayUISound(GUISoundType.PickItem);
+                }
                 return false;
             }
 #endif

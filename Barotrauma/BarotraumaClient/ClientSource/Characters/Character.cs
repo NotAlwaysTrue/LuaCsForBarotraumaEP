@@ -938,8 +938,8 @@ namespace Barotrauma
         
         public void Draw(SpriteBatch spriteBatch, Camera cam)
         {
-            if (!Enabled || InvisibleTimer > 0.0f) { return; }
-            AnimController.Draw(spriteBatch, cam);
+            if (!Enabled) { return; }
+            AnimController.Draw(spriteBatch, cam, onlyDrawSeveredLimbs: InvisibleTimer > 0.0f);
         }
 
         public void DrawHUD(SpriteBatch spriteBatch, Camera cam, bool drawHealth = true)

@@ -1,5 +1,7 @@
 ﻿using Barotrauma.Extensions;
 using Barotrauma.Items.Components;
+using Barotrauma.LuaCs.Events;
+using Barotrauma.Networking;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
@@ -888,8 +890,8 @@ namespace Barotrauma
                 if (Math.Max(hull1.WorldSurface + hull1.WaveY[hull1.WaveY.Length - 1], hull2.WorldSurface + hull2.WaveY[0]) > WorldRect.Y) { return; }
             }
 
-            var should = GameMain.LuaCs.Hook.Call<bool?>("gapOxygenUpdate", this, hull1, hull2);
-
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventGapOxygenUpdate>(x => should = x.OnGapOxygenUpdate(this, hull1, hull2) ?? should);
             if (should != null && should.Value) return;
 
             float totalOxygen = hull1.Oxygen + hull2.Oxygen;

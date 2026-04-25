@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Items>
+  <Item name="fliptestholdable" identifier="fliptestholdable" Category="Misc" Tags="smallitem" health="35" maxstacksize="1" scale="0.5" isshootable="true" requireaimtouse="true">
+    <sprite texture="Content/Map/Outposts/Art/FactionItems.png" sourcerect="263,193,38,39" depth="0.2" origin="0.5,0.5" />
+    <Body radius="28" density="15" />
+    <LightComponent LightColor="220,150,30,150" range="15" IsOn="true" castshadows="false" lightoffset="40,20" vulnerabletoemp="false" >
+      <IsActiveConditional HasStatusTag="smoking" />
+      <StatusEffect OffsetCopiesEntityTransform="true" offset="40,20" type="OnUse" target="This" statuseffecttags="smoking" duration="0.1" stackable="false">
+        <ParticleEmitter particle="blooddrop" particlespersecond="10" scalemin="3" scalemax="3" velocitymin="0" velocitymax="0" colormultiplier="255,255,255,180" lifetimemultiplier="2"/>
+        <ParticleEmitter particle="smoke" particlespersecond="3" scalemin="0.35" scalemax="0.5" velocitymin="0" velocitymax="10" colormultiplier="255,255,255,200" />
+      </StatusEffect>
+    </LightComponent>
+    <Holdable slots="Any,RightHand,LeftHand" aimable="false" aimpos="32,21" handle1="0,-22" holdangle="0" aimangle="-25" swingamount="0,0" swingspeed="0.5" swingwhenusing="true" msg="ItemMsgPickUpSelect">
+      <StatusEffect type="OnUse" target="This" Condition="-4.0" />
+      <StatusEffect type="OnUse" target="This">
+        <Conditional InWater="false" />
+        <Sound file="Content/Items/Medical/ITEM_cigarette.ogg" range="250" loop="true" selectionmode="Random" />
+      </StatusEffect>
+      <StatusEffect type="OnBroken" target="This"> 
+        <SpawnItem identifier="bananapeel" spawnposition="SameInventory"/>
+        <Remove />
+      </StatusEffect>
+    </Holdable>
+  </Item>
+
+  <Item name="fliptestlight" identifier="fliptestlighttower" width="176" height="352" texturescale="1.0,1.0" scale="0.5" category="Decorative" subcategory="mining" noninteractable="true">
+    <sprite texture="Content/Map/Outposts/Art/TunnelWalls.png" sourcerect="849,1697,176,352" depth="0.97" premultiplyalpha="false" origin="0.5,0.5" />
+    <LightComponent range="160.0" lightcolor="255,234,181,200" IsOn="true" castshadows="false" LightOffset="200,147" allowingameediting="false">
+      <sprite texture="Content/Map/Outposts/Art/TunnelWalls.png" sourcerect="671,1697,176,62" depth="0.1" origin="0.5,0.5" alpha="1.0" />
+      <StatusEffect OffsetCopiesEntityTransform="true" offset="200,147" type="OnActive" target="This" duration="0.1" stackable="false">
+        <ParticleEmitter particle="blooddrop" particlespersecond="10" scalemin="3" scalemax="3" velocitymin="0" velocitymax="0" colormultiplier="255,255,255,180" lifetimemultiplier="2"/>
+        <ParticleEmitter particle="smoke" particlespersecond="3" scalemin="0.35" scalemax="0.5" velocitymin="0" velocitymax="10" colormultiplier="255,255,255,200" />
+      </StatusEffect>
+    </LightComponent>
+  </Item>
+</Items>

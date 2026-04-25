@@ -121,9 +121,9 @@ namespace Barotrauma
                         if (shouldBeRemoved)
                         {
                             bool itemAccessDenied = prevItems.Contains(item) && // if the item was in the inventory before
-                                                       !itemAccessibility[item] && // and the sender is not allowed to access it
-                                                       (item.PreviousParentInventory == null || // and either the item has no previous inventory
-                                                        !sender.Character.CanAccessInventory(item.PreviousParentInventory)); // or the sender can't access the previous inventory
+                                                    !itemAccessibility[item] && // and the sender is not allowed to access it
+                                                    (item.PreviousParentInventory == null || // and either the item has no previous inventory
+                                                    !sender.Character.CanAccessInventory(item.PreviousParentInventory)); // or the sender can't access the previous inventory
                             
                             if (itemAccessDenied)
                             {
@@ -136,7 +136,7 @@ namespace Barotrauma
                             Item droppedItem = item;
                             Entity prevOwner = Owner;
                             Inventory previousInventory = droppedItem.ParentInventory;
-                            droppedItem.Drop(null);
+                            droppedItem.Drop(sender.Character);
                             droppedItem.PreviousParentInventory = previousInventory;
 
                             var previousCharacterInventory = prevOwner switch
@@ -188,9 +188,18 @@ namespace Barotrauma
                             if (holdable != null && !holdable.CanBeDeattached()) { continue; }
 
 
-                            bool itemAccessDenied = !prevItems.Contains(item) && !itemAccessibility[item] &&
-                                                 (sender.Character == null || item.PreviousParentInventory == null || !sender.Character.CanAccessInventory(item.PreviousParentInventory));
-                            
+                            bool itemAccessDenied = !prevItems.Contains(item) && 
+                                                    !itemAccessibility[item] &&
+                                                    (item.PreviousParentInventory == null || 
+                                                    !sender.Character.CanAccessInventory(item.PreviousParentInventory));
+
+                            // Prevent modified clients from being able to steal items from characters by item swapping with an existing item
+                            // due to drag and drop being enabled
+                            if (!sender.Character.CanAccessInventory(this, CharacterInventory.AccessLevel.AllowBotsAndPets) && GetItemAt(slotIndex) != null)
+                            {
+                                itemAccessDenied = true;
+                            }
+
                             //more restricted "adding" of handcuffs: we can't allow putting handcuffs on a player just because dragging and dropping is allowed
                             if (item.HasTag(Tags.HandLockerItem) && !itemAccessDenied)
                             {

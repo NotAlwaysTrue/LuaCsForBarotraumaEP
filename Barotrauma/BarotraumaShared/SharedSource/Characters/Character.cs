@@ -190,6 +190,11 @@ namespace Barotrauma
             set => Params.Health.DoesBleed = value;
         }
 
+        /// <summary>
+        /// Can this character be contained inside a controller?
+        /// </summary>
+        public bool IsContainable { get; set; }
+
         public readonly Dictionary<Identifier, SerializableProperty> Properties;
         public Dictionary<Identifier, SerializableProperty> SerializableProperties
         {
@@ -686,6 +691,11 @@ namespace Barotrauma
             get { return AnimController.Mass; }
         }
 
+        /// <summary>
+        /// The position the character was at when we previously set the transforms of the items in the character's inventory.
+        /// </summary>
+        private Vector2 lastInventoryItemSetTransformPosition;
+
         public CharacterInventory Inventory { get; private set; }
 
         /// <summary>
@@ -791,7 +801,24 @@ namespace Barotrauma
             set
             {
                 if (value == selectedCharacter) { return; }
-                if (selectedCharacter != null) { selectedCharacter.selectedBy = null; }
+                //deselect the currently selected character
+                if (selectedCharacter != null) 
+                { 
+                    selectedCharacter.selectedBy = null;
+                    //check if some other character has selected the currently selected character too,
+                    //and set selectedBy to that other character (otherwise the currently selected character would be unaware they're still being dragged by someone)
+                    foreach (var otherCharacter in CharacterList)
+                    {
+                        if (otherCharacter != this && otherCharacter.selectedCharacter == selectedCharacter)
+                        {
+                            selectedCharacter.selectedBy = otherCharacter;
+                            break;
+                        }
+                    }
+                }
+
+                CharacterHUD.RecreateHudTextsIfControlling(this);
+
                 selectedCharacter = value;
                 if (selectedCharacter != null) { selectedCharacter.selectedBy = this; }
 #if CLIENT
@@ -1433,8 +1460,6 @@ namespace Barotrauma
             }
 #endif
 
-            GameMain.LuaCs.Hook.Call("character.created", new object[] { newCharacter });
-
             return newCharacter;
         }
 
@@ -1648,8 +1673,10 @@ namespace Barotrauma
             AnimController.FindHull(setInWater: true);
             if (AnimController.CurrentHull != null) { Submarine = AnimController.CurrentHull.Submarine; }
 
+            IsContainable = prefab.ConfigElement.GetAttributeBool(nameof(IsContainable), def: Mass <= 30.0f);
+
             CharacterList.Add(this);
-            
+
             Enabled = GameMain.NetworkMember == null;
 
             if (info != null)
@@ -1889,7 +1916,6 @@ namespace Barotrauma
                 }
             }
             info.Job?.GiveJobItems(this, isPvPMode, spawnPoint);
-            GameMain.LuaCs.Hook.Call("character.giveJobItems", this, spawnPoint, isPvPMode);
         }
 
         public void GiveIdCardTags(WayPoint spawnPoint, bool createNetworkEvent = false)
@@ -2275,6 +2301,12 @@ namespace Barotrauma
                 }
             }
 
+            // Try to detach from the controller if we are currently attached to something that is dangerous for our character
+            if (aiControlled && Stun <= 0f && !IsKnockedDownOrRagdolled && !LockHands && ShouldAvoidStayingAttachedToController())
+            {
+                SelectedItem = null;
+            }
+
             if (GameMain.NetworkMember != null)
             {
                 if (GameMain.NetworkMember.IsServer)
@@ -2323,7 +2355,7 @@ namespace Barotrauma
             {
                 attackCoolDown -= deltaTime;
             }
-            else if (IsKeyDown(InputType.Attack))
+            else if (IsKeyDown(InputType.Attack) && !IsAttachedToController())
             {
                 //normally the attack target, where to aim the attack and such is handled by EnemyAIController,
                 //but in the case of player-controlled monsters, we handle it here
@@ -2850,13 +2882,13 @@ namespace Barotrauma
 #if CLIENT
             if (Screen.Selected == GameMain.SubEditorScreen) { hidden = false; }
 #endif
-            if (!CanInteract || hidden || !item.IsInteractable(this)) { return false; }
-
             Controller controller = item.GetComponent<Controller>();
             if (controller != null && IsAnySelectedItem(item) && controller.IsAttachedUser(this))
             {
                 return true;
             }
+
+            if (!CanInteract || hidden || !item.IsInteractable(this)) { return false; }
 
             if (item.ParentInventory != null)
             {
@@ -2979,7 +3011,9 @@ namespace Barotrauma
                 }
             }
 
-            if (!item.Prefab.InteractThroughWalls && Screen.Selected != GameMain.SubEditorScreen && !insideTrigger)
+            //note that the distance to item should be set to 0 above if the character is within the item's bounding box
+            bool closeEnoughToIgnoreVisibilityCheck = distanceToItem <= 0.1f;
+            if (!item.Prefab.InteractThroughWalls && Screen.Selected != GameMain.SubEditorScreen && !insideTrigger && !closeEnoughToIgnoreVisibilityCheck)
             {
                 var body = Submarine.CheckVisibility(SimPosition, itemPosition, ignoreLevel: true);
                 bool itemCenterVisible = CheckBody(body, item);
@@ -3008,7 +3042,6 @@ namespace Barotrauma
                 {
                     return itemCenterVisible;
                 }
-
             }
 
             return true;
@@ -3098,7 +3131,11 @@ namespace Barotrauma
 
             if (!CanInteract)
             {
-                SelectedItem = SelectedSecondaryItem = null;
+                if (!IsAttachedToController())
+                {
+                    SelectedItem = null;
+                }
+                SelectedSecondaryItem = null;
                 focusedItem = null;
                 if (!AllowInput)
                 {
@@ -3117,8 +3154,16 @@ namespace Barotrauma
                     {
                         if (!PlayerInput.PrimaryMouseButtonHeld() || Barotrauma.Inventory.DraggingItemToWorld)
                         {
-                            FocusedCharacter = CanInteract || CanEat ? FindCharacterAtPosition(mouseSimPos) : null;
-                            if (FocusedCharacter != null && !CanSeeTarget(FocusedCharacter)) { FocusedCharacter = null; }
+                            //don't allow focusing on anyone when the health window is open (avoids accidentally selecting someone when closing the window)
+                            if (CharacterHealth.OpenHealthWindow != null)
+                            {
+                                FocusedCharacter = null;
+                            }
+                            else
+                            {
+                                FocusedCharacter = CanInteract || CanEat ? FindCharacterAtPosition(mouseSimPos) : null;
+                                if (FocusedCharacter != null && !CanSeeTarget(FocusedCharacter)) { FocusedCharacter = null; }
+                            }
                             float aimAssist = GameSettings.CurrentConfig.AimAssistAmount * (AnimController.InWater ? 1.5f : 1.0f);
                             if (HeldItems.Any(it => it?.GetComponent<Wire>()?.IsActive ?? false))
                             {
@@ -3443,7 +3488,7 @@ namespace Barotrauma
 
             obstructVisionAmount = Math.Max(obstructVisionAmount - deltaTime, 0.0f);
 
-            if (Inventory != null)
+            if (Inventory != null && Vector2.DistanceSquared(lastInventoryItemSetTransformPosition, Position) > 0.1f)
             {
                 //do not check for duplicates: this is code is called very frequently, and duplicates don't matter here,
                 //so it's better just to avoid the relatively expensive duplicate check
@@ -3452,6 +3497,7 @@ namespace Barotrauma
                     if (item.body == null || item.body.Enabled) { continue; }
                     item.SetTransform(SimPosition, 0.0f, forceSubmarine: Submarine);
                 }
+                lastInventoryItemSetTransformPosition = Position;
             }
 
             HideFace = false;
@@ -3578,7 +3624,7 @@ namespace Barotrauma
             {
                 wasRagdolled = IsRagdolled;
                 IsRagdolled = IsKeyDown(InputType.Ragdoll);
-                if (IsRagdolled && IsBot && GameMain.NetworkMember is not { IsClient: true })
+                if (IsRagdolled && !IsPlayer && GameMain.NetworkMember is not { IsClient: true })
                 {
                     ClearInput(InputType.Ragdoll);
                 }
@@ -3630,7 +3676,19 @@ namespace Barotrauma
                     AnimController.IgnorePlatforms = true; 
                 }
                 AnimController.ResetPullJoints();
-                SelectedItem = SelectedSecondaryItem = null;
+
+                // Prevent us from detaching from the controller if we are attached to it OR detach if we
+                // manually ragdoll, in this case it should be similar to us deselecting the controller
+                if (!IsAttachedToController() || 
+                    (IsKeyDown(InputType.Ragdoll)
+                    // Let only the server do this check since the Ragdoll input for other clients is set to be held
+                    // for stunned characters even if a character isn't manually ragdolling
+                    && (GameMain.NetworkMember == null || GameMain.NetworkMember is { IsServer: true } )))
+                {
+                    SelectedItem = null;
+                }
+
+                SelectedSecondaryItem = null;
                 SelectedCharacter = null;
                 return;
             }
@@ -3659,6 +3717,13 @@ namespace Barotrauma
             bool MustDeselect(Item item)
             {
                 if (item == null) { return false; }
+
+                // Prevent creatures from deselecting the controller if they are attached to it
+                if (IsAIControlled && !CanInteract && IsAttachedToController())
+                {
+                    return false;
+                }
+
                 if (!CanInteractWith(item)) { return true; }
                 bool hasSelectableComponent = false;
                 foreach (var component in item.Components)
@@ -4384,6 +4449,41 @@ namespace Barotrauma
             }
         }
 
+        public void ForceSay(LocalizedString messageToSay, bool sayInRadio, bool removeQuotes = false, float delay = 0.0f)
+        {
+            if (messageToSay.IsNullOrEmpty() || SpeechImpediment >= 100.0f || IsDead)
+            {
+                return;
+            }
+
+            if (removeQuotes)
+            {
+                messageToSay = new TrimLString(messageToSay, 
+                    TrimLString.Mode.Both, ['"', '”', '“', ' ']);
+            }
+
+            ChatMessageType messageType = ChatMessageType.Default;
+            bool canUseRadio = ChatMessage.CanUseRadio(this, out WifiComponent radio);
+            if (canUseRadio && sayInRadio)
+            {
+                messageType = ChatMessageType.Radio;
+            }
+
+            CoroutineManager.Invoke(() =>
+            {
+#if SERVER
+                GameMain.Server?.SendChatMessage(messageToSay.Value, messageType, senderClient: null, this);
+#elif CLIENT
+                // no need to create the message when playing as a client, the server will send it to us
+                if (GameMain.Client == null)
+                {
+                    AIChatMessage message = new AIChatMessage(messageToSay.Value, messageType);
+                    SendSinglePlayerMessage(message, canUseRadio, radio);
+                }
+#endif
+            }, delay);
+        }
+
         public void SetAllDamage(float damageAmount, float bleedingDamageAmount, float burnDamageAmount)
         {
             CharacterHealth.SetAllDamage(damageAmount, bleedingDamageAmount, burnDamageAmount);
@@ -4596,12 +4696,6 @@ namespace Barotrauma
         public AttackResult DamageLimb(Vector2 worldPosition, Limb hitLimb, IEnumerable<Affliction> afflictions, float stun, bool playSound, Vector2 attackImpulse, Character attacker = null, float damageMultiplier = 1, bool allowStacking = true, float penetration = 0f, bool shouldImplode = false, bool ignoreDamageOverlay = false, bool recalculateVitality = true)
         {
             if (Removed) { return new AttackResult(); }
-
-            AttackResult? retAttackResult = GameMain.LuaCs.Hook.Call<AttackResult?>("character.damageLimb", this, worldPosition, hitLimb, afflictions, stun, playSound, attackImpulse, attacker, damageMultiplier, allowStacking, penetration, shouldImplode);
-            if (retAttackResult != null)
-            {
-                return retAttackResult.Value;
-            }
             
             SetStun(stun);
 
@@ -4774,6 +4868,10 @@ namespace Barotrauma
         {
             if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsClient && !isNetworkMessage) { return; }
             if (Screen.Selected != GameMain.GameScreen) { return; }
+            //don't allow stunning for less than one frame
+            //fixes monsters/enemies that take some minuscule amount of stun from a weapon still being noticeable affected by the stun, 
+            //because even a one-frame stun briefly disables the animations and makes the character stop
+            if (newStun < Timing.Step && Stun <= 0.0f) { return; }
             if (GodMode)
             { 
                 CharacterHealth.Stun = 0;
@@ -4801,7 +4899,12 @@ namespace Barotrauma
             CharacterHealth.Stun = newStun;
             if (newStun > 0.0f)
             {
-                SelectedItem = SelectedSecondaryItem = null;
+                if (!IsAttachedToController())
+                {
+                    SelectedItem = null;
+                }
+
+                SelectedSecondaryItem = null;
                 if (SelectedCharacter != null) { DeselectCharacter(); }
             }
             HealthUpdateInterval = 0.0f;
@@ -4990,6 +5093,37 @@ namespace Barotrauma
             }
         }
 
+        public bool IsAttachedToController()
+        {
+            if (SelectedItem == null) { return false; }
+
+            var controller = SelectedItem.GetComponent<Controller>();
+            if (controller == null) { return false; }
+
+            return controller.IsAttachedUser(this);
+        }
+
+        public bool ShouldAvoidStayingAttachedToController()
+        {
+            if (!IsAttachedToController()) { return false; }
+
+            var deconstructor = SelectedItem.GetComponent<Deconstructor>();
+            if (deconstructor != null)
+            {
+                return true;
+            }
+
+            // Character is being carried by an enemy!
+            if (IsHuman &&
+                SelectedItem.GetRootInventoryOwner() is Character carryingCharacter &&
+                TeamID != carryingCharacter.TeamID)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         public void Kill(CauseOfDeathType causeOfDeath, Affliction causeOfDeathAffliction, bool isNetworkMessage = false, bool log = true)
         {
             if (IsDead || CharacterHealth.Unkillable || GodMode || Removed) { return; }
@@ -5117,7 +5251,6 @@ namespace Barotrauma
                 AchievementManager.OnCharacterKilled(this, CauseOfDeath);
             }
 
-            GameMain.LuaCs.Hook.Call("character.death", this, causeOfDeathAffliction);
             KillProjSpecific(causeOfDeath, causeOfDeathAffliction, log);
 
             if (info != null)
@@ -5128,7 +5261,7 @@ namespace Barotrauma
             AnimController.movement = Vector2.Zero;
             AnimController.TargetMovement = Vector2.Zero;
 
-            if (!LockHands)
+            if (!LockHands && causeOfDeath != CauseOfDeathType.Disconnected)
             {
                 foreach (Item heldItem in HeldItems.ToList())
                 {

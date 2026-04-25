@@ -413,8 +413,7 @@ namespace Barotrauma
                     new XAttribute("difficulty", Difficulty.ToString("G", CultureInfo.InvariantCulture)),
                     new XAttribute("size", XMLExtensions.PointToString(Size)),
                     new XAttribute("generationparams", GenerationParams.Identifier),
-                    new XAttribute("initialdepth", InitialDepth),
-                    new XAttribute("exhaustedeventsets", allEventsExhausted));
+                    new XAttribute("initialdepth", InitialDepth));
 
             newElement.Add(
                 new XAttribute(nameof(exhaustedEventSets), string.Join(',', exhaustedEventSets.Select(e => e.Value))));

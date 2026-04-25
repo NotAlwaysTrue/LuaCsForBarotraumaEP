@@ -88,9 +88,9 @@ namespace Barotrauma
             return true;
         }
 
-        public override bool TryPutItem(Item item, Character user, IEnumerable<InvSlotType> allowedSlots = null, bool createNetworkEvent = true, bool ignoreCondition = false)
+        public override bool TryPutItem(Item item, Character user, IEnumerable<InvSlotType> allowedSlots = null, bool createNetworkEvent = true, bool ignoreCondition = false, bool triggerOnInsertedEffects = true)
         {
-            bool wasPut = base.TryPutItem(item, user, allowedSlots, createNetworkEvent, ignoreCondition);
+            bool wasPut = base.TryPutItem(item, user, allowedSlots, createNetworkEvent, ignoreCondition, triggerOnInsertedEffects);
 
             if (wasPut)
             {
@@ -111,9 +111,9 @@ namespace Barotrauma
             return wasPut;
         }
 
-        public override bool TryPutItem(Item item, int i, bool allowSwapping, bool allowCombine, Character user, bool createNetworkEvent = true, bool ignoreCondition = false)
+        public override bool TryPutItem(Item item, int i, bool allowSwapping, bool allowCombine, Character user, bool createNetworkEvent = true, bool ignoreCondition = false, bool triggerOnInsertedEffects = true)
         {
-            bool wasPut = base.TryPutItem(item, i, allowSwapping, allowCombine, user, createNetworkEvent, ignoreCondition);
+            bool wasPut = base.TryPutItem(item, i, allowSwapping, allowCombine, user, createNetworkEvent, ignoreCondition, triggerOnInsertedEffects);
             if (wasPut && item.ParentInventory == this)
             {
                 foreach (Character c in Character.CharacterList)
@@ -124,7 +124,7 @@ namespace Barotrauma
                 }
 
                 container.IsActive = true;
-                container.OnItemContained(item);
+                container.OnItemContained(item, triggerOnInsertedEffects);
 #if SERVER
                 GameMain.Server?.KarmaManager?.OnItemContained(item, container.Item, user);
 #endif

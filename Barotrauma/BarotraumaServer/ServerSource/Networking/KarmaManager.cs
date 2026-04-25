@@ -244,6 +244,8 @@ namespace Barotrauma
             Character targetCharacter = inventory.Owner as Character;
 
             if (yoinker == null || item == null || thiefCharacter == null || targetCharacter == null || thiefCharacter == targetCharacter) { return; }
+
+            if (thiefCharacter.TeamID != targetCharacter.TeamID) { return; }
             
             if (targetClient == null && (!DangerousItemStealBots || targetCharacter.AIController == null)) { return; }
 
@@ -261,7 +263,7 @@ namespace Barotrauma
             }
 
             Item foundItem = null;
-            if (isValid(item))
+            if (IsValid(item))
             {
                 foundItem = item;
             }
@@ -269,7 +271,7 @@ namespace Barotrauma
             {
                 foreach (Item containedItem in item.ContainedItems)
                 {
-                    if (isValid(containedItem))
+                    if (IsValid(containedItem))
                     {
                         foundItem = containedItem;
                         break;
@@ -277,16 +279,19 @@ namespace Barotrauma
                 }
             }
 
-            static bool isValid(Item item)
+            static bool IsValid(Item item)
             {
-                return item.GetComponent<IdCard>() != null || item.GetComponent<RangedWeapon>() != null || item.GetComponent<MeleeWeapon>() != null;
+                return item.GetComponent<IdCard>() != null || IsWeapon(item);
+            }
+            static bool IsWeapon(Item item)
+            {
+                //a threshold of 10 excludes things like tools, all "proper weapons" seem to have a priority higher than that
+                return item.Components.Max(c => c.CombatPriority) > 10.0f || item.HasTag(Tags.Weapon);
             }
 
             if (foundItem == null) { return; }
 
             bool isIdCard = foundItem.GetComponent<IdCard>() != null;
-            bool isWeapon = foundItem.GetComponent<RangedWeapon>() != null || foundItem.GetComponent<MeleeWeapon>() != null;
-
             if (isIdCard)
             {
                 string name = string.Empty;
@@ -325,7 +330,7 @@ namespace Barotrauma
             JobPrefab clientJob = yoinker.CharacterInfo?.Job?.Prefab;
 
             // security officers receive less karma penalty
-            if (clientJob != null && clientJob.Identifier == "securityofficer" && isWeapon)
+            if (clientJob != null && clientJob.Identifier == "securityofficer" && IsWeapon(foundItem))
             {
                 karmaDecrease *= 0.5f;
             }

@@ -112,6 +112,7 @@ namespace Barotrauma
                         msg.WriteRangedSingle(normalizedXPos, 0.0f, 1.0f, 8);
                         msg.WriteRangedSingle(normalizedYPos, 0.0f, 1.0f, 8);
                         msg.WriteRangedSingle(decal.Scale, 0f, 2f, 12);
+                        msg.WriteRangedSingle(decal.BaseAlpha, 0f, 1f, 8);
                     }
                     break;
                 case BallastFloraEventData ballastFloraEventData:
@@ -251,7 +252,7 @@ namespace Barotrauma
                     break;
                 case EventType.Decal:
                     byte decalIndex = msg.ReadByte();
-                    float decalAlpha = msg.ReadRangedSingle(0.0f, 1.0f, 255);
+                    float decalAlpha = msg.ReadRangedSingle(0f, 1f, 8);
                     if (decalIndex < 0 || decalIndex >= decals.Count) { return; }
                     if (c.Character != null && c.Character.AllowInput && c.Character.HeldItems.Any(it => it.GetComponent<Sprayer>() != null))
                     {

@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Barotrauma.LuaCs;
 
 namespace Barotrauma
 {
@@ -9,7 +10,7 @@ namespace Barotrauma
     {
         public static void Install()
         {
-            ContentPackage luaPackage = LuaCsSetup.GetPackage(LuaCsSetup.LuaForBarotraumaId);
+            ContentPackage luaPackage = LuaCsSetup.GetLuaCsPackage();
 
             if (luaPackage == null)
             {
@@ -45,8 +46,9 @@ namespace Barotrauma
                     File.Copy(Path.Combine(path, "Binary", file), file, true);
                 }
 
-                File.WriteAllText(LuaCsSetup.VersionFile, luaPackage.ModVersion);
-
+#if WINDOWS
+                File.WriteAllText("LuaCsDedicatedServer.bat", "\"%LocalAppData%/Daedalic Entertainment GmbH/Barotrauma/WorkshopMods/Installed/2559634234/Binary/DedicatedServer.exe\"");
+#endif
             }
             catch (UnauthorizedAccessException e)
             {

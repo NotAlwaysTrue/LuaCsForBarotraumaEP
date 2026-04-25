@@ -337,7 +337,7 @@ namespace Barotrauma
             return true;
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             return AllItemsDestroyedOrRetrieved();
         }

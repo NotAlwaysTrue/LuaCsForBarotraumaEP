@@ -15,13 +15,18 @@ sealed class SteamAuthTicketForEosHostAuthenticator : Authenticator
     {
         string ticketData = ToolBoxCore.ByteArrayToHexString(ticket.Data);
 
-        var client = new RestClient(ServerUrl);
-
-        var request = new RestRequest(ServerFile, Method.GET);
+        var client = RestFactory.CreateClient(ServerUrl);
+        var request = RestFactory.CreateRequest(ServerFile);
         request.AddParameter("authticket", ticketData);
         request.AddParameter("request_version", RemoteRequestVersion);
 
         var response = await client.ExecuteAsync(request, Method.GET);
+        if (response.ErrorException != null)
+        {
+            DebugConsole.AddWarning($"Connection error: Failed to verify Steam auth ticket for EOS host " +
+                $"({response.ErrorException.Message}).");
+            return AccountInfo.None;
+        }
         if (!response.IsSuccessful) { return AccountInfo.None; }
 
         try

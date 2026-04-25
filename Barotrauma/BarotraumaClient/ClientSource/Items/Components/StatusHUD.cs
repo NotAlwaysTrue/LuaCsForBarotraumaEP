@@ -287,20 +287,24 @@ namespace Barotrauma.Items.Components
                     texts.Add(target.CustomInteractHUDText);
                     textColors.Add(GUIStyle.Green);
                 }
-                if (!target.IsIncapacitated && target.IsPet)
+                if (equipper?.FocusedCharacter == target)
                 {
-                    texts.Add(CharacterHUD.GetCachedHudText("PlayHint", InputType.Use));
-                    textColors.Add(GUIStyle.Green);
-                }
-                if (equipper?.FocusedCharacter == target && target.CanBeHealedBy(equipper, checkFriendlyTeam: false))
-                {
-                    texts.Add(CharacterHUD.GetCachedHudText("HealHint", InputType.Health));
-                    textColors.Add(GUIStyle.Green);
-                }
-                if (target.CanBeDraggedBy(Character.Controlled))
-                {
-                    texts.Add(CharacterHUD.GetCachedHudText("GrabHint", InputType.Grab));
-                    textColors.Add(GUIStyle.Green);
+                    if (!target.IsIncapacitated && target.IsPet &&
+                        target.AIController is EnemyAIController enemyAI && enemyAI.PetBehavior.CanPlayWith(Character.Controlled))
+                    {
+                        texts.Add(CharacterHUD.GetCachedHudText("PlayHint", InputType.Use));
+                        textColors.Add(GUIStyle.Green);
+                    }
+                    if (target.CanBeHealedBy(equipper, checkFriendlyTeam: false))
+                    {
+                        texts.Add(CharacterHUD.GetCachedHudText("HealHint", InputType.Health));
+                        textColors.Add(GUIStyle.Green);
+                    }
+                    if (target.CanBeDraggedBy(Character.Controlled))
+                    {
+                        texts.Add(CharacterHUD.GetCachedHudText("GrabHint", InputType.Grab));
+                        textColors.Add(GUIStyle.Green);
+                    }
                 }
 
                 if (target.IsUnconscious)

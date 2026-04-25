@@ -166,6 +166,14 @@ namespace Barotrauma
                             subElement.GetAttributeBool("fadein", false),
                             subElement.GetAttributePoint("offset", Point.Zero));
 
+                        if (brokenSprite.FadeIn && brokenSprite.MaxConditionPercentage <= 0.0f)
+                        {
+                            DebugConsole.AddWarning(
+                                $"Potential error in item {Identifier}: a broken sprite that's set to fade in despite the max condition being 0."+
+                                " The sprite cannot fade in if it's set to only appear when the item is fully broken.",
+                                ContentPackage);
+                        }
+
                         int spriteIndex = 0;
                         for (int i = 0; i < brokenSprites.Count && brokenSprites[i].MaxConditionPercentage < brokenSprite.MaxConditionPercentage; i++)
                         {

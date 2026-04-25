@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Generic;
 using Barotrauma.Items.Components;
+using System.Linq;
 
 namespace Barotrauma;
 
@@ -106,11 +107,16 @@ public static class InteractionLabelManager
             }
 
             RectangleF textRect = GetLabelRect(interactableInRange, cam);
-
-            if (labels.None(l => l.Item == interactableInRange))
+            var existingLabel = labels.FirstOrDefault(l => l.Item == interactableInRange);
+            if (existingLabel == null)
             {
                 var labelData = new LabelData(interactableInRange, textRect, RichString.Rich(interactableInRange.Prefab.Name), cam);
                 labels.Add(labelData);
+            }
+            //size of the label doesn't match - can happen when we're using a CJK font which we asynchronously render new symbols for
+            else if (existingLabel.TextRect.Size != textRect.Size)
+            {
+                existingLabel.TextRect = textRect;
             }
         }
         
@@ -127,7 +133,11 @@ public static class InteractionLabelManager
     private static RectangleF GetLabelRect(Item item, Camera cam)
     {
         // create rectangle for overlap prevention
-        Vector2 itemTextSizeScreen = GUIStyle.SubHeadingFont.MeasureString(RichString.Rich(item.Prefab.Name).SanitizedValue) * LabelScale;
+
+        string nameText = RichString.Rich(item.Prefab.Name).SanitizedValue;
+
+        var font = GUIStyle.SubHeadingFont.GetFontForStr(nameText)!;
+        Vector2 itemTextSizeScreen = font.MeasureString(nameText) * LabelScale;
         Vector2 interactablePosScreen = cam.WorldToScreen(item.Position);
         RectangleF textRect = new RectangleF(interactablePosScreen.X, interactablePosScreen.Y, itemTextSizeScreen.X, itemTextSizeScreen.Y);
         // center the rectangle on the item

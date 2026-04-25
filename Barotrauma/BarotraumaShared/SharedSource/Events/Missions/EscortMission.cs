@@ -343,7 +343,7 @@ namespace Barotrauma
             return character != null && !character.Removed && !character.IsDead;
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             if (Submarine.MainSub != null && Submarine.MainSub.AtEndExit)
             {

@@ -1,17 +1,19 @@
 ﻿using Barotrauma.Abilities;
+using Barotrauma.Abilities;
 using Barotrauma.Extensions;
+using Barotrauma.Extensions;
+using Barotrauma.LuaCs.Events;
+using Barotrauma.Networking;
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
+using MoonSharp.Interpreter;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
-using Barotrauma.Networking;
-using Barotrauma.Extensions;
-using System.Globalization;
-using MoonSharp.Interpreter;
-using Barotrauma.Abilities;
+using static OneOf.Types.TrueFalseOrNull;
 
 namespace Barotrauma
 {
@@ -657,7 +659,8 @@ namespace Barotrauma
                 return;
             }
 
-            var should = GameMain.LuaCs.Hook.Call<bool?>("character.applyDamage", this, attackResult, hitLimb, allowStacking);
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventCharacterApplyDamage>(x => should = x.OnCharacterApplyDamage(this, attackResult, hitLimb, allowStacking) ?? should);
             if (should != null && should.Value) { return; }
             
             foreach (Affliction newAffliction in attackResult.Afflictions)
@@ -828,10 +831,9 @@ namespace Barotrauma
             if (newAffliction.Prefab.TargetSpecies.Any() && newAffliction.Prefab.TargetSpecies.None(s => s == Character.SpeciesName)) { return; }
             if (Character.Params.Health.ImmunityIdentifiers.Contains(newAffliction.Identifier)) { return; }
 
-            var should = GameMain.LuaCs.Hook.Call<bool?>("character.applyAffliction", this, limbHealth, newAffliction, allowStacking);
-
-            if (should != null && should.Value)
-                return;
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventCharacterApplyAffliction>(x => should = x.OnCharacterApplyAffliction(this, limbHealth, newAffliction, allowStacking) ?? should);
+            if (should != null && should.Value) { return; }
 
             Affliction existingAffliction = null;
             foreach ((Affliction affliction, LimbHealth value) in afflictions)
@@ -843,9 +845,21 @@ namespace Barotrauma
                 }
             }
 
+            float modifiedStrength = newAffliction.Strength * (100.0f / MaxVitality) * (1f - GetResistance(newAffliction.Prefab, limbType));
+            if (newAffliction.Prefab.AfflictionType == AfflictionPrefab.StunType)
+            {
+                //don't allow stunning for less than one frame
+                //fixes monsters/enemies that take some minuscule amount of stun from a weapon still being noticeable affected by the stun, 
+                //because even a one-frame stun briefly disables the animations and makes the character stop
+                if (modifiedStrength < Timing.Step && Stun <= 0.0f)
+                {
+                    return;
+                }
+            }
+
             if (existingAffliction != null)
             {
-                float newStrength = newAffliction.Strength * (100.0f / MaxVitality) * (1f - GetResistance(existingAffliction.Prefab, limbType));
+                float newStrength = modifiedStrength;
                 if (allowStacking)
                 {
                     // Add the existing strength
@@ -867,7 +881,7 @@ namespace Barotrauma
             //create a new instance of the affliction to make sure we don't use the same instance for multiple characters
             //or modify the affliction instance of an Attack or a StatusEffect
             var copyAffliction = newAffliction.Prefab.Instantiate(
-                Math.Min(newAffliction.Prefab.MaxStrength, newAffliction.Strength * (100.0f / MaxVitality) * (1f - GetResistance(newAffliction.Prefab, limbType))),
+                Math.Min(newAffliction.Prefab.MaxStrength, modifiedStrength),
                 newAffliction.Source);
             afflictions.Add(copyAffliction, limbHealth);
             AchievementManager.OnAfflictionReceived(copyAffliction, Character);

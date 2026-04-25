@@ -1,12 +1,14 @@
 ﻿extern alias Client;
-
-using Client::Barotrauma;
+extern alias Server;
+using Client::Barotrauma.LuaCs;
+using Client::Barotrauma; 
 using MoonSharp.Interpreter;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using Server::Barotrauma.LuaCs.Compatibility;
 using Xunit;
 
 namespace TestProject.LuaCs
@@ -63,17 +65,18 @@ namespace TestProject.LuaCs
             string methodName,
             string[]? parameters,
             string function,
-            LuaCsHook.HookMethodType patchType)
+            ILuaCsHook.HookMethodType patchType)
         {
             var args = BuildHookPatchArgsList(patchId, className, methodName, parameters);
             args.Add(function);
             args.Add(patchType switch
             {
-                LuaCsHook.HookMethodType.Before => "Hook.HookMethodType.Before",
-                LuaCsHook.HookMethodType.After => "Hook.HookMethodType.After",
+                ILuaCsHook.HookMethodType.Before => "Hook.HookMethodType.Before",
+                ILuaCsHook.HookMethodType.After => "Hook.HookMethodType.After",
                 _ => throw new NotImplementedException(),
             });
-            return luaCs.Lua.DoString($"return Hook.Patch({string.Join(", ", args)})");
+            throw new NotImplementedException();
+            //return luaCs.Lua.DoString($"return Hook.Patch({string.Join(", ", args)})");
         }
 
         private static DynValue DoHookRemovePatch(
@@ -82,16 +85,17 @@ namespace TestProject.LuaCs
             string className,
             string methodName,
             string[]? parameters,
-            LuaCsHook.HookMethodType patchType)
+            ILuaCsHook.HookMethodType patchType)
         {
             var args = BuildHookPatchArgsList(patchId, className, methodName, parameters);
             args.Add(patchType switch
             {
-                LuaCsHook.HookMethodType.Before => "Hook.HookMethodType.Before",
-                LuaCsHook.HookMethodType.After => "Hook.HookMethodType.After",
+                ILuaCsHook.HookMethodType.Before => "Hook.HookMethodType.Before",
+                ILuaCsHook.HookMethodType.After => "Hook.HookMethodType.After",
                 _ => throw new NotImplementedException(),
             });
-            return luaCs.Lua.DoString($"return Hook.RemovePatch({string.Join(", ", args)})");
+            throw new NotImplementedException();
+            //return luaCs.Lua.DoString($"return Hook.RemovePatch({string.Join(", ", args)})");
         }
 
         public static PatchHandle AddPrefix<T>(this LuaCsSetup luaCs, string body, string methodName, string[]? parameters = null, string? patchId = null)
@@ -101,7 +105,7 @@ namespace TestProject.LuaCs
                 function(instance, ptable)
                 {body}
                 end
-            ", LuaCsHook.HookMethodType.Before);
+            ", ILuaCsHook.HookMethodType.Before);
             Assert.Equal(DataType.String, returnValue.Type);
             return new(returnValue.String, () => luaCs.RemovePrefix<T>(returnValue.String, methodName, parameters));
         }
@@ -113,7 +117,7 @@ namespace TestProject.LuaCs
                 function(instance, ptable)
                 {body}
                 end
-            ", LuaCsHook.HookMethodType.After);
+            ", ILuaCsHook.HookMethodType.After);
             Assert.Equal(DataType.String, returnValue.Type);
             return new(returnValue.String, () => luaCs.RemovePostfix<T>(returnValue.String, methodName, parameters));
         }
@@ -121,7 +125,7 @@ namespace TestProject.LuaCs
         public static bool RemovePrefix<T>(this LuaCsSetup luaCs, string patchId, string methodName, string[]? parameters = null)
         {
             var className = typeof(T).FullName!;
-            var returnValue = luaCs.DoHookRemovePatch(patchId, className, methodName, parameters, LuaCsHook.HookMethodType.Before);
+            var returnValue = luaCs.DoHookRemovePatch(patchId, className, methodName, parameters, ILuaCsHook.HookMethodType.Before);
             Assert.Equal(DataType.Boolean, returnValue.Type);
             return returnValue.Boolean;
         }
@@ -129,7 +133,7 @@ namespace TestProject.LuaCs
         public static bool RemovePostfix<T>(this LuaCsSetup luaCs, string patchId, string methodName, string[]? parameters = null)
         {
             var className = typeof(T).FullName!;
-            var returnValue = luaCs.DoHookRemovePatch(patchId, className, methodName, parameters, LuaCsHook.HookMethodType.After);
+            var returnValue = luaCs.DoHookRemovePatch(patchId, className, methodName, parameters, ILuaCsHook.HookMethodType.After);
             Assert.Equal(DataType.Boolean, returnValue.Type);
             return returnValue.Boolean;
         }

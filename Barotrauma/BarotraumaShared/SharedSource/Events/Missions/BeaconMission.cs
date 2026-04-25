@@ -171,7 +171,7 @@ namespace Barotrauma
 #endif
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             return level.CheckBeaconActive();
         }

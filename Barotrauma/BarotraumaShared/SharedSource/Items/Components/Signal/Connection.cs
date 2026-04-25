@@ -27,6 +27,11 @@ namespace Barotrauma.Items.Components
             private init => _displayName = value;
         }
 
+        /// <summary>
+        /// Display name ignoring <see cref="DisplayNameOverride"/>
+        /// </summary>
+        public LocalizedString DefaultDisplayName => _displayName;
+
         public LocalizedString DisplayNameOverride;
 
         private readonly HashSet<Wire> wires;
@@ -350,15 +355,11 @@ namespace Barotrauma.Items.Components
                 wire.RegisterSignal(signal, source: this);
 #endif
                 SendSignalIntoConnection(signal, recipient);
-                GameMain.LuaCs.Hook.Call("signalReceived", signal, recipient);
-                GameMain.LuaCs.Hook.Call("signalReceived." + recipient.item.Prefab.Identifier, signal, recipient);
             }
 
             foreach (CircuitBoxConnection connection in CircuitBoxConnections)
             {
                 connection.ReceiveSignal(signal);
-                GameMain.LuaCs.Hook.Call("signalReceived", signal, connection.Connection);
-                GameMain.LuaCs.Hook.Call("signalReceived." + connection.Connection.Item.Prefab.Identifier, signal, connection);
             }
             enumeratingWires = false;
             foreach (var removedWire in removedWires)

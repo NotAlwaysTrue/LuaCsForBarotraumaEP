@@ -29,6 +29,9 @@ namespace Barotrauma
         [Serialize("", IsPropertySaveable.Yes, description: "Tag to apply to the target (or all targets if there's multiple) when the check succeeds.")]
         public Identifier ApplyTagToTarget { get; set; }
 
+        [Serialize(true, IsPropertySaveable.Yes, description: "Should the check fail if no targets matching the specified tag are found?")]
+        public bool FailIfTargetNotFound { get; set; }
+
         public CheckConditionalAction(ScriptedEvent parentEvent, ContentXElement element) : base(parentEvent, element)
         {
             if (TargetTag.IsEmpty)
@@ -79,11 +82,10 @@ namespace Barotrauma
 
             if (targets.None())
             {
-                DebugConsole.LogError($"{nameof(CheckConditionalAction)} error: {GetEventDebugName()} uses a {nameof(CheckConditionalAction)} but no valid target was found for tag \"{TargetTag}\"! This will cause the check to automatically succeed.",
-                    contentPackage: ParentEvent.Prefab.ContentPackage);
+                return !FailIfTargetNotFound;
             }
 
-            if (targets.None() || Conditionals.None())
+            if (Conditionals.None())
             {
                 foreach (var target in targets)
                 {

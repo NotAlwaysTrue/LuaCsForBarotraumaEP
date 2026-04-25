@@ -199,9 +199,16 @@ namespace Barotrauma
 
             try
             {
-                return success(doc.Root.GetAttributeBool("corepackage", false)
+                ContentPackage contentPackage = doc.Root.GetAttributeBool("corepackage", false)
                     ? new CorePackage(doc, path)
-                    : new RegularPackage(doc, path));
+                    : new RegularPackage(doc, path);
+                
+                if (System.IO.Path.GetFileNameWithoutExtension(path)?.Any(char.IsUpper) is true)
+                {
+                    DebugConsole.ThrowError($"Invalid filename casing. Please rename \"filelist.xml\" so it is entirely lowercase.", contentPackage: contentPackage);
+                }
+
+                return success(contentPackage);
             }
             catch (Exception e)
             {

@@ -14,7 +14,7 @@ namespace Barotrauma
 
         private void TryShowRetrievedMessage()
         {
-            if (DetermineCompleted())
+            if (DetermineCompleted(CampaignMode.TransitionType.None))
             {
                 HandleMessage(ref allRetrievedMessage);
             }

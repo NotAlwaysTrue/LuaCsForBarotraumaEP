@@ -40,7 +40,7 @@ namespace Barotrauma
                 if (subObjectives.All(so => so.SubObjectives.None()))
                 {
                     // If none of the subobjectives have subobjectives, no valid container was found. Don't allow running.
-                    ForceWalk = true;
+                    ForceWalkTemporarily = true;
                 }
                 return prio;
             }

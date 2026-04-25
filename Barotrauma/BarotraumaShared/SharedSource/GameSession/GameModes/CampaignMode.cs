@@ -1017,7 +1017,7 @@ namespace Barotrauma
                 UpdateStoreStock();
             }
 
-            GameMain.GameSession.EndMissions();
+            GameMain.GameSession.EndMissions(TransitionType.None);
             GameMain.GameSession.EventManager?.StoreEventDataAtRoundEnd(registerFinishedOnly: true);
         }
 

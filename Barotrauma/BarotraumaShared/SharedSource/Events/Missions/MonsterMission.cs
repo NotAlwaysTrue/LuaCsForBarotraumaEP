@@ -242,7 +242,7 @@ namespace Barotrauma
             }
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             return state > 0;
         }

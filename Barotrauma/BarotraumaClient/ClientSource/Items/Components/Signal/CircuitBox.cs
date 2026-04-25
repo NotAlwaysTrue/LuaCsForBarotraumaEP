@@ -78,7 +78,7 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        public override bool ShouldDrawHUD(Character character)
+        protected override bool ShouldDrawHUDComponentSpecific(Character character)
             => character == Character.Controlled && (character.SelectedItem == item || character.SelectedSecondaryItem == item);
 
         public override void UpdateHUDComponentSpecific(Character character, float deltaTime, Camera cam)

@@ -78,9 +78,10 @@ namespace Barotrauma
                 if (item.GetRootInventoryOwner() is Character targetCharacter &&
                     AIObjectiveFightIntruders.IsValidTarget(targetCharacter, character, targetCharactersInOtherSubs: false))
                 {
-                    float dist = character.CurrentHull.GetApproximateDistance(character.Position, targetCharacter.Position, targetCharacter.CurrentHull, aiTarget.SoundRange, distanceMultiplierPerClosedDoor: 2);
-                    if (dist * HumanAIController.Hearing > aiTarget.SoundRange) { continue; }
-                    
+                    float range = aiTarget.SoundRange * HumanAIController.Hearing;
+                    float dist = character.CurrentHull.GetApproximateDistance(character.Position, targetCharacter.Position, targetCharacter.CurrentHull, range, distanceMultiplierPerClosedDoor: 2);
+                    if (dist > range) { continue; }
+
                     character.Speak(TextManager.Get("dialogheardenemy").Value, identifier: "heardenemy".ToIdentifier(), minDurationBetweenSimilar: 30.0f);
                     if (inspectNoiseObjective != null && subObjectives.Contains(inspectNoiseObjective))
                     {

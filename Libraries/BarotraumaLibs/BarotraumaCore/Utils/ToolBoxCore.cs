@@ -47,11 +47,17 @@ public static class ToolBoxCore
         byte[] inputBytes = Encoding.UTF8.GetBytes(str);
         byte[] hash = md5.ComputeHash(inputBytes);
 
-        UInt32 key = (UInt32)((str.Length & 0xff) << 24); //could use more of the hash here instead?
-        key |= (UInt32)(hash[hash.Length - 3] << 16);
-        key |= (UInt32)(hash[hash.Length - 2] << 8);
-        key |= (UInt32)(hash[hash.Length - 1]);
-
+        //xor all of the bits of the hash together
+        UInt32 key = 0; 
+        foreach (byte b in hash)
+        {
+            // Rotate the 32-bit value left by 5 bits:
+            //   (key << 5) moves everything left,
+            //   (key >> 27) brings the 5 bits that overflowed back around (32 - 5 = 27),
+            //   OR'ing them together completes the rotate.
+            key = (key << 5) | (key >> 27);
+            key ^= b;
+        }
         return key;
     }
 

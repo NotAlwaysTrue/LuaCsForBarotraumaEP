@@ -42,6 +42,10 @@ namespace Barotrauma.Items.Components
         private float currentChargeTime;
         private bool tryingToCharge;
 
+        private const float LineOfSightCheckInterval = 0.5f;
+        private (Body WorldTarget, Body TransformedTarget, double Time) lastLineOfSightCheck;
+        private (Character Target, bool CanSee, double Time) lastCanSeeTargetCheck;
+
         private enum ChargingState
         {
             Inactive,
@@ -1088,6 +1092,7 @@ namespace Barotrauma.Items.Components
                     foreach (Submarine sub in Submarine.Loaded)
                     {
                         if (sub == Item.Submarine) { continue; }
+                        if (sub.IsRespawnShuttle) { continue; }
                         if (item.Submarine != null)
                         {
                             if (Character.IsOnFriendlyTeam(item.Submarine.TeamID, sub.TeamID)) { continue; }
@@ -1164,15 +1169,28 @@ namespace Barotrauma.Items.Components
             }
             Vector2 start = ConvertUnits.ToSimUnits(item.WorldPosition);
             Vector2 end = ConvertUnits.ToSimUnits(target.WorldPosition);
+
+            bool doLineOfSightCheck = lastLineOfSightCheck.Time < Timing.TotalTimeUnpaused - LineOfSightCheckInterval;
+            if (doLineOfSightCheck)
+            {
+                lastLineOfSightCheck.WorldTarget = CheckLineOfSight(start, end);
+                lastLineOfSightCheck.Time = Timing.TotalTime;
+            }
+
             // Check that there's not other entities that shouldn't be targeted (like a friendly sub) between us and the target.
-            Body worldTarget = CheckLineOfSight(start, end);
+            Body worldTarget = lastLineOfSightCheck.WorldTarget;
             bool shoot;
             if (target.Submarine != null)
             {
-                start -= target.Submarine.SimPosition;
-                end -= target.Submarine.SimPosition;
-                Body transformedTarget = CheckLineOfSight(start, end);
-                shoot = CanShoot(transformedTarget, user: null, friendlyTag, TargetSubmarines) && (worldTarget == null || CanShoot(worldTarget, user: null, friendlyTag, TargetSubmarines));
+                if (doLineOfSightCheck)
+                {
+                    start -= target.Submarine.SimPosition;
+                    end -= target.Submarine.SimPosition;
+                    lastLineOfSightCheck.TransformedTarget = CheckLineOfSight(start, end);
+                }
+                shoot =
+                    (worldTarget == null || CanShoot(worldTarget, user: null, friendlyTag, TargetSubmarines)) &&
+                    CanShoot(lastLineOfSightCheck.TransformedTarget, user: null, friendlyTag, TargetSubmarines);
             }
             else
             {
@@ -1437,8 +1455,20 @@ namespace Barotrauma.Items.Components
             // Adjust the target character position (limb or submarine)
             if (currentTarget is Character targetCharacter)
             {
+                bool enemyInAnotherSub = targetCharacter.Submarine != null && targetCharacter.CurrentHull != null && targetCharacter.Submarine != item.Submarine;
+                bool canSeeTarget = true;
+                if (enemyInAnotherSub)
+                {
+                    if (lastCanSeeTargetCheck.Time < Timing.TotalTime - LineOfSightCheckInterval ||
+                        targetCharacter != lastCanSeeTargetCheck.Target)
+                    {
+                        canSeeTarget = targetCharacter.CanSeeTarget(Item);
+                        lastCanSeeTargetCheck = (targetCharacter, canSeeTarget, Timing.TotalTime);
+                    }
+                }
+
                 //if the enemy is inside another sub, aim at the room they're in to make it less obvious that the enemy "knows" exactly where the target is
-                if (targetCharacter.Submarine != null && targetCharacter.CurrentHull != null && targetCharacter.Submarine != item.Submarine && !targetCharacter.CanSeeTarget(Item))
+                if (enemyInAnotherSub && !canSeeTarget)
                 {
                     targetPos = targetCharacter.CurrentHull.WorldPosition;
                     if (closestDistance > maxDistance * maxDistance)

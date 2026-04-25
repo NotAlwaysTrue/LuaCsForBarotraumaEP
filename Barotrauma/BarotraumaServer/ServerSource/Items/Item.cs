@@ -12,8 +12,6 @@ namespace Barotrauma
     {
         private CoroutineHandle logPropertyChangeCoroutine;
 
-        public Inventory PreviousParentInventory;
-
         public override Sprite Sprite
         {
             get { return base.Prefab?.Sprite; }

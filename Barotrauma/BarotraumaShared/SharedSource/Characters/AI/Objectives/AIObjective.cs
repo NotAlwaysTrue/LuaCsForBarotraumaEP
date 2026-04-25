@@ -103,9 +103,19 @@ namespace Barotrauma
             }
         }
 
-        // For temporarily forcing walking. Will reset after each priority calculation, so it will need to be kept alive by something.
-        // The intention of this boolean to allow walking even when the priority is higher than AIObjectiveManager.RunPriority.
-        public bool ForceWalk { get; set; }
+        /// <summary>
+        /// For temporarily forcing walking. Will reset after each priority calculation, so it will need to be kept alive by something.
+        /// The intention of this boolean to allow walking even when the priority is higher than AIObjectiveManager.RunPriority.
+        /// </summary>
+        public bool ForceWalkTemporarily { get; set; }
+
+        /// <summary>
+        /// Forces the character to walk when executing this objective, even if the priority is above <see cref="AIObjectiveManager.RunPriority"/>.
+        /// Unlike <see cref="ForceWalkTemporarily"/>, this value is not automatically reset.
+        /// </summary>
+        public bool ForceWalkPermanently { get; set; }
+
+        public bool ForceWalk => ForceWalkTemporarily || ForceWalkPermanently;
 
         public bool IgnoreAtOutpost { get; set; }
 
@@ -313,7 +323,7 @@ namespace Barotrauma
         /// </summary>
         public float CalculatePriority()
         {
-            ForceWalk = false;
+            ForceWalkTemporarily = false;
             Priority = GetPriority();
             ForceHighestPriority = false;
             return Priority;

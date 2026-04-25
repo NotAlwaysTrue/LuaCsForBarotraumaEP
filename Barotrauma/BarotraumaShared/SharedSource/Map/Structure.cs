@@ -651,7 +651,7 @@ namespace Barotrauma
             newBody.Friction = 0.8f;
             newBody.UserData = this;
 
-            newBody.Position = ConvertUnits.ToSimUnits(stairPos) + BodyOffset * Scale;
+            newBody.Position = ConvertUnits.ToSimUnits(stairPos) + ConvertUnits.ToSimUnits(BodyOffset) * Scale;
 
             bodyDimensions.Add(newBody, new Vector2(bodyWidth, bodyHeight));
 

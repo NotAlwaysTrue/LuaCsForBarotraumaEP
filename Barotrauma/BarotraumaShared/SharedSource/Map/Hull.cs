@@ -123,6 +123,8 @@ namespace Barotrauma
         public const float OxygenDeteriorationSpeed = 0.3f;
         public const float OxygenConsumptionSpeed = 700.0f;
 
+        private const float DecalAlphaRemoveThreshold = 0.001f;
+
         public const int WaveWidth = 32;
         public static float WaveStiffness = 0.01f;
         public static float WaveSpread = 0.02f;
@@ -913,7 +915,7 @@ namespace Barotrauma
                 for (int i = decals.Count - 1; i >= 0; i--)
                 {
                     var decal = decals[i];
-                    if (decal.FadeTimer >= decal.LifeTime || decal.BaseAlpha <= 0.001f)
+                    if (decal.FadeTimer >= decal.LifeTime || decal.BaseAlpha <= DecalAlphaRemoveThreshold)
                     {
                         decals.RemoveAt(i);
     #if SERVER
@@ -1159,7 +1161,10 @@ namespace Barotrauma
                 Hull currentHull = current.hull;
                 Vector2 currentPos = current.pos;
 
-                if (currentDist > maxDistance) { return float.MaxValue; }
+                if (currentDist > maxDistance) 
+                { 
+                    return float.MaxValue; 
+                }
 
                 // If we've reached the target, add the final segment from hull to endPos
                 if (currentHull == targetHull)
@@ -1167,7 +1172,7 @@ namespace Barotrauma
                     return currentDist + Vector2.Distance(currentPos, endPos);
                 }
 
-                foreach (Gap g in ConnectedGaps)
+                foreach (Gap g in currentHull.ConnectedGaps)
                 {
                     float distanceMultiplier = 1;
                     if (g.ConnectedDoor != null && !g.ConnectedDoor.IsBroken)
@@ -1643,9 +1648,18 @@ namespace Barotrauma
             bool decalsCleaned = false;
             foreach (Decal decal in decals)
             {
+                // Don't attempt to clean the decal if it's already below the remove threshold, since the server
+                // is already gonna remove the decal for us, sending another decal update event would result in
+                // us potentially modifying a different decal since the indices can briefly desync.
+                if (decal.BaseAlpha <= DecalAlphaRemoveThreshold)
+                {
+                    continue;
+                }
+
                 if (decal.AffectsSection(section))
                 {
                     decal.Clean(cleanVal);
+
                     decalsCleaned = true;
 #if SERVER
                     decalUpdatePending = true;

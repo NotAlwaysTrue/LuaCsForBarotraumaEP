@@ -9,10 +9,19 @@ namespace Barotrauma
     {
         private static string[] trackingFiles = new string[]
         { 
-            "Barotrauma.dll", "Barotrauma.deps.json", "Barotrauma.pdb", "BarotraumaCore.dll", "BarotraumaCore.pdb",
-            "0Harmony.dll", "Mono.Cecil.dll",
+            /* Barotrauma */
+            "Barotrauma.dll", 
+            "Barotrauma.deps.json", 
+            "Barotrauma.pdb", 
+            "BarotraumaCore.dll", 
+            "BarotraumaCore.pdb",
+            
+            /* HarmonyX Package */
+            "0Harmony.dll", 
+            "Mono.Cecil.dll",
             "Sigil.dll",
-            "Mono.Cecil.Mdb.dll", "Mono.Cecil.Pdb.dll",
+            "Mono.Cecil.Mdb.dll", 
+            "Mono.Cecil.Pdb.dll",
             "Mono.Cecil.Rocks.dll",
             "MonoMod.Backports.dll",
             "MonoMod.Core.dll",
@@ -20,15 +29,32 @@ namespace Barotrauma
             "MonoMod.RuntimeDetour.dll",
             "MonoMod.Utils.dll",
             "MonoMod.Iced.dll",
-            "MoonSharp.Interpreter.dll", "MoonSharp.VsCodeDebugger.dll",
+            
+            /* MoonSharp */
+            "MoonSharp.Interpreter.dll", 
+            "MoonSharp.VsCodeDebugger.dll",
 
-            "Microsoft.CodeAnalysis.dll", "Microsoft.CodeAnalysis.CSharp.dll",
-            "Microsoft.CodeAnalysis.CSharp.Scripting.dll", "Microsoft.CodeAnalysis.Scripting.dll",
-
-            "System.Reflection.Metadata.dll", "System.Collections.Immutable.dll",
+            /* Microsoft SDKs */
+            "Microsoft.CodeAnalysis.dll", 
+            "Microsoft.CodeAnalysis.CSharp.dll",
+            "Microsoft.CodeAnalysis.CSharp.Scripting.dll", 
+            "Microsoft.CodeAnalysis.Scripting.dll",
+            "Microsoft.Toolkit.Diagnostics.dll",
+            "Microsoft.Extensions.Logging.Abstractions.dll",
+            "System.Reflection.Metadata.dll", 
+            "System.Collections.Immutable.dll",
             "System.Runtime.CompilerServices.Unsafe.dll",
 
-            "Publicized/DedicatedServer.dll", "Publicized/Barotrauma.dll"
+            /* Assembly Script Dependencies */
+            "Publicized/DedicatedServer.dll", 
+            "Publicized/Barotrauma.dll", 
+            "Publicized/BarotraumaCore.dll",
+            
+            /* Other NuGet Packages */
+            "Basic.Reference.Assemblies.Net80.dll",
+            "FluentResults.dll",
+            "LightInject.dll",
+            "OneOf.dll"
         };
 
         private static void CreateMissingDirectory()

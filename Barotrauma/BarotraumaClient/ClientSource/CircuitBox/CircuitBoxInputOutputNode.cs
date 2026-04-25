@@ -31,7 +31,7 @@ namespace Barotrauma
 
                 GUILayoutGroup connLayout = new GUILayoutGroup(new RectTransform(new Vector2(1f, 0.12f), labelList.Content.RectTransform), isHorizontal: true, childAnchor: Anchor.CenterLeft);
                 new GUITextBlock(new RectTransform(new Vector2(0.4f, 1f), connLayout.RectTransform), text: conn.Connection.DisplayName, font: GUIStyle.SubHeadingFont);
-                GUITextBox box = GUI.CreateTextBoxWithPlaceholder(new RectTransform(new Vector2(0.6f, 1f), connLayout.RectTransform), text: found ? labelOverride : string.Empty, conn.Connection.DisplayName.Value);
+                GUITextBox box = GUI.CreateTextBoxWithPlaceholder(new RectTransform(new Vector2(0.6f, 1f), connLayout.RectTransform), text: found ? labelOverride : string.Empty, conn.Connection.DefaultDisplayName.Value);
                 box.MaxTextLength = MaxConnectionLabelLength;
 
                 textBoxes.Add(conn.Name, box);

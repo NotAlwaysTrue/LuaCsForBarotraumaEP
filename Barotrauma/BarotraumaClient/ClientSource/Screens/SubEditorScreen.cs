@@ -12,6 +12,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Xml.Linq;
+using Barotrauma.LuaCs.Events;
 using Barotrauma.Sounds;
 
 namespace Barotrauma
@@ -733,6 +734,8 @@ namespace Barotrauma
                 AutoHideScrollBar = false,
                 OnSelected = (component, userdata) =>
                 {
+                    //if we're clicking on a checkbox (toggle visibility) on the list, don't select the entry on the list
+                    if (GUI.MouseOn is GUITickBox) { return false; }
                     //toggling selection is not how listboxes normally work, need to do that manually here
                     SoundPlayer.PlayUISound(GUISoundType.Select);
                     if (layerList.SelectedData == userdata)
@@ -1531,8 +1534,6 @@ namespace Barotrauma
         public override void Select()
         {
             Select(enableAutoSave: true);
-
-            GameMain.LuaCs.CheckInitialize();
         }
 
         public void Select(bool enableAutoSave = true)
@@ -3255,6 +3256,20 @@ namespace Barotrauma
                 = new GUITextBox(new RectTransform((1.0f, 0.15f), saveInPackageLayout.RectTransform),
                     createClearButton: true);
 
+            packToSaveInFilter.OnTextChanged += (GUITextBox textBox, string text) => 
+            {
+
+                foreach (GUIComponent child in packageToSaveInList.Content.Children)
+                {
+                    child.Visible =
+                        // Get the pkgText from below
+                        !(child.GetChild<GUILayoutGroup>()?.GetChild<GUITextBlock>() is GUITextBlock textBlock &&
+                        !textBlock.Text.Contains(packToSaveInFilter.Text, StringComparison.OrdinalIgnoreCase));
+                }
+
+                return true;
+            };
+
             GUILayoutGroup addItemToPackageToSaveList(LocalizedString itemText, ContentPackage p)
             {
                 var listItem = new GUIFrame(new RectTransform((1.0f, 0.15f), packageToSaveInList.Content.RectTransform),
@@ -3275,28 +3290,26 @@ namespace Barotrauma
                 return retVal;
             }
 
+            ContentPackage ownerPkg = null;
+
 #if DEBUG
             //this is a debug-only option so I won't bother submitting it for localization
             var modifyVanillaListItem = addItemToPackageToSaveList("Modify Vanilla content package", ContentPackageManager.VanillaCorePackage);
             var modifyVanillaListIcon = modifyVanillaListItem.GetChild<GUIFrame>();
             GUIStyle.Apply(modifyVanillaListIcon, "WorkshopMenu.EditButton");
+
+            if (MainSub?.Info != null && IsVanillaSub(MainSub.Info))
+            {
+                ownerPkg = ContentPackageManager.VanillaCorePackage;
+            }
 #endif
             
             var newPackageListItem = addItemToPackageToSaveList(TextManager.Get("CreateNewLocalPackage"), null);
             var newPackageListIcon = newPackageListItem.GetChild<GUIFrame>();
             var newPackageListText = newPackageListItem.GetChild<GUITextBlock>();
             GUIStyle.Apply(newPackageListIcon, "NewContentPackageIcon");
-            new GUICustomComponent(new RectTransform(Vector2.Zero, saveInPackageLayout.RectTransform),
-                onUpdate: (f, component) =>
-                {
-                    foreach (GUIComponent contentChild in packageToSaveInList.Content.Children)
-                    {
-                        contentChild.Visible &= !(contentChild.GetChild<GUILayoutGroup>()?.GetChild<GUITextBlock>() is GUITextBlock tb &&
-                                                  !tb.Text.Contains(packToSaveInFilter.Text, StringComparison.OrdinalIgnoreCase));
-                    }
-                });
-            ContentPackage ownerPkg = null;
-            if (MainSub?.Info != null) { ownerPkg = GetLocalPackageThatOwnsSub(MainSub.Info); }
+
+            if (ownerPkg == null && MainSub?.Info != null) { ownerPkg = GetLocalPackageThatOwnsSub(MainSub.Info); }
             foreach (var p in ContentPackageManager.LocalPackages)
             {
                 var packageListItem = addItemToPackageToSaveList(p.Name, p);
@@ -3851,6 +3864,10 @@ namespace Barotrauma
                 return true;
             };
 
+            new GUITextBlock(new RectTransform(new Vector2(1.0f, 0.1f), deleteButtonHolder.RectTransform), TextManager.Get("DragAndDropSubmarineTip").Fallback(LocalizedString.EmptyString), textAlignment: Alignment.Center, font: GUIStyle.Font)
+            {
+                Wrap = true
+            };
 
             if (AutoSaveInfo?.Root != null)
             {
@@ -4488,12 +4505,20 @@ namespace Barotrauma
 
         public void ReconstructLayers()
         {
+            Dictionary<string, LayerData> previousLayers = Layers.ToDictionary();
             ClearLayers();
             foreach (MapEntity entity in MapEntity.MapEntityList)
             {
                 if (!string.IsNullOrWhiteSpace(entity.Layer))
                 {
                     Layers.TryAdd(entity.Layer, new LayerData(!entity.IsLayerHidden));
+                }
+            }
+            foreach ((string layerName, LayerData data) in previousLayers)
+            {
+                if (Layers.ContainsKey(layerName))
+                {
+                    Layers[layerName] = data;
                 }
             }
             UpdateLayerPanel();
