@@ -315,24 +315,16 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
                 StringBuilder sb =  new StringBuilder();
                 foreach (var resultDiagnostic in result.Diagnostics)
                 {
-                    if (resultDiagnostic.Severity != DiagnosticSeverity.Error)
+                    if (resultDiagnostic.IsWarningAsError || resultDiagnostic.Severity == DiagnosticSeverity.Error)
                     {
-                        continue;
+                        //sb.AppendLine($">>> {resultDiagnostic.GetMessage()} | Location: {resultDiagnostic.Location.SourceTree?.GetLineSpan(resultDiagnostic.Location.SourceSpan)} ");
+                        sb.AppendLine($"\n{resultDiagnostic}");
                     }
-                    sb.AppendLine($">>> {resultDiagnostic.GetMessage()} | Location: {resultDiagnostic.Location.SourceTree?.GetLineSpan(resultDiagnostic.Location.SourceSpan)} ");
                 }
                 var res = new FluentResults.Result().WithError(
-                    new Error($"Package Error: {OwnerPackage.Name}: Compilation failed for assembly {assemblyName}! {sb.ToString()}\n")
+                    new Error($"Package Error: {OwnerPackage.Name}: Compilation failed for assembly {assemblyName}!\n {sb.ToString()}\n")
                         .WithMetadata(MetadataType.ExceptionObject, this)
                         .WithMetadata(MetadataType.RootObject, syntaxTrees));
-                var failuresDiag =
-                    result.Diagnostics.Where(d => d.IsWarningAsError || d.Severity == DiagnosticSeverity.Error);
-                foreach (var diag in failuresDiag)
-                {
-                    res = res.WithError(new Error(diag.GetMessage())
-                        .WithMetadata(MetadataType.ExceptionObject, this)
-                        .WithMetadata(MetadataType.ExceptionDetails, diag.Descriptor.Description));
-                }
 
                 return res;
             }

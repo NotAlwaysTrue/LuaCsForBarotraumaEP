@@ -335,10 +335,10 @@ public sealed class ModConfigService : IModConfigService
                             .Select(fp => ContentPath.FromRaw(srcPackage, 
                                 $"%ModDir%/{Path.GetRelativePath(srcPackage.Dir, fp)}".CleanUpPathCrossPlatform()))
                             .Concat(sharedFiles).ToImmutableArray(),
-                        FriendlyName = IAssemblyLoaderService.InternalsAwareAssemblyName,
+                        FriendlyName = IAssemblyLoaderService.InternalsAwareAssemblyName, // give the best chance of success (InternalsAware + Publicizer)
                         IncompatiblePackages = ImmutableArray<Identifier>.Empty,
                         RequiredPackages = ImmutableArray<Identifier>.Empty,
-                        UseInternalAccessName = true,
+                        UseInternalAccessName = false,  //compile as public and then fallback to internals
                         IsScript = true,
                         IsReferenceModeOnly = false
                     });
@@ -357,7 +357,7 @@ public sealed class ModConfigService : IModConfigService
                         FriendlyName = IAssemblyLoaderService.InternalsAwareAssemblyName,
                         IncompatiblePackages = ImmutableArray<Identifier>.Empty,
                         RequiredPackages = ImmutableArray<Identifier>.Empty,
-                        UseInternalAccessName = true,
+                        UseInternalAccessName = false,
                         IsScript = true,
                         IsReferenceModeOnly = false
                     });
@@ -405,6 +405,7 @@ public sealed class ModConfigService : IModConfigService
                     IncompatiblePackages =  ImmutableArray<Identifier>.Empty,
                     RequiredPackages = ImmutableArray<Identifier>.Empty,
                     IsAutorun = true,
+                    RunUnrestricted = false
                 });
                 
                 builder.Add(new LuaScriptsResourceInfo()
@@ -418,6 +419,7 @@ public sealed class ModConfigService : IModConfigService
                     IncompatiblePackages =  ImmutableArray<Identifier>.Empty,
                     RequiredPackages = ImmutableArray<Identifier>.Empty,
                     IsAutorun = false,
+                    RunUnrestricted = false
                 });
             }
             

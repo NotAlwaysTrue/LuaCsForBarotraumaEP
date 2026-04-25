@@ -1,4 +1,17 @@
 ﻿-------------------------------------------------------------------------------------------------------------------------------------------------
+v1.12.7.0
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+- Reduced how much the new weak points in the reworked subs push bots around to make them more capable of fixing broken weak points.
+- Fixed selecting any item that forces the character to some pose (chairs, periscopes) getting logged in the server console.
+- Mac only: added a button for settings mic permissions to the audio settings. It seems that on Mac, the game updates may cause the OS to revoke the permissions.
+- Fixed some of the Workshop tags you can choose in-game not working on Steam's side.
+
+Modding:
+- Fixed contained items being misaligned on attachable items (e.g. in mods that make diving suit cabinets attachable).
+- Fixed monsters spawned by an event inside an outpost being unable to attack any items inside that outpost. To our knowledge, didn't affect vanilla events, but caused issues in certain mods.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
 v1.12.6.2
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -439,7 +452,6 @@ v1.8.8.1
 
 Modding:
 - Fixed transferring afflictions to a newly spawned character using status effects causing a crash if the original character had already been removed. Didn't affect any vanilla content.
->>>>>>> master
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 v1.8.7.0

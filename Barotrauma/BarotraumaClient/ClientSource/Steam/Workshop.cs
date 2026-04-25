@@ -18,6 +18,10 @@ namespace Barotrauma.Steam
         {
             public const int MaxThumbnailSize = 1024 * 1024;
 
+            /// <summary>
+            /// Tags the players can choose for their workshop items. These must match the ones defined in the Steamworks backend. They're case insensitive, but must otherwise match exactly for the tag filtering to work correctly.
+            /// The localized names for these are fetched from the loca files with the identifier "workshop.contenttag.{tag.RemoveWhitespace()}".
+            /// </summary>
             public static readonly ImmutableArray<Identifier> Tags = new []
             {
                 "submarine",
@@ -25,7 +29,7 @@ namespace Barotrauma.Steam
                 "monster",
                 "mission",
                 "outpost",
-                "beaconstation",
+                "beacon station",
                 "wreck",
                 "ruin",
                 "weapons",
@@ -34,14 +38,14 @@ namespace Barotrauma.Steam
                 "art",
                 "event set",
                 "total conversion",
-                "gamemode",
-                "gameplaymechanics",
+                "game mode",
+                "gameplay mechanics",
                 "environment",
                 "item assembly",
                 "language",
                 "qol",
-                "clientside",
-                "serverside",
+                "client-side",
+                "server-side",
                 "outdated",
                 "library"
             }.ToIdentifiers().ToImmutableArray();

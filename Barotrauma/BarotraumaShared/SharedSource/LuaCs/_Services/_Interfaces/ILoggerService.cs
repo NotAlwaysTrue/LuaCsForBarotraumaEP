@@ -34,4 +34,26 @@ public interface ILoggerService : IReusableService
     void LogDebugError(string message);
 
     #endregion
+
+    #region LegacyCompat_LuaCsLogger
+
+    public void HandleException(Exception ex, LuaCsMessageOrigin origin)
+    {
+        HandleException(ex, origin.ToString());
+    }
+
+    public void LogError(string message, LuaCsMessageOrigin origin)
+    {
+        LogError(message);
+    }
+    
+    #endregion
+}
+
+public enum LuaCsMessageOrigin
+{
+    LuaCs,
+    Unknown,
+    LuaMod,
+    CSharpMod,
 }

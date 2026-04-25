@@ -32,11 +32,11 @@ partial class NetworkingService : INetworkingService, IEventServerConnected, IEv
         }
     }
 
-    public void OnReceivedServerNetMessage(IReadMessage netMessage, ServerPacketHeader serverPacketHeader)
+    public bool? OnReceivedServerNetMessage(IReadMessage netMessage, ServerPacketHeader serverPacketHeader)
     {
         if (serverPacketHeader != ServerHeader)
         {
-            return;
+            return null;
         }
 
         ServerToClient luaCsHeader = (ServerToClient)netMessage.ReadByte();
@@ -55,6 +55,8 @@ partial class NetworkingService : INetworkingService, IEventServerConnected, IEv
                 ReadIds(netMessage);
                 break;
         }
+
+        return true;
     }
 
     private void SendSyncMessage()

@@ -862,10 +862,6 @@ namespace Barotrauma.Items.Components
             }
             else if (CanBeSelectedByCharacters)
             {
-#if SERVER
-                GameServer.Log($"{GameServer.CharacterLogName(activator)} entered {item.Name}", ServerLog.MessageType.ItemInteraction);
-#endif
-
                 activator.DeselectCharacter();
 
                 User = activator;

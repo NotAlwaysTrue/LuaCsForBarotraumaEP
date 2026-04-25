@@ -154,6 +154,13 @@ public class DefaultLuaRegistrar : IDefaultLuaRegistrar
         _userDataService.RegisterType("FarseerPhysics.Collision.ReferenceFace");
         _userDataService.RegisterType("FarseerPhysics.Collision.Collision");
 
+        _userDataService.RegisterType("Voronoi2.DoubleVector2");
+        _userDataService.RegisterType("Voronoi2.Site");
+        _userDataService.RegisterType("Voronoi2.Edge");
+        _userDataService.RegisterType("Voronoi2.Halfedge");
+        _userDataService.RegisterType("Voronoi2.VoronoiCell");
+        _userDataService.RegisterType("Voronoi2.GraphEdge");
+
         _userDataService.RegisterType("Barotrauma.PrefabCollection`1");
         _userDataService.RegisterType("Barotrauma.PrefabSelector`1");
         _userDataService.RegisterType("Barotrauma.Pair`2");

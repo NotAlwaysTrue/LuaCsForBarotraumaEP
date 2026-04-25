@@ -5,6 +5,7 @@ using System.Xml.Linq;
 using Barotrauma.LuaCs.Data;
 using Barotrauma.LuaCs;
 using Barotrauma.Networking;
+using OneOf;
 
 namespace Barotrauma.LuaCs.Data;
 
@@ -34,8 +35,8 @@ public partial interface ISettingBase : IDataInfo, IEquatable<ISettingBase>, IDi
     Type GetValueType();
     string GetStringValue();
     string GetDefaultStringValue();
-    bool TrySetValue(OneOf.OneOf<string, XElement> value);
-    event Action<ISettingBase> OnValueChanged;
+    bool TrySetSerializedValue(OneOf<string, XElement> value);
+    event Action<ISettingBase> OnValueChanged; 
     OneOf.OneOf<string, XElement> GetSerializableValue();
 }
 

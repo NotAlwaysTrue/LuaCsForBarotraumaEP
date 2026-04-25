@@ -2,4 +2,6 @@
 <ModConfig>
     <Lua File="%ModDir%/Lua/init.lua" IsAutorun="true" />
     <Config File="%ModDir%/Settings.xml"/>
+    <Config File="%ModDir%/SettingsClient.xml" Target="Client"/>
+    <Config File="%ModDir%/SettingsServer.xml" Target="Server"/>
 </ModConfig>

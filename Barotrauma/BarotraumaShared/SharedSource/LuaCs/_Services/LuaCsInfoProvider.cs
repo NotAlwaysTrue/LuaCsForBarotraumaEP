@@ -20,9 +20,9 @@ public sealed class LuaCsInfoProvider : ILuaCsInfoProvider
     {
         get
         {
-            return ContentPackageManager.EnabledPackages.Regular.FirstOrDefault(cp => cp.NameMatches(LuaCsSetup.PackageId), null)
-                               ?? ContentPackageManager.LocalPackages.FirstOrDefault(cp => cp.NameMatches(LuaCsSetup.PackageId))
-                               ?? ContentPackageManager.WorkshopPackages.FirstOrDefault(cp => cp.NameMatches(LuaCsSetup.PackageId));
+            return ContentPackageManager.EnabledPackages.Regular.FirstOrDefault(cp => cp.NameMatches(LuaCsSetup.PackageName), null)
+                               ?? ContentPackageManager.LocalPackages.FirstOrDefault(cp => cp.NameMatches(LuaCsSetup.PackageName))
+                               ?? ContentPackageManager.WorkshopPackages.FirstOrDefault(cp => cp.NameMatches(LuaCsSetup.PackageName));
         }
     }
 }

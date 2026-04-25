@@ -105,7 +105,13 @@ internal interface IEventModifyChatMessage : IEvent<IEventModifyChatMessage>
         /// <returns>Whether to <b><i>reject</i></b> the message.</returns>
         public bool? OnModifyMessagePredicate(ChatMessage message, WifiComponent senderRadio)
         {
-            return (bool?)LuaFuncs[nameof(OnModifyMessagePredicate)](message, senderRadio);
+            object result = LuaFuncs[nameof(OnModifyMessagePredicate)](message, senderRadio);
+            if (result is DynValue dynValue && dynValue.Type == DataType.Boolean)
+            {
+                return dynValue.Boolean;
+            }
+
+            return null;
         }
     } 
 }
@@ -953,7 +959,7 @@ interface IEventInventoryItemSwap : IEvent<IEventInventoryItemSwap>
 #if SERVER
 public interface IEventClientRawNetMessageReceived : IEvent<IEventClientRawNetMessageReceived>
 {
-    void OnReceivedClientNetMessage(IReadMessage netMessage, ClientPacketHeader clientPacketHeader, NetworkConnection sender);
+    bool? OnReceivedClientNetMessage(IReadMessage netMessage, ClientPacketHeader clientPacketHeader, NetworkConnection sender);
 
     static IEventClientRawNetMessageReceived IEvent<IEventClientRawNetMessageReceived>.GetLuaRunner(IDictionary<string, LuaCsFunc> luaFunc)
         => new LuaWrapper(luaFunc);
@@ -964,15 +970,22 @@ public interface IEventClientRawNetMessageReceived : IEvent<IEventClientRawNetMe
         {
         }
 
-        public void OnReceivedClientNetMessage(IReadMessage netMessage, ClientPacketHeader clientPacketHeader, NetworkConnection sender)
+        public bool? OnReceivedClientNetMessage(IReadMessage netMessage, ClientPacketHeader clientPacketHeader, NetworkConnection sender)
         {
-            if (GameMain.Server == null) { return; }
+            if (GameMain.Server == null) { return null; }
 
             Client client = GameMain.Server.ConnectedClients.FirstOrDefault(c => c.Connection == sender);
 
-            if (client == null) { return; }
+            if (client == null) { return null; }
 
-            LuaFuncs[nameof(OnReceivedClientNetMessage)](netMessage, clientPacketHeader, client);
+            var result = LuaFuncs[nameof(OnReceivedClientNetMessage)](netMessage, clientPacketHeader, client);
+
+            if (result is DynValue dynValue && dynValue.Type == DataType.Boolean)
+            {
+                return dynValue.Boolean;
+            }
+
+            return null;
         }
     }
 }
@@ -1063,7 +1076,7 @@ interface IEventJobsAssigned : IEvent<IEventJobsAssigned>
 
 public interface IEventServerRawNetMessageReceived : IEvent<IEventServerRawNetMessageReceived>
 {
-    void OnReceivedServerNetMessage(IReadMessage netMessage, ServerPacketHeader serverPacketHeader);
+    bool? OnReceivedServerNetMessage(IReadMessage netMessage, ServerPacketHeader serverPacketHeader);
 
     static IEventServerRawNetMessageReceived IEvent<IEventServerRawNetMessageReceived>.GetLuaRunner(IDictionary<string, LuaCsFunc> luaFunc)
     => new LuaWrapper(luaFunc);
@@ -1074,9 +1087,15 @@ public interface IEventServerRawNetMessageReceived : IEvent<IEventServerRawNetMe
         {
         }
 
-        public void OnReceivedServerNetMessage(IReadMessage netMessage, ServerPacketHeader serverPacketHeader)
+        public bool? OnReceivedServerNetMessage(IReadMessage netMessage, ServerPacketHeader serverPacketHeader)
         {
-            LuaFuncs[nameof(OnReceivedServerNetMessage)](netMessage, serverPacketHeader);
+            var result = LuaFuncs[nameof(OnReceivedServerNetMessage)](netMessage, serverPacketHeader);
+            if (result is DynValue dynValue && dynValue.Type == DataType.Boolean)
+            {
+                return dynValue.Boolean;
+            }
+
+            return null;
         }
     }
 }

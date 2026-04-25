@@ -25,17 +25,24 @@ namespace Barotrauma
     partial class LuaCsSetup : IDisposable, IEventScreenSelected, IEventEnabledPackageListChanged, 
         IEventReloadAllPackages
     {
-        public const string PackageId = "LuaCsForBarotrauma";
+        public const string PackageName = "LuaCsForBarotrauma";
 
         private static LuaCsSetup _luaCsSetup;
         public static LuaCsSetup Instance => _luaCsSetup ??= new LuaCsSetup();
-        
+
+        /// <summary>
+        /// The index of the last Vanilla command.
+        /// </summary>
+        public static int DebugConsoleCommandVanillaIndex { get; private set; }
+
         private LuaCsSetup()
         {
             if (_luaCsSetup != null)
             {
                 throw new Exception("Tried to create another LuaCsSetup instance");
             }
+
+            DebugConsoleCommandVanillaIndex = DebugConsole.Commands.Count;
 
             // == startup
             _servicesProvider = SetupServicesProvider();
@@ -83,7 +90,26 @@ namespace Barotrauma
         // hotpath performance ref cache
         private LuaGame _game;
         public LuaGame Game => _game ??= _servicesProvider.GetService<LuaGame>();
+        public Script Lua => LuaScriptManagementService.InternalScript;
 
+        private ISettingBase<bool> _isCsEnabledForSession;
+        public bool IsCsEnabledForSession
+        {
+            get => _isCsEnabledForSession?.Value ?? false;
+            internal set
+            {
+                _isCsEnabledForSession?.TrySetValue(value);
+                if (_isCsEnabledForSession != null) 
+                {
+                    if (_isCsEnabledForSession.GetConfigInfo() == null)
+                    {
+                        Logger.LogError($"Config info was nil while trying to save {IsCsEnabledForSession}");
+                        return;
+                    }
+                    ConfigService.SaveConfigValue(_isCsEnabledForSession); 
+                }
+            }
+        }
 
         /// <summary>
         /// Whether C# plugin code is enabled.
@@ -91,15 +117,17 @@ namespace Barotrauma
         public bool IsCsEnabled
         {
 #if CLIENT
-            get => _csRunPolicy?.Value == "Enabled" || _isCsEnabledForSession;
+            get => _csRunPolicy?.Value == "Enabled" || IsCsEnabledForSession;
 #elif SERVER
             // cs settings cannot be changed on the server after launch
             get => _csRunPolicy?.Value is "Enabled" or "Prompt";
 #endif
         }
+
         private ISettingList<string> _csRunPolicy;
-        private bool ShouldPromptForCs => _csRunPolicy?.Value is "Prompt";
-        
+
+        public string CsRunPolicyValue => _csRunPolicy?.Value ?? "Prompt";
+
         /// <summary>
         /// Whether usernames are anonymized or show in logs. 
         /// </summary>
@@ -118,9 +146,9 @@ namespace Barotrauma
 
         public static ContentPackage GetLuaCsPackage()
         {
-            return ContentPackageManager.EnabledPackages.Regular.FirstOrDefault(cp => cp.NameMatches(PackageId), null)
-                ?? ContentPackageManager.LocalPackages.FirstOrDefault(cp => cp.NameMatches(PackageId))
-                ?? ContentPackageManager.WorkshopPackages.FirstOrDefault(cp => cp.NameMatches(PackageId));
+            return ContentPackageManager.EnabledPackages.Regular.FirstOrDefault(cp => cp.NameMatches(PackageName), null)
+                ?? ContentPackageManager.LocalPackages.FirstOrDefault(cp => cp.NameMatches(PackageName))
+                ?? ContentPackageManager.WorkshopPackages.FirstOrDefault(cp => cp.NameMatches(PackageName));
         }
         
         void LoadLuaCsConfig()
@@ -139,6 +167,17 @@ namespace Barotrauma
                 ConfigService.TryGetConfig<ISettingBase<bool>>(luaCsPackage, "UseCaching", out var val5)
                     ? val5
                     : null;
+            _isCsEnabledForSession =
+                ConfigService.TryGetConfig<ISettingBase<bool>>(luaCsPackage, "IsCsEnabledForSession", out var val6)
+                    ? val6
+                    : null;
+
+            if (!ContentPackageManager.EnabledPackages.All.Contains(luaCsPackage))
+            {
+                // sorry perfidius (not sorry)
+                luaCsPackage.UnloadFilesOfType<TextFile>();
+                luaCsPackage.LoadFilesOfType<TextFile>();
+            }
         }
         
         private IServicesProvider SetupServicesProvider()
@@ -223,22 +262,13 @@ namespace Barotrauma
 
         public void OnReloadAllPackages()
         {
-            if (CurrentRunState <= RunState.Unloaded)
-            {
-                return;
-            }
-
             CoroutineManager.Invoke(() =>
             {
-#if CLIENT
-                bool prevCsEnabled = _isCsEnabledForSession;
-#endif
-                var state = CurrentRunState;
                 SetRunState(RunState.Unloaded);
-#if CLIENT
-                _isCsEnabledForSession = prevCsEnabled;
-#endif
-                SetRunState(state);
+                CoroutineManager.Invoke(() =>
+                {
+                    SetRunState(RunState.Running);
+                },0.25f);
             });
         }
 
@@ -256,10 +286,11 @@ namespace Barotrauma
             }
             
             this.Logger.LogResults(PackageManagementService.SyncLoadedPackagesList(GetLuaCsEnabledPackagesList(packages)));
+            ConfigService.LoadSavedConfigsValues();
             SetRunState(state); // restore
         }
         
-        private void SetRunState(RunState targetRunState)
+        public void SetRunState(RunState targetRunState)
         {
             if (CurrentRunState == targetRunState)
             {
@@ -274,17 +305,13 @@ namespace Barotrauma
         
         private ImmutableArray<ContentPackage> GetLuaCsEnabledPackagesList(ImmutableArray<ContentPackage> enabledRegular)
         {
-            if (!enabledRegular.Any(
-                    p => p.Name.Equals("LuaCsForBarotrauma", StringComparison.InvariantCultureIgnoreCase) 
-                         || p.Name.Equals("Lua for Barotrauma", StringComparison.InvariantCultureIgnoreCase)))
+            if (!enabledRegular.Any(p => p.Name.Equals(PackageName, StringComparison.InvariantCultureIgnoreCase)))
             {
-                var luaCs = ContentPackageManager.AllPackages.FirstOrDefault(
-                    p => p.Name.Equals("LuaCsForBarotrauma", StringComparison.InvariantCultureIgnoreCase) 
-                         || p.Name.Equals("Lua For Barotrauma", StringComparison.InvariantCultureIgnoreCase));
+                var luaCs = ContentPackageManager.AllPackages.FirstOrDefault(p => p.Name.Equals(PackageName, StringComparison.InvariantCultureIgnoreCase));
                 if (luaCs is null)
                 {
-                    DebugConsole.ThrowError($"The 'LuaCsForBarotrauma' mod could not be found. Please subscribe to it and add it to the EnabledPackages List!", 
-                        new NullReferenceException($"The 'LuaCsForBarotrauma' mod could not be found. Please subscribe to it and add it to the EnabledPackages List!"),
+                    DebugConsole.ThrowError($"The '{PackageName}' mod could not be found. Please subscribe to it and add it to the EnabledPackages List!", 
+                        new NullReferenceException($"The '{PackageName}' mod could not be found. Please subscribe to it and add it to the EnabledPackages List!"),
                         createMessageBox: true);
                     return enabledRegular;
                 }
@@ -383,6 +410,11 @@ namespace Barotrauma
                     EventService.PublishEvent<IEventServerConnected>(static p => p.OnServerConnected());
                 }
 #endif
+
+#if SERVER
+                GameMain.Server.ServerSettings.LoadClientPermissions();
+#endif
+
                 CurrentRunState = RunState.Running;
             }
 
@@ -390,9 +422,6 @@ namespace Barotrauma
             void RunStateRunning_OnExit(State<RunState> currentState)
             {
                 EventService.Call("stop");
-#if CLIENT
-                _isCsEnabledForSession = false;
-#endif
                 Logger.LogResults(PackageManagementService.StopRunningPackages());
                 Logger.LogMessage("LuaCs running state exited");
             }

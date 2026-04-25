@@ -56,6 +56,7 @@ public record ConfigResourceInfo : BaseResourceInfo, IConfigResourceInfo {}
 public record LuaScriptsResourceInfo : BaseResourceInfo, ILuaScriptResourceInfo
 {
     public bool IsAutorun { get; init; }
+    public bool RunUnrestricted { get; init; }
 }
 
 #endregion

@@ -239,7 +239,7 @@ public sealed partial class ConfigService : IConfigService
                     return;
                 }
 
-                if (setting.TrySetValue(valueString))
+                if (setting.TrySetSerializedValue(valueString))
                 {
                     _logger.LogMessage($"Set config {internalName} value to {valueString}", Color.Green);
                     if (SaveConfigValue(setting) is { IsFailed: true } res)
@@ -445,7 +445,7 @@ public sealed partial class ConfigService : IConfigService
                     {
                         if (_settingsInstances.TryGetValue((info.OwnerPackage, value.SettingName), out var instance))
                         {
-                            instance.TrySetValue(value.Element);
+                            instance.TrySetSerializedValue(value.Element);
                         }
                     }
                 }
@@ -495,7 +495,7 @@ public sealed partial class ConfigService : IConfigService
             return FluentResults.Result.Ok();
         }
 
-        return FluentResults.Result.OkIf(setting.TrySetValue(cfgValueElement), new Error($"Failed to set value for [{setting.OwnerPackage.Name}.{setting.InternalName}]"));
+        return FluentResults.Result.OkIf(setting.TrySetSerializedValue(cfgValueElement), new Error($"Failed to set value for [{setting.OwnerPackage.Name}.{setting.InternalName}]"));
     }
     
     public FluentResults.Result LoadSavedConfigsValues()
@@ -544,7 +544,7 @@ public sealed partial class ConfigService : IConfigService
                 continue;
             }
 
-            if (!instance.TrySetValue(profileValue.Element))
+            if (!instance.TrySetSerializedValue(profileValue.Element))
             {
                 result.WithError(new Error($"{nameof(ApplyConfigProfile)}: Failed to set value for [{profileValue.SettingName}]."));
             }

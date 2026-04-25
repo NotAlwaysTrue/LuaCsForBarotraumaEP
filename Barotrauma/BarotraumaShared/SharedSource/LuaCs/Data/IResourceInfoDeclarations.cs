@@ -21,6 +21,12 @@ public interface ILuaScriptResourceInfo : IBaseResourceInfo
     /// </summary>
     [XmlAttribute("IsAutorun")]
     public bool IsAutorun { get; }
+    
+    /// <summary>
+    /// Indicates that this lua resources needs to run outside sandbox/requires unrestricted access.
+    /// </summary>
+    [XmlAttribute("RunUnrestricted")]
+    public bool RunUnrestricted { get; }
 }
 
 public interface IAssemblyResourceInfo : IBaseResourceInfo

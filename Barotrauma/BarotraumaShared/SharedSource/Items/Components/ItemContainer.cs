@@ -99,7 +99,7 @@ namespace Barotrauma.Items.Components
             }
         }
         
-        [Serialize("0.0,0.0", IsPropertySaveable.No, description: "The position where the contained items get drawn at. In the case of items with a physics body, the offset is from the center of the body, on items without one from the top-left corner of the sprite. In pixels.")]
+        [Serialize("0.0,0.0", IsPropertySaveable.No, description: "The position where the contained items get drawn at (offset from the upper left corner of the sprite in pixels).")]
         public Vector2 ItemPos { get; set; }
 
         [Serialize("0.0,0.0", IsPropertySaveable.No, description: "The interval at which the contained items are spaced apart from each other (in pixels).")]
@@ -1093,25 +1093,21 @@ namespace Barotrauma.Items.Components
             {
                 if (item.body == null)
                 {
-                    //if the item is a holdable item currently attached to a wall (i.e. normally has a physics body, but the body is now disabled),
-                    //we must position the contained items using the center as the origin since the item positions have been configured with the assumption the item has a body
-                    bool isAttachedHoldable = item.GetComponent<Holdable>() is { Attached: true };
-                    bool useCenterAsOrigin = isAttachedHoldable;
                     if (flippedX)
                     {
                         transformedItemPos.X = -transformedItemPos.X;
-                        if (!useCenterAsOrigin) { transformedItemPos.X += item.Rect.Width; }
+                        transformedItemPos.X += item.Rect.Width;
                         transformedItemInterval.X = -transformedItemInterval.X;
                         transformedItemIntervalHorizontal.X = -transformedItemIntervalHorizontal.X;
                     }
                     if (flippedY)
                     {
                         transformedItemPos.Y = -transformedItemPos.Y;
-                        if (!useCenterAsOrigin) { transformedItemPos.Y -= item.Rect.Height; }
+                        transformedItemPos.Y -= item.Rect.Height;
                         transformedItemInterval.Y = -transformedItemInterval.Y;
                         transformedItemIntervalVertical.Y = -transformedItemIntervalVertical.Y;
                     }
-                    transformedItemPos += useCenterAsOrigin ? item.Position : new Vector2(item.Rect.X, item.Rect.Y);
+                    transformedItemPos += new Vector2(item.Rect.X, item.Rect.Y);
                     if (drawPosition)
                     {
                         if (item.Submarine != null) { transformedItemPos += item.Submarine.DrawPosition; }
@@ -1129,6 +1125,16 @@ namespace Barotrauma.Items.Components
                 }
                 else
                 {
+                    if (item.GetComponent<Holdable>() is { Attachable: true })
+                    {
+                        //if the item is attachable to walls, we need a bit of special logic because the item can either
+                        //have or not have a body depending on whether it's attached.
+
+                        //since it seems previously the contained item positions have always been configured as if the item had no body (using the top-left corner as the origin),
+                        //let's modify the position here to position the items correctly even when the body is active (moving the origin from the center of the body to the top-left corner)
+                        transformedItemPos -= item.Rect.Size.FlipY().ToVector2() / 2;
+                    }
+
                     Matrix transform = Matrix.CreateRotationZ(drawPosition ? item.body.DrawRotation : item.body.Rotation);
                     if (bodyFlipped)
                     {

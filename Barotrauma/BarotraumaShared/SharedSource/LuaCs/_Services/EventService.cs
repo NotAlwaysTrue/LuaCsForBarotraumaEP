@@ -24,14 +24,14 @@ public partial class EventService : IEventService
         public TypeStringKey(Type type)
         {
             Type = type ?? throw new ArgumentNullException(nameof(type));
-            TypeName = type.Name;
+            TypeName = type.Name.ToLowerInvariant();
             HashCode = TypeName.GetHashCode();
         }
 
         public TypeStringKey(string typeName)
         {
             Type = null;
-            TypeName = typeName ?? throw new ArgumentNullException(nameof(typeName));
+            TypeName = typeName?.ToLowerInvariant() ?? throw new ArgumentNullException(nameof(typeName));
             HashCode = TypeName.GetHashCode();
         }
 
@@ -56,7 +56,7 @@ public partial class EventService : IEventService
     private readonly AsyncReaderWriterLock _operationsLock = new();
     private readonly ConcurrentDictionary<TypeStringKey, ConcurrentDictionary<OneOf<IEvent, string>, IEvent>> _subscribers = new();
     private readonly ConcurrentDictionary<TypeStringKey, (TypeStringKey Event, Func<LuaCsFunc, IEvent> RunnerFactory)> _luaAliasEventFactory = new();
-    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, LuaCsFunc>> _luaLegacyEventsSubscribers = new();
+    private readonly ConcurrentDictionary<TypeStringKey, ConcurrentDictionary<TypeStringKey, LuaCsFunc>> _luaLegacyEventsSubscribers = new();
     private readonly ConcurrentDictionary<IEventService, IEventService> _subscribedEventDispatchers = new();
 
     #region LifeCycle
@@ -118,7 +118,7 @@ public partial class EventService : IEventService
         }
         else
         {
-            var eventSubs = _luaLegacyEventsSubscribers.GetOrAdd(eventName, key => new ConcurrentDictionary<string, LuaCsFunc>());
+            var eventSubs = _luaLegacyEventsSubscribers.GetOrAdd(eventName, key => new ConcurrentDictionary<TypeStringKey, LuaCsFunc>());
             eventSubs[identifier] = callback;
         }
     }
@@ -200,6 +200,29 @@ public partial class EventService : IEventService
     }
 
     public void Remove(string eventName, string identifier)
+    {
+        Guard.IsNotNullOrWhiteSpace(eventName, nameof(eventName));
+        Guard.IsNotNullOrWhiteSpace(identifier, nameof(identifier));
+
+        using var lck = _operationsLock.AcquireReaderLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        IService.CheckDisposed(this);
+
+        if (_luaAliasEventFactory.TryGetValue(eventName, out var eventFunc))
+        {
+            if (_subscribers.TryGetValue(eventFunc.Event, out var eventSubs))
+            {
+                eventSubs.TryRemove(identifier, out _);
+            }
+        }
+        else
+        {
+            if (_luaLegacyEventsSubscribers.TryGetValue(eventName, out var eventSubs))
+            {
+                eventSubs.TryRemove(identifier, out _);
+            }
+        }
+    }
+    public void Unsubscribe(string eventName, string identifier)
     {
         Guard.IsNotNullOrWhiteSpace(eventName, nameof(eventName));
         Guard.IsNotNullOrWhiteSpace(identifier, nameof(identifier));

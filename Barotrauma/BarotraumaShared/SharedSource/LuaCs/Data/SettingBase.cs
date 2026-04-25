@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Xml.Linq;
 using Barotrauma.LuaCs.Data;
+using Microsoft.Toolkit.Diagnostics;
 using Microsoft.Xna.Framework;
 using OneOf;
 
@@ -10,6 +12,7 @@ public abstract class SettingBase : ISettingBase
 {
     protected SettingBase(IConfigInfo configInfo)
     {
+        Guard.IsNotNull(configInfo, nameof(configInfo));
         ConfigInfo = configInfo;
     }
     
@@ -57,8 +60,8 @@ public abstract class SettingBase : ISettingBase
     public abstract Type GetValueType();
     public abstract string GetStringValue();
     public abstract string GetDefaultStringValue();
+    public abstract bool TrySetSerializedValue(OneOf<string, XElement> value);
 
-    public abstract bool TrySetValue(OneOf<string, XElement> value);
     public abstract event Action<ISettingBase> OnValueChanged;
     public abstract OneOf<string, XElement> GetSerializableValue();
 #if CLIENT

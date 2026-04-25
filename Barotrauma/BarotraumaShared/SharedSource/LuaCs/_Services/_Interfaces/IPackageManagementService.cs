@@ -22,8 +22,10 @@ public interface IPackageManagementService : IReusableService
     public FluentResults.Result UnloadPackages(ImmutableArray<ContentPackage> packages);
     public FluentResults.Result UnloadAllPackages();
     public ImmutableArray<ContentPackage> GetAllLoadedPackages();
-    public ImmutableArray<ContentPackage> GetLoadedAssemblyPackages();
+    public ImmutableArray<ContentPackage> GetLoadedUnrestrictedPackages();
     public bool IsPackageRunning(ContentPackage package);
     public bool IsAnyPackageLoaded();
     public bool IsAnyPackageRunning();
+    public bool PackageContainsAnyRunnableResource(ContentPackage package);
+    public Result<IModConfigInfo> GetModConfigForPackage(ContentPackage package);
 }

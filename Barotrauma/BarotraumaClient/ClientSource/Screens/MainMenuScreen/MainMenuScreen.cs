@@ -1015,25 +1015,20 @@ namespace Barotrauma
 
         private void TryStartServer()
         {
-            LuaCsSetup.Instance.CheckRunConditionalHostingCsEnabled(() =>
+            if (SubmarineInfo.SavedSubmarines.Any(s => s.CalculatingHash))
             {
-                if (SubmarineInfo.SavedSubmarines.Any(s => s.CalculatingHash))
+                var waitBox = new GUIMessageBox(TextManager.Get("pleasewait"), TextManager.Get("waitforsubmarinehashcalculations"), new LocalizedString[] { TextManager.Get("cancel") });
+                var waitCoroutine = CoroutineManager.StartCoroutine(WaitForSubmarineHashCalculations(waitBox), "WaitForSubmarineHashCalculations");
+                waitBox.Buttons[0].OnClicked += (btn, userdata) =>
                 {
-                    var waitBox = new GUIMessageBox(TextManager.Get("pleasewait"), TextManager.Get("waitforsubmarinehashcalculations"), new LocalizedString[] { TextManager.Get("cancel") });
-                    var waitCoroutine = CoroutineManager.StartCoroutine(WaitForSubmarineHashCalculations(waitBox), "WaitForSubmarineHashCalculations");
-                    waitBox.Buttons[0].OnClicked += (btn, userdata) =>
-                    {
-                        CoroutineManager.StopCoroutines(waitCoroutine);
-                        return true;
-                    };
-                }
-                else
-                {
-                    StartServer();
-                }
-            });
-            
-            
+                    CoroutineManager.StopCoroutines(waitCoroutine);
+                    return true;
+                };
+            }
+            else
+            {
+                StartServer();
+            }            
         }
 
         private IEnumerable<CoroutineStatus> WaitForSubmarineHashCalculations(GUIMessageBox messageBox)

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Barotrauma.LuaCs.Data;
@@ -60,8 +61,9 @@ public sealed partial class ModConfigFileParserService :
         if (CheckThrowNullRefs(src, "Assembly") is { IsFailed: true } fail)
             return fail;
 
+        var isScript = src.Element.GetAttributeBool("IsScript", false);
         var runtimeEnv = GetRuntimeEnvironment(src.Element);
-        var fileResults = await UnsafeGetCheckedFiles(src.Element, src.Owner, ".dll");
+        var fileResults = await UnsafeGetCheckedFiles(src.Element, src.Owner, isScript ? ".cs" : ".dll");
         
         if (fileResults.IsFailed)
             return FluentResults.Result.Fail(fileResults.Errors);
@@ -78,11 +80,31 @@ public sealed partial class ModConfigFileParserService :
             RequiredPackages = src.Required,
             IncompatiblePackages =  src.Incompatible,
             // Type Specific
-            FriendlyName = src.Element.GetAttributeString("FriendlyName", string.Empty),
-            IsScript = src.Element.GetAttributeBool("IsScript", false),
+            FriendlyName = src.Element.GetAttributeString("FriendlyName", GetFallbackCompliantAssemblyName(src.Owner)),
+            IsScript = isScript,
             UseInternalAccessName = src.Element.GetAttributeBool("UseInternalAccessName", false),
             IsReferenceModeOnly = src.Element.GetAttributeBool("IsReferenceModeOnly", false)
         };
+        
+        
+        // helper methods
+        string GetFallbackCompliantAssemblyName(ContentPackage package)
+        {
+            if (package.Name.IsNullOrWhiteSpace())
+            {
+                return "FallbackAssemblyName";
+            }
+            
+            // replace non az chars with '_'
+            var sanitizedPackageName = Regex.Replace(package.Name, @"[^a-zA-Z0-9_]", "_");
+            if (char.IsDigit(sanitizedPackageName[0]))
+            {
+                sanitizedPackageName = "ASM" + sanitizedPackageName;
+            }
+
+            // replace consecutive '_'
+            return Regex.Replace(sanitizedPackageName, @"[_.]{2,}", "_");
+        }
     }
     
     async Task<ImmutableArray<Result<IAssemblyResourceInfo>>> IParserServiceAsync<ResourceParserInfo, IAssemblyResourceInfo>.TryParseResourcesAsync(IEnumerable<ResourceParserInfo> sources)
@@ -152,7 +174,8 @@ public sealed partial class ModConfigFileParserService :
             RequiredPackages = src.Required,
             IncompatiblePackages =  src.Incompatible,
             // Type Specific
-            IsAutorun = src.Element.GetAttributeBool("IsAutorun", false)
+            IsAutorun = src.Element.GetAttributeBool("IsAutorun", false),
+            RunUnrestricted = src.Element.GetAttributeBool("RunUnrestricted", false)
         };
     }
 
@@ -184,7 +207,7 @@ public sealed partial class ModConfigFileParserService :
 
         var res = new FluentResults.Result<ImmutableArray<ContentPath>>();
         
-        if (!filePath.IsNullOrWhiteSpace())
+        if ((!filePath?.Value.IsNullOrWhiteSpace()) ?? false)
         {
             if (_storageService.FileExists(filePath.FullPath) is { IsSuccess: true, Value: true })
             {
@@ -203,11 +226,12 @@ public sealed partial class ModConfigFileParserService :
             }
         }
 
-        if (!folderPath.IsNullOrWhiteSpace())
+        if ((!folderPath?.Value.IsNullOrWhiteSpace()) ?? false)
         {
             if (_storageService.DirectoryExists(folderPath.FullPath) is { IsSuccess: true, Value: true })
             {
-                var files = _storageService.FindFilesInPackage(srcOwner, folderPath.Value, fileExtension, true);
+                var searchLocation = System.IO.Path.GetRelativePath(srcOwner.Dir, folderPath.Value);
+                var files = _storageService.FindFilesInPackage(srcOwner, searchLocation, "*"+fileExtension, true);
                 if (files.IsFailed)
                 {
                     res.WithError($"{srcOwner.Name}: Failed to load files from {folderPath}!");

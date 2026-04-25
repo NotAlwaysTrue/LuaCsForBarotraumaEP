@@ -18,12 +18,14 @@ public class SettingsMenuSystem : ISettingsMenuSystem
     private readonly Harmony _harmony;
     private readonly IPackageManagementService _packageManagementService;
     private readonly IConfigService _configService;
+    private readonly ILoggerService _loggerService;
     private static SettingsMenuSystem SystemInstance;
     
-    public SettingsMenuSystem(IPackageManagementService packageManagementService, IConfigService configService)
+    public SettingsMenuSystem(IPackageManagementService packageManagementService, IConfigService configService, ILoggerService loggerService)
     {
         _packageManagementService = packageManagementService;
         _configService = configService;
+        _loggerService = loggerService;
         SystemInstance = this;
         _harmony = Harmony.CreateAndPatchAll(typeof(SettingsMenuSystem));
     }
@@ -43,13 +45,14 @@ public class SettingsMenuSystem : ISettingsMenuSystem
         var tabGameplayIndex = (SettingsMenu.Tab)tabCount;
         var tabControlsIndex = (SettingsMenu.Tab)tabCount+1;
 
-        _gameplayContentFrame = CreateNewContentTab(tabGameplayIndex, __instance, 
-            "SettingsMenuTab.Mods", "LuaCsForBarotrauma.SettingsMenu.ModGameplayButton");
+        _gameplayContentFrame = CreateNewContentTab(tabGameplayIndex, __instance,
+            GUIStyle.ComponentStyles.ContainsKey("SettingsMenuTab.LuaCsSettings") ? "SettingsMenuTab.LuaCsSettings" : "SettingsMenuTab.Mods", 
+            "LuaCsForBarotrauma.SettingsMenu.ModGameplayButton");
         /*_controlsContentFrame = CreateNewContentTab(tabControlsIndex, __instance, 
             "SettingsMenuTab.Controls", "LuaCsForBarotrauma.SettingsMenu.ModControlsButton");
             */
 
-        _gameplayMenuInstance = new ModsGameplaySettingsMenu(_gameplayContentFrame, _packageManagementService, _configService, __instance);
+        _gameplayMenuInstance = new ModsGameplaySettingsMenu(_gameplayContentFrame, _packageManagementService, _configService, _loggerService, __instance);
         //_controlsMenuInstance = new ModsControlsSettingsMenu(_controlsContentFrame, _packageManagementService, _configService, __instance);
     }
     

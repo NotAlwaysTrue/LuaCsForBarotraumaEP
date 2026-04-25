@@ -35,11 +35,11 @@ partial class NetworkingService : INetworkingService, IEventClientRawNetMessageR
         return message;
     }
 
-    public void OnReceivedClientNetMessage(IReadMessage netMessage, ClientPacketHeader clientPacketHeader, NetworkConnection sender)
+    public bool? OnReceivedClientNetMessage(IReadMessage netMessage, ClientPacketHeader clientPacketHeader, NetworkConnection sender)
     {
         if (clientPacketHeader != ClientHeader)
         {
-            return;
+            return null;
         }
 
         Client client = GameMain.Server.ConnectedClients.First(c => c.Connection == sender);
@@ -64,6 +64,8 @@ partial class NetworkingService : INetworkingService, IEventClientRawNetMessageR
                 RequestIdSingle(netMessage, client);
                 break;
         }
+
+        return true;
     }
 
     private void HandleNetMessageId(IReadMessage netMessage, Client client = null)

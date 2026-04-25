@@ -2,6 +2,7 @@
 using Barotrauma.LuaCs;
 using Barotrauma.LuaCs.Events;
 using Barotrauma.Networking;
+using Barotrauma.Steam;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using System;
@@ -27,16 +28,12 @@ internal class HarmonyEventPatchesService : ISystem
     private static ILoggerService _loggerService;
     private readonly Harmony Harmony;
 
-    private static int debugConsoleCommandVanillaIndex;
-
     public HarmonyEventPatchesService(IEventService eventService, ILoggerService loggerService)
     {
         _eventService = eventService;
         _loggerService = loggerService;
         Harmony = new Harmony("LuaCsForBarotrauma.Events");
         Patch();
-
-        debugConsoleCommandVanillaIndex = DebugConsole.Commands.Count;
     }
 
     private void Patch()
@@ -56,7 +53,7 @@ internal class HarmonyEventPatchesService : ISystem
     [HarmonyPatch(typeof(CoroutineManager), nameof(CoroutineManager.Update)), HarmonyPostfix]
     public static void CoroutineManager_Update_Post()
     {
-        _eventService.PublishEvent<IEventUpdate>(x => x.OnUpdate(Timing.TotalTime));
+        _eventService.PublishEvent<IEventUpdate>(x => x.OnUpdate(CoroutineManager.DeltaTime));
         _loggerService.ProcessLogs();
     }
 
@@ -95,6 +92,27 @@ internal class HarmonyEventPatchesService : ISystem
         _eventService.PublishEvent<IEventScreenSelected>(x => x.OnScreenSelected(__instance));
     }
 
+#if CLIENT
+    [HarmonyPatch(typeof(MainMenuScreen), "StartGame"), HarmonyPostfix]
+    public static void MainMenuScreen_StartGame_Pre(Screen __instance)
+    {
+        LuaCsSetup.Instance.SetRunState(RunState.Running);
+    }
+
+    [HarmonyPatch(typeof(MainMenuScreen), "LoadGame"), HarmonyPostfix]
+    public static void MainMenuScreen_LoadGame_Pre(Screen __instance)
+    {
+        LuaCsSetup.Instance.SetRunState(RunState.Running);
+    }
+
+    [HarmonyPatch(typeof(MutableWorkshopMenu), nameof(MutableWorkshopMenu.Apply)), HarmonyPostfix]
+    public static void MutableWorkshopMenu_Apply_Post(Screen __instance)
+    {
+        LuaCsSetup.Instance.PromptCSharpMods(selection => { }, joiningServer: false);
+    }
+
+#endif
+
     [HarmonyPatch(typeof(ContentPackageManager.PackageSource), nameof(ContentPackageManager.PackageSource.Refresh)), HarmonyPostfix]
     public static void PackageSource_Refresh_Post()
     {
@@ -122,11 +140,20 @@ internal class HarmonyEventPatchesService : ISystem
     
 #if CLIENT
     [HarmonyPatch(typeof(GameClient), "ReadDataMessage"), HarmonyPrefix]
-    public static void GameClient_ReadDataMessage_Pre(IReadMessage inc)
+    public static bool GameClient_ReadDataMessage_Pre(IReadMessage inc)
     {
+        int prevBitPosition = inc.BitPosition;
         ServerPacketHeader header = (ServerPacketHeader)inc.ReadByte();
-        _eventService.PublishEvent<IEventServerRawNetMessageReceived>(x => x.OnReceivedServerNetMessage(inc, header));
-        inc.BitPosition -= 8; // rewind so the game can read the message
+        bool? skip = null;
+        _eventService.PublishEvent<IEventServerRawNetMessageReceived>(x => skip = x.OnReceivedServerNetMessage(inc, header) ?? skip);
+
+        if (skip == true)
+        {
+            return false;
+        }
+
+        inc.BitPosition = prevBitPosition; // rewind so the game can read the message
+        return true;
     }
 
     [HarmonyPatch(typeof(SubEditorScreen), nameof(SubEditorScreen.Select), new Type[] { }), HarmonyPostfix]
@@ -146,7 +173,7 @@ internal class HarmonyEventPatchesService : ISystem
     {
         DebugConsole.Command c = DebugConsole.FindCommand(command.Value);
         
-        if (DebugConsole.Commands.IndexOf(c) >= debugConsoleCommandVanillaIndex)
+        if (DebugConsole.Commands.IndexOf(c) >= LuaCsSetup.DebugConsoleCommandVanillaIndex)
         {
             __result = true;
             return false;
@@ -158,11 +185,21 @@ internal class HarmonyEventPatchesService : ISystem
 
 #elif SERVER
     [HarmonyPatch(typeof(GameServer), "ReadDataMessage"), HarmonyPrefix]
-    public static void GameServer_ReadDataMessage_Pre(NetworkConnection sender, IReadMessage inc)
+    public static bool GameServer_ReadDataMessage_Pre(NetworkConnection sender, IReadMessage inc)
     {
+        int prevBitPosition = inc.BitPosition;
         ClientPacketHeader header = (ClientPacketHeader)inc.ReadByte();
-        _eventService.PublishEvent<IEventClientRawNetMessageReceived>(x => x.OnReceivedClientNetMessage(inc, header, sender));
-        inc.BitPosition -= 8; // rewind so the game can read the message
+
+        bool? skip = null;
+        _eventService.PublishEvent<IEventClientRawNetMessageReceived>(x => skip = x.OnReceivedClientNetMessage(inc, header, sender) ?? skip);
+
+        if (skip == true)
+        {
+            return false;
+        }
+
+        inc.BitPosition = prevBitPosition; // rewind so the game can read the message
+        return true;
     }
 
     [HarmonyPatch(typeof(GameServer), "OnInitializationComplete"), HarmonyPostfix]

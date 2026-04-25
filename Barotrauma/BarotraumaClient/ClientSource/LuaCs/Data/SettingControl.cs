@@ -24,7 +24,7 @@ public sealed class SettingControl : SettingBase, ISettingControl
     public SettingControl(IConfigInfo configInfo,  Func<OneOf<string, XElement, object>, bool> valueChangePredicate) : base(configInfo)
     {
         _valueChangePredicate = valueChangePredicate;
-        TrySetValue(configInfo.Element);
+        TrySetSerializedValue(configInfo.Element);
     }
 
     protected override void OnDispose()
@@ -37,7 +37,7 @@ public sealed class SettingControl : SettingBase, ISettingControl
     public override string GetStringValue() => Value.ToString();
     public override string GetDefaultStringValue() => new KeyOrMouse(Keys.NumLock).ToString();
 
-    public override bool TrySetValue(OneOf<string, XElement> value)
+    public override bool TrySetSerializedValue(OneOf<string, XElement> value)
     {
         var newVal = value.Match<KeyOrMouse>(
             (string v) => GetKeyOrMouse(v), 

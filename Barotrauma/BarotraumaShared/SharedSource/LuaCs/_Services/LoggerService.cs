@@ -12,8 +12,6 @@ namespace Barotrauma.LuaCs;
 
 public partial class LoggerService : ILoggerService
 {
-    public bool HideUserNames = true;
-
     private List<ILoggerSubscriber> logSubscribers = [];
     private ConcurrentQueue<PendingLog> logQueue = [];
 
@@ -94,7 +92,7 @@ public partial class LoggerService : ILoggerService
 
     public void Log(string message, Color? color = null, ServerLog.MessageType messageType = ServerLog.MessageType.ServerMessage)
     {
-        if (HideUserNames && !Environment.UserName.IsNullOrEmpty())
+        if (LuaCsSetup.Instance.HideUserNamesInLogs && !Environment.UserName.IsNullOrEmpty())
         {
             message = message.Replace(Environment.UserName, "USERNAME");
         }
@@ -186,14 +184,13 @@ public partial class LoggerService : ILoggerService
                 else
                 {
                     LogError($"FluentResults::IError: {error.Message}");
-                }
-
-                if (error.Reasons != null)
-                {
-                    foreach (var reason in error.Reasons)
+                    /*if (error.Reasons != null)
                     {
-                        LogError($" - {reason.Message}");
-                    }
+                        foreach (var reason in error.Reasons)
+                        {
+                            LogError($" - {reason.Message}");
+                        }
+                    }*/
                 }
             }
         }

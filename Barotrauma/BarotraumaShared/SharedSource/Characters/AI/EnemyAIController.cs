@@ -242,10 +242,13 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// The monster won't try to damage these submarines
+        /// The monster won't try to damage these submarines. Applies to hulls, structures and static items (items without a physics body) belonging to these submarines. Does not apply to non-static items, e.g. flares or other provocative items.
         /// </summary>
-        private readonly HashSet<Submarine> unattackableSubmarines = new HashSet<Submarine>();
-        
+        private readonly HashSet<Submarine> unattackableSubmarines = [];
+
+        /// <summary>
+        /// Set the submarine(s) the monster won't attack. Applies to hulls, structures and static items (items without a physics body) belonging to these submarines. Does not apply to non-static items, e.g. flares or other provocative items.
+        /// </summary>
         public void SetUnattackableSubmarines(Submarine submarine, bool includeOwnSub = true, bool includeConnectedSubs = true, bool clearExisting = true)
         {
             if (clearExisting)
@@ -3075,11 +3078,17 @@ namespace Barotrauma
                 }
                 else
                 {
-                    // Ignore all structures, items, and hulls inside these subs.
-                    if (aiTarget.Entity.Submarine != null) 
+                    if (aiTarget.Entity.Submarine != null)
                     {
+                        //ignore all items, structures and hulls in wrecks and beacon stations
+                        //(we don't want monsters to be distracted by them during missions,
+                        //nor have monsters inside them attack "their home" rather than the player)
                         if (aiTarget.Entity.Submarine.Info.IsWreck ||
-                            aiTarget.Entity.Submarine.Info.IsBeacon ||
+                            aiTarget.Entity.Submarine.Info.IsBeacon)
+                        {
+                            continue;
+                        }
+                        if (aiTarget.Entity is Structure or Hull or Item { body: null } &&
                             unattackableSubmarines.Contains(aiTarget.Entity.Submarine))
                         {
                             continue;

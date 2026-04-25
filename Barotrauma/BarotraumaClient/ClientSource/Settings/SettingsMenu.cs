@@ -174,9 +174,9 @@ namespace Barotrauma
         public static RectTransform NewItemRectT(GUILayoutGroup parent)
             => new RectTransform((1.0f, 0.06f), parent.RectTransform, Anchor.CenterLeft);
 
-        public static void Spacer(GUILayoutGroup parent)
+        public static void Spacer(GUILayoutGroup parent, float height = 0.03f)
         {
-            new GUIFrame(new RectTransform((1.0f, 0.03f), parent.RectTransform, Anchor.CenterLeft), style: null);
+            new GUIFrame(new RectTransform((1.0f, height), parent.RectTransform, Anchor.CenterLeft), style: null);
         }
         
         public static GUITextBlock Label(GUILayoutGroup parent, LocalizedString str, GUIFont font)
@@ -507,6 +507,47 @@ namespace Barotrauma
                     return true;
                 }
             };
+#if OSX
+            Spacer(voiceChat, 0.003f);
+            
+            // On macOS, microphone permission can apparently sometimes end up in a broken state when the app binary changes (eg. after a Steam update).
+            // The device seems to be there, but won't receive anything, even if the mic permission is fine.
+            // This button lets the user reset it and reboot the game, so the mic permission check will be retriggered on next run.
+            new GUIButton(new RectTransform(new Vector2(1.0f, 1.0f), voiceChat.RectTransform),
+                text: TextManager.Get("MacResetMicPermissions"),
+                style: "GUIButtonSmall")
+            {
+                ToolTip = TextManager.Get("MacResetMicPermissionsToolTip"),
+                OnClicked = (btn, obj) =>
+                {
+                    var confirmBox = new GUIMessageBox(
+                        TextManager.Get("MacResetMicPermissions"),
+                        TextManager.Get("MacResetMicPermissionsConfirm"),
+                        [TextManager.Get("OK"), TextManager.Get("Cancel")]);
+                    confirmBox.Buttons[0].OnClicked = (_, _) =>
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = "tccutil",
+                                Arguments = "reset Microphone com.FakeFish.Barotrauma",
+                                UseShellExecute = false
+                            });
+                        }
+                        catch (Exception e)
+                        {
+                            DebugConsole.NewMessage($"Failed to reset microphone permission: {e.Message}", Color.Orange);
+                        }
+                        GameMain.Instance.Exit();
+                        confirmBox.Close();
+                        return true;
+                    };
+                    confirmBox.Buttons[1].OnClicked = confirmBox.Close;
+                    return true;
+                }
+            };
+#endif
             Spacer(voiceChat);
             
             Label(voiceChat, TextManager.Get("VCInputMode"), GUIStyle.SubHeadingFont);

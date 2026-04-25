@@ -1,106 +1,47 @@
-﻿using System;
+﻿using Barotrauma.CharacterEditor;
+using Barotrauma.Extensions;
+using Barotrauma.LuaCs;
+using Barotrauma.LuaCs.Data;
+using Barotrauma.Networking;
+using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Text;
-using Barotrauma.CharacterEditor;
-using Barotrauma.LuaCs;
-using Barotrauma.LuaCs.Data;
-using Barotrauma.Networking;
-using Microsoft.Xna.Framework;
+using static System.Collections.Specialized.BitVector32;
 
 // ReSharper disable ObjectCreationAsStatement
 
 namespace Barotrauma
 {
     partial class LuaCsSetup
-    {
-        private bool _isClientPromptActive;
-        private bool _isCsEnabledForSession = false;
-        
-        public void CheckRunConditionalHostingCsEnabled(Action onReadyToRun)
+    {        
+        public void PromptCSharpMods(Action<bool> onSelection, bool joiningServer)
         {
-            var res = ReadyToRunNoPrompt();
-            if (res.ShouldRun)
-            {
-                onReadyToRun?.Invoke();
-                return;
-            }
-            
-            DisplayCsModsPromptClient(res.Item2, (selectedYes) =>
-            {
-                if (selectedYes)
-                {
-                    onReadyToRun?.Invoke();
-                }
-            });
-        }
-
-        private (bool ShouldRun, ImmutableArray<ContentPackage> PromptPackages) ReadyToRunNoPrompt()
-        {            
-            if (this.IsCsEnabled)
-            {
-                return (true, ImmutableArray<ContentPackage>.Empty);
-            }
-
-            if (!ShouldPromptForCs)
-            {
-                return (true, ImmutableArray<ContentPackage>.Empty);
-            }
-
-            ImmutableArray<ContentPackage> contentPackages = PackageManagementService.GetLoadedAssemblyPackages()
-                .Where(p => p.Name != PackageId)
+            ImmutableArray<ContentPackage> contentPackages = PackageManagementService.GetLoadedUnrestrictedPackages()
+                .Where(p => p.Name != PackageName)
                 .ToImmutableArray();
 
-            return (contentPackages.IsEmpty, contentPackages);
-        }
-
-        partial void CheckReadyToRun(Action onReadyToRun)
-        {
-            var res = ReadyToRunNoPrompt();
-            if (res.ShouldRun)
+            if (_csRunPolicy?.Value is "Enabled")
             {
-                onReadyToRun?.Invoke();
+                IsCsEnabledForSession = true;
+                onSelection(true);
                 return;
             }
-            
-            if (GameMain.Client?.ClientPeer is P2POwnerPeer)
+            else if (_csRunPolicy?.Value is "Disabled")
             {
-                SetCsPolicyAndContinue(true);
+                IsCsEnabledForSession = false;
+                onSelection(false);
                 return;
             }
 
-            DisplayCsModsPromptClient(res.PromptPackages, (selectedYes) =>
+            if (contentPackages.None())
             {
-                SetCsPolicyAndContinue(selectedYes);
+                onSelection(true);
                 return;
-            });
-
-            void SetCsPolicyAndContinue(bool csSessionExecutionPolicy)
-            {
-                var prevRunState = this.CurrentRunState;
-                if (CurrentRunState >= RunState.Running)
-                {
-                    SetRunState(RunState.LoadedNoExec);
-                }
-                this._isCsEnabledForSession = csSessionExecutionPolicy;
-                CoroutineManager.Invoke(() =>
-                {
-                    if (CurrentRunState != prevRunState)
-                    {
-                        SetRunState(prevRunState);
-                    }
-                    onReadyToRun?.Invoke();
-                }, 0f);
             }
-        }
-        
-        void DisplayCsModsPromptClient(ImmutableArray<ContentPackage> contentPackages, Action<bool> onSelection)
-        {
-            if (_isClientPromptActive) { return; }
-
-            _isClientPromptActive = true;
 
             GUIMessageBox messageBox = new GUIMessageBox(
                 TextManager.Get("warning"),
@@ -115,7 +56,7 @@ namespace Barotrauma
                 Stretch = true
             };
 
-            new GUITextBlock(new RectTransform(new Vector2(1.0f, 0.0f), msgBoxLayout.RectTransform), "The following mods contain CSharp code",
+            new GUITextBlock(new RectTransform(new Vector2(1.0f, 0.0f), msgBoxLayout.RectTransform), "The following mods contain CSharp code OR Unsandboxed Lua Code",
                 font: GUIStyle.SubHeadingFont, wrap: true, textAlignment: Alignment.Center);
 
             GUIListBox packageListBox = new GUIListBox(new RectTransform(new Vector2(1.0f, 0.4f), msgBoxLayout.RectTransform))
@@ -126,22 +67,39 @@ namespace Barotrauma
             foreach (ContentPackage package in contentPackages)
             {
                 GUIFrame packageFrame = new GUIFrame(new RectTransform(new Vector2(1.0f, 0.15f), packageListBox.Content.RectTransform), style: "ListBoxElement");
-                new GUITextBlock(new RectTransform(new Vector2(1f, 1f), packageFrame.RectTransform), package.Name);
+                GUILayoutGroup packageLayout = new GUILayoutGroup(new RectTransform(Vector2.One, packageFrame.RectTransform), true, Anchor.CenterLeft);
+                new GUITextBlock(new RectTransform(new Vector2(0.7f, 1f), packageLayout.RectTransform), package.Name);
+                new GUIButton(new RectTransform(new Vector2(0.3f, 1f), packageLayout.RectTransform, Anchor.CenterRight), "Open Folder", style: "GUIButtonSmall")
+                {
+                    OnClicked = (GUIButton button, object obj) =>
+                    {
+                        string directory = package.Dir;
+                        if (string.IsNullOrEmpty(directory)) { return false; }
+
+                        ToolBox.OpenFileWithShell(directory);
+                        return true;
+                    }
+                };
             }
 
-            new GUITextBlock(new RectTransform(new Vector2(1.0f, 0f), msgBoxLayout.RectTransform), "C# mods are not sandboxed, meaning that they have unrestrictive access to your computer, please make sure you trust these mods before you continue. If you are not hosting a server, selecting cancel will only run Lua mods.", wrap: true)
+            string bodyText =
+                joiningServer ?
+                "You are joining a server that includes mods with C# code OR unrestricted Lua code. These mods are not sandboxed and may access your computer without restrictions. If you trust these mods, select 'Enable C# for this session'. Otherwise, select 'Cancel' to run only Lua mods."
+                : "You have enabled mods that include C# code. These mods are not sandboxed and may access your computer without restrictions. If you trust these mods, select 'Enable C# for this session'. Otherwise, select 'Cancel' to run only Sandboxed Lua mods.";
+
+            new GUITextBlock(new RectTransform(new Vector2(1.0f, 0f), msgBoxLayout.RectTransform), bodyText, wrap: true)
             {
                 Wrap = true
             };
 
             GUILayoutGroup buttonLayout = new GUILayoutGroup(new RectTransform(new Vector2(1f, 0.25f), messageBox.Content.RectTransform, Anchor.BottomCenter), isHorizontal: false, childAnchor: Anchor.TopCenter);
 
-            new GUIButton(new RectTransform(new Vector2(0.8f, 0.0f), buttonLayout.RectTransform), "Continue")
+            new GUIButton(new RectTransform(new Vector2(0.8f, 0.0f), buttonLayout.RectTransform), "Enable C# for this session")
             {
                 TextBlock = { AutoScaleHorizontal = true },
                 OnClicked = (btn, userdata) =>
                 {
-                    _isClientPromptActive = false;
+                    IsCsEnabledForSession = true;
                     onSelection(true);
                     messageBox.Close();
                     return true;
@@ -152,7 +110,7 @@ namespace Barotrauma
             {
                 OnClicked = (btn, userdata) =>
                 {
-                    _isClientPromptActive = false;
+                    IsCsEnabledForSession = false;
                     onSelection(false);
                     messageBox.Close();
                     return true;
@@ -201,10 +159,18 @@ namespace Barotrauma
                     case SpriteEditorScreen:
                     case SubEditorScreen:
                     case TestScreen: // notes: TestScreen is a Linux edge case editor screen and is deprecated.
-                        CheckReadyToRun(() =>
+
+                        if (screen is NetLobbyScreen && CurrentRunState != RunState.Running && GameMain.Client?.ClientPeer is not P2POwnerPeer)
+                        {
+                            PromptCSharpMods(selection =>
+                            {
+                                SetRunState(RunState.Running);
+                            }, joiningServer: true);
+                        }
+                        else
                         {
                             SetRunState(RunState.Running);
-                        });
+                        }
                         break;
                     default:
                         Logger.LogError(

@@ -147,12 +147,10 @@ public partial class SettingEntry<T> : SettingBase, ISettingBase<T>, INetworkSyn
     }
 
     public override Type GetValueType() => typeof(T);
-
     public override string GetStringValue() => Value?.ToString() ?? string.Empty;
-    
-    public override string GetDefaultStringValue() => DefaultValue.ToString();
+    public override string GetDefaultStringValue() => DefaultValue?.ToString() ?? string.Empty;
 
-    public override bool TrySetValue(OneOf<string, XElement> value)
+    public override bool TrySetSerializedValue(OneOf<string, XElement> value)
     {
         bool isFailed = false;
         var typeConvertedValue = value.Match<T>(
@@ -181,7 +179,6 @@ public partial class SettingEntry<T> : SettingBase, ISettingBase<T>, INetworkSyn
                     return default(T);
                 }
             });
-
         return !isFailed && TrySetValue(typeConvertedValue);
     }
 

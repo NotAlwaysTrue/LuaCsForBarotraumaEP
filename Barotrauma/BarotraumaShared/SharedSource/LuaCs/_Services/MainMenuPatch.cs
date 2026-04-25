@@ -43,9 +43,30 @@ internal class MainMenuPatch : ISystem, IEventScreenSelected
     {
         if (mainMenuUIAdded) { return; }
 
-        new GUITextBlock(new RectTransform(new Point(300, 30), screen.Frame.RectTransform, Anchor.TopLeft) { AbsoluteOffset = new Point(10, 10) }, $"Using LuaCsForBarotrauma revision {AssemblyInfo.GitRevision}", Color.Red)
+        var textBlock = new GUITextBlock(new RectTransform(new Point(300, 30), screen.Frame.RectTransform, Anchor.TopLeft) { AbsoluteOffset = new Point(10, 10) }, "", Color.Red)
         {
             IgnoreLayoutGroups = false
+        };
+
+        textBlock.OnAddedToGUIUpdateList = (GUIComponent component) =>
+        {
+            string mode = LuaCsSetup.Instance.CsRunPolicyValue;
+
+            if (mode is "Prompt")
+            {
+                string sessionState = LuaCsSetup.Instance.IsCsEnabledForSession ? "yes" : "no";
+                mode = $"enabled (prompt mode, allowed for this session: {sessionState})";
+            }
+            else if (mode is "Enabled")
+            {
+                mode = "always enabled";
+            }
+            else
+            {
+                mode = "disabled";
+            }
+
+            textBlock.Text = $"LuaCsForBarotrauma active (revision {AssemblyInfo.GitRevision}), C# is currently {mode}\nNew settings available in the game settings menu.";
         };
 
         mainMenuUIAdded = true;

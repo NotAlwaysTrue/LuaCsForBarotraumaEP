@@ -2,6 +2,11 @@
 <infotexts language="English" nowhitespace="false" translatedname="English">
   <LuaCsForBarotrauma.SettingsMenu.ModControlsButton>Mod Controls Settings</LuaCsForBarotrauma.SettingsMenu.ModControlsButton>
   <LuaCsForBarotrauma.SettingsMenu.ModGameplayButton>Mod Gameplay Settings</LuaCsForBarotrauma.SettingsMenu.ModGameplayButton>
+  <LuaCsForBarotrauma.SettingsMenu.ResetVisibleSettings>Reset Displayed Settings</LuaCsForBarotrauma.SettingsMenu.ResetVisibleSettings>
+  <LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Title>Reset Visible Settings</LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Title>
+  <LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Message>Are you sure you want to reset the values for currently displayed settings?</LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Message>
+  <LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Yes>Yes</LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Yes>
+  <LuaCsForBarotrauma.SettingsMenu.ResetPrompt.No>No</LuaCsForBarotrauma.SettingsMenu.ResetPrompt.No>
   <!-- Settings -->
   <!-- Is Cs Enabled-->
   <LuaCsForBarotrauma.CsRunPolicy.DisplayName>Are C# Mods Allowed</LuaCsForBarotrauma.CsRunPolicy.DisplayName>

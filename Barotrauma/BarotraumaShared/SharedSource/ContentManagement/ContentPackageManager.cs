@@ -590,6 +590,11 @@ namespace Barotrauma
                                 package.UgcId.TryUnwrap(out var ugcId) && ugcId is SteamWorkshopId workshopId && workshopId.Value == childUgcItemId.Value));
                     foreach (var missingChild in missingChildren)
                     {
+                        if (missingChild.ToString() == "2559634234" ||
+                            missingChild.ToString() == "2795927223")
+                        {
+                            continue;
+                        }
                         enabledPackage.AddMissingDependency(missingChild);
                     }
                 });

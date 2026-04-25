@@ -1,14 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Configuration>
   <Settings>
-    <Setting Name="TestTickbox" Type="bool"/>
-	<Setting Name="TestSynchroClient" Type="int" NetSync="TwoWay" />
-	<Setting Name="TestSynchroServer" Type="int" NetSync="ServerAuthority" />
-    <Setting Name="TestFloat" Type="float" NetSync="ServerAuthority" />
-    <Setting Name="TestHidden" Type="bool" ShowInMenus="false"/>
-    <Setting Name="TestRangeFloat" Type="rangeFloat" Min="0" Max="25" Steps="11"/>
-    <Setting Name="TestRangeInt" Type="rangeInt" Min="0" Max="10" Steps="11"/>
-    <Setting Name="TestString" Type="string" />
+    <Setting Name="TestTickbox" Type="bool" Value="true"/>
+	  <Setting Name="TestSynchroClient" Type="int" NetSync="TwoWay" Value="40"/>
+	  <Setting Name="TestSynchroServer" Type="int" NetSync="ServerAuthority" Value="25"/>
+    <Setting Name="TestFloat" Type="float" Value="3498"/>
+    <Setting Name="TestHidden" Type="bool" ShowInMenus="false" Value="false"/>
+    <Setting Name="TestRangeFloat" Type="rangeFloat" Min="0" Max="25" Steps="11" Value="4.5"/>
+    <Setting Name="TestRangeInt" Type="rangeInt" Min="0" Max="10" Steps="11" Value="4"/>
+    <Setting Name="TestString" Type="string" Value="ok"/>
     <Setting Name="TestControl" Type="control" Value="A"/>
     <Setting Name="TestDropdownList" Type="listString" Value="Hi">
       <Values>

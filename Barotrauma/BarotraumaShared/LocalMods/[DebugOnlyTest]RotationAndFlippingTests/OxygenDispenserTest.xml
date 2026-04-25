@@ -14,7 +14,7 @@
         AttachedByDefault="true" DisallowAttachingOverTags="container,planter,refuelableitem" DisallowAttachingOverSize="115,130">
     </Holdable>
 
-    <ItemContainer hideitems="false" drawinventory="true" ItemsUseInventoryPlacement="true" capacity="1" maxstacksize="1" canbeselected="true" itempos="-25,-20" iteminterval="0,0" itemrotation="0" msg="ItemMsgOxygenRefill" containedspritedepth="0.1">
+    <ItemContainer hideitems="false" drawinventory="true" ItemsUseInventoryPlacement="true" capacity="1" maxstacksize="1" canbeselected="true" itempos="32,-83" iteminterval="0,0" itemrotation="0" msg="ItemMsgOxygenRefill" containedspritedepth="0.1">
       <GuiFrame relativesize="0.2,0.25" anchor="Center" minsize="140,170" maxsize="280,280" style="ItemUI" />
       <SlotIcon slotindex="0" texture="Content/UI/StatusMonitorUI.png" sourcerect="64,448,64,64" origin="0.5,0.5" />
       <Containable items="oxygensource" />

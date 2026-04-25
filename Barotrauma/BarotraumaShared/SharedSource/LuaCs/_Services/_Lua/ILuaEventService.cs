@@ -19,7 +19,7 @@ public interface ILuaSafeEventService : ILuaService, ILuaCsHook
     /// </summary>
     /// <param name="eventName"></param>
     /// <param name="identifier"></param>
-    void Remove(string eventName, string identifier);
+    void Unsubscribe(string eventName, string identifier);
     /// <summary>
     /// Send an event to all subscribers to an interface.
     /// </summary>

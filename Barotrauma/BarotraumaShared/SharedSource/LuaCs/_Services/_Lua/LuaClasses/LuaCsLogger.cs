@@ -2,16 +2,10 @@
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using MoonSharp.Interpreter;
+using Barotrauma.LuaCs;
 
 namespace Barotrauma
 {
-    public enum LuaCsMessageOrigin
-    {
-        LuaCs,
-        Unknown,
-        LuaMod,
-        CSharpMod,
-    }
 
     public partial class LuaCsLogger
     {
