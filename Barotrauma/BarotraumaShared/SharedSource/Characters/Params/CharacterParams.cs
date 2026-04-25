@@ -728,7 +728,9 @@ namespace Barotrauma
             [Serialize(true, IsPropertySaveable.Yes, description: "Should the character target or ignore walls when it's outside the submarine."), Editable]
             public bool TargetOuterWalls { get; private set; }
 
-            [Serialize(false, IsPropertySaveable.Yes, description: "If enabled, the character chooses randomly from the available attacks. The priority is used as a weight for weighted random."), Editable]
+            [Serialize(false, IsPropertySaveable.Yes, description: "If disabled (default), the character selects the limb based on a formula where the parameters are a) the priority of the attack b) the distance to the target, and c) the range of the attack" + 
+                                                                   "If enabled, the character chooses randomly from the available attacks. The priority is used as a weight for weighted random. The distance to the target is in this case ignored."
+                                                                   ), Editable]
             public bool RandomAttack { get; private set; }
 
             [Serialize(false, IsPropertySaveable.Yes, description:"Does the creature know how to open doors (still requires a proper ID card). Humans can always open doors (They don't use this AI definition)."), Editable]

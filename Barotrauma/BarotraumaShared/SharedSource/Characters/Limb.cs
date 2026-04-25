@@ -1293,7 +1293,7 @@ namespace Barotrauma
             if (!statusEffects.TryGetValue(actionType, out var statusEffectList)) { return; }
             foreach (StatusEffect statusEffect in statusEffectList)
             {
-                if (statusEffect.ShouldWaitForInterval(character, deltaTime)) { return; }
+                if (statusEffect.ShouldWaitForInterval(character, deltaTime)) { continue; }
 
                 statusEffect.sourceBody = body;
                 if (statusEffect.type == ActionType.OnDamaged)

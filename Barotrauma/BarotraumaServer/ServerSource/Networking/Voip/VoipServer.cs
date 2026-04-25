@@ -1,7 +1,10 @@
 ﻿using Barotrauma.Items.Components;
+using Barotrauma.LuaCs.Events;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using static Barotrauma.CharacterHealth;
+using static Barotrauma.MedicalClinic;
 
 namespace Barotrauma.Networking
 {
@@ -96,7 +99,8 @@ namespace Barotrauma.Networking
                 ChatMessage.CanUseRadio(sender.Character, out WifiComponent senderRadio) &&
                 (recipientSpectating || ChatMessage.CanUseRadio(recipient.Character, out recipientRadio)))
             {
-                var canUse = GameMain.LuaCs.Hook.Call<bool?>("canUseVoiceRadio", new object[] { sender, recipient });
+                bool? canUse = null;
+                LuaCsSetup.Instance.EventService.PublishEvent<IEventCanUseVoiceRadio>(x => canUse = x.OnCanUseVoiceRadio(sender, recipient) ?? canUse);
 
                 if (canUse != null)
                 {
@@ -116,7 +120,8 @@ namespace Barotrauma.Networking
                 }
             }
 
-            float range = GameMain.LuaCs.Hook.Call<float?>("changeLocalVoiceRange", sender, recipient) ?? 1.0f;
+            float range = 1.0f;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventChangeLocalVoiceRange>(x => range = x.OnChangeLocalVoiceRange(sender, recipient) ?? range);
 
             if (recipientSpectating)
             {

@@ -148,7 +148,7 @@ namespace Barotrauma
                             character.Speak(TextManager.GetWithVariable("DialogPutOutFire", "[roomname]", targetHull.DisplayName, FormatCapitals.Yes).Value, null, 0, "putoutfire".ToIdentifier(), 10.0f);
                         }
                         // Prevents running into the flames.
-                        objectiveManager.CurrentObjective.ForceWalk = true;
+                        objectiveManager.CurrentObjective.ForceWalkTemporarily = true;
                     }
                     if (moveCloser)
                     {

@@ -240,42 +240,45 @@ namespace Barotrauma
                 CreateEvents(eventSet);
             }
 
-            if (level?.LevelData != null)
+            bool isOutpostLevel = level?.LevelData is { Type: LevelData.LevelType.Outpost } || 
+                (GameMain.GameSession?.GameMode is TestGameMode && Submarine.MainSub?.Info?.Type == SubmarineType.Outpost);
+            if (isOutpostLevel)
             {
-                if (level.LevelData.Type == LevelData.LevelType.Outpost)
+                //if the outpost is connected to a locked connection, create an event to unlock it
+                if (level?.StartLocation?.Connections.Any(c => c.Locked && level.StartLocation.MapPosition.X < c.OtherLocation(level.StartLocation).MapPosition.X) ?? false)
                 {
-                    //if the outpost is connected to a locked connection, create an event to unlock it
-                    if (level.StartLocation?.Connections.Any(c => c.Locked && level.StartLocation.MapPosition.X < c.OtherLocation(level.StartLocation).MapPosition.X) ?? false)
+                    var unlockPathEventPrefab = EventPrefab.GetUnlockPathEvent(level.LevelData.Biome.Identifier, level.StartLocation.Faction);
+                    if (unlockPathEventPrefab != null)
                     {
-                        var unlockPathEventPrefab = EventPrefab.GetUnlockPathEvent(level.LevelData.Biome.Identifier, level.StartLocation.Faction);
-                        if (unlockPathEventPrefab != null)
+                        var newEvent = unlockPathEventPrefab.CreateInstance(RandomSeed);
+                        activeEvents.Add(newEvent);
+                    }
+                    else
+                    {
+                        //if no event that unlocks the path can be found, unlock it automatically
+                        level.StartLocation.Connections.ForEach(c => c.Locked = false);
+                    }
+                }
+                Submarine outpost = level?.StartOutpost ?? Submarine.MainSub;
+                if (GameMain.NetworkMember is not { IsClient: true } && outpost != null)
+                {
+                    foreach (var eventTag in outpost.Info.TriggerOutpostMissionEvents)
+                    {
+                        EventPrefab eventPrefab = EventPrefab.FindEventPrefab(identifier: Identifier.Empty, tag: eventTag, outpost.ContentPackage);
+                        if (eventPrefab == null)
                         {
-                            var newEvent = unlockPathEventPrefab.CreateInstance(RandomSeed);
-                            activeEvents.Add(newEvent);
+                            DebugConsole.ThrowError($"Outpost {outpost.Info.DisplayName} failed to trigger an event (tag: {eventTag}).", contentPackage: outpost.ContentPackage);
                         }
                         else
                         {
-                            //if no event that unlocks the path can be found, unlock it automatically
-                            level.StartLocation.Connections.ForEach(c => c.Locked = false);
+                            var newEvent = eventPrefab.CreateInstance(RandomSeed);
+                            ActivateEvent(newEvent);
                         }
                     }
-                    if (GameMain.NetworkMember is not { IsClient: true } && level.StartOutpost != null)
-                    {                        
-                        foreach (var eventTag in level.StartOutpost.Info.TriggerOutpostMissionEvents)
-                        {
-                            EventPrefab eventPrefab = EventPrefab.FindEventPrefab(identifier: Identifier.Empty, tag: eventTag, level.StartOutpost.ContentPackage);
-                            if (eventPrefab == null)
-                            {
-                                DebugConsole.ThrowError($"Outpost {level.StartOutpost.Info.DisplayName} failed to trigger an event (tag: {eventTag}).", contentPackage: level.StartOutpost.ContentPackage);
-                            }
-                            else
-                            {
-                                var newEvent = eventPrefab.CreateInstance(RandomSeed);
-                                ActivateEvent(newEvent);
-                            }
-                        }                        
-                    }
-                }
+                }                
+            }
+            if (level?.LevelData != null)
+            {
                 RegisterNonRepeatableChildEvents(initialEventSet);
                 void RegisterNonRepeatableChildEvents(EventSet eventSet)
                 {

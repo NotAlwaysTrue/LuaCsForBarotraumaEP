@@ -39,7 +39,7 @@ namespace Barotrauma
         }
         public int ConnectClients
         {
-            get { return Client.ClientList.Count; }
+            get { return GameMain.Server.ConnectedClients.Count; }
         }
 
         public double RealTickRate

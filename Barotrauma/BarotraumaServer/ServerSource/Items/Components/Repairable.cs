@@ -16,8 +16,11 @@ namespace Barotrauma.Items.Components
         public void ServerEventRead(IReadMessage msg, Client c)
         {
             if (c.Character == null) { return; }
-            var requestedFixAction = (FixActions)msg.ReadRangedInteger(0, 2);
-            var QTESuccess = msg.ReadBoolean();
+            FixActions requestedFixAction = (FixActions)msg.ReadRangedInteger(0, 2);
+            bool QTESuccess = msg.ReadBoolean();
+
+            if (!item.CanClientAccess(c) || !HasRequiredItems(c.Character, addMessage: false)) { return; }
+
             if (requestedFixAction != FixActions.None)
             {
                 if (!c.Character.IsTraitor && requestedFixAction == FixActions.Sabotage)

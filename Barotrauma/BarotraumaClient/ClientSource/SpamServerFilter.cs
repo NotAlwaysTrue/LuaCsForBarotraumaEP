@@ -387,13 +387,11 @@ These will hide all servers that have a discord.gg link in their name or descrip
 
             try
             {
-                var client = new RestClient($"{remoteContentUrl}spamfilter")
-                {
-                    CachePolicy = new HttpRequestCachePolicy(HttpRequestCacheLevel.NoCacheNoStore)
-                };
+                var client = RestFactory.CreateClient($"{remoteContentUrl}spamfilter");
+                client.CachePolicy = new HttpRequestCachePolicy(HttpRequestCacheLevel.NoCacheNoStore);
                 client.AddDefaultHeader("Cache-Control", "no-cache");
                 client.AddDefaultHeader("Pragma", "no-cache");
-                var request = new RestRequest("serve_spamlist.php", Method.GET);
+                var request = RestFactory.CreateRequest("serve_spamlist.php");
                 TaskPool.Add("RequestGlobalSpamFilter", client.ExecuteAsync(request), RemoteContentReceived);
             }
             catch (Exception e)
@@ -410,12 +408,18 @@ These will hide all servers that have a discord.gg link in their name or descrip
                 try
                 {
                     if (!t.TryGetResult(out IRestResponse? remoteContentResponse)) { throw new Exception("Task did not return a valid result"); }
+                    if (remoteContentResponse.ErrorException != null)
+                    {
+                        DebugConsole.AddWarning(
+                            "Connection error: Failed to receive global spam filter " +
+                            $"({remoteContentResponse.ErrorException.Message}).");
+                        return;
+                    }
                     if (remoteContentResponse.StatusCode != HttpStatusCode.OK)
                     {
                         DebugConsole.AddWarning(
-                            "Failed to receive global spam filter." +
-                            "There may be an issue with your internet connection, or the master server might be temporarily unavailable " +
-                            $"(error code: {remoteContentResponse.StatusCode})");
+                            "Failed to receive global spam filter. " +
+                            $"The master server might be temporarily unavailable, HTTP status: {remoteContentResponse.StatusCode}");
                         return;
                     }
                     string data = remoteContentResponse.Content;

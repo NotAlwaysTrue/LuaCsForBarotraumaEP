@@ -401,14 +401,9 @@ namespace Barotrauma
             {
                 characterItems.Add(spawnedCharacter, spawnedCharacter.Inventory.FindAllItems(recursive: true));
             }
-            if (submarine != null && spawnedCharacter.AIController is EnemyAIController enemyAi)
+            if (spawnedCharacter.AIController is EnemyAIController enemyAi && submarine != null)
             {
-                enemyAi.UnattackableSubmarines.Add(submarine);
-                enemyAi.UnattackableSubmarines.Add(Submarine.MainSub);
-                foreach (Submarine sub in Submarine.MainSub.DockedTo)
-                {
-                    enemyAi.UnattackableSubmarines.Add(sub);
-                }
+                enemyAi.SetUnattackableSubmarines(submarine);
             }
             InitCharacter(spawnedCharacter, element);
             return spawnedCharacter;
@@ -532,6 +527,7 @@ namespace Barotrauma
             if (GameMain.GameSession?.EventManager != null)
             {
                 var newEvent = eventPrefab.CreateInstance(GameMain.GameSession.EventManager.RandomSeed);
+                newEvent.TriggeringMission = this;
                 GameMain.GameSession.EventManager.ActivateEvent(newEvent);
             }
         }
@@ -539,13 +535,13 @@ namespace Barotrauma
         /// <summary>
         /// End the mission and give a reward if it was completed successfully
         /// </summary>
-        public void End()
+        public void End(CampaignMode.TransitionType transitionType)
         {
             if (GameMain.NetworkMember is not { IsClient: true })
             {
                 completed =      
                     !ForceFailure &&
-                    DetermineCompleted() && 
+                    DetermineCompleted(transitionType) &&
                     (completeCheckDataAction == null || completeCheckDataAction.GetSuccess());
             }
             if (completed)
@@ -578,7 +574,7 @@ namespace Barotrauma
             }
         }
 
-        protected abstract bool DetermineCompleted();
+        protected abstract bool DetermineCompleted(CampaignMode.TransitionType transitionType);
 
         protected virtual void EndMissionSpecific(bool completed) { }
 

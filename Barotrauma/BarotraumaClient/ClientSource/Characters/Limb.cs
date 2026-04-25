@@ -340,10 +340,6 @@ namespace Barotrauma
                         break;
                     case "randomcolor":
                         randomColor = subElement.GetAttributeColorArray("colors", null)?.GetRandomUnsynced();
-                        if (randomColor.HasValue)
-                        {
-                            Params.GetSprite().Color = randomColor.Value;
-                        }
                         break;
                     case "lightsource":
                         LightSource = new LightSource(subElement, GetConditionalTarget())
@@ -631,6 +627,8 @@ namespace Barotrauma
                 SoundPlayer.PlayDamageSound(damageSoundType, Math.Max(damage, bleedingDamage), WorldPosition);
             }
 
+            if (character.InvisibleTimer > 0.0f) { return; }
+
             // spawn damage particles
             float damageParticleAmount = damage < 1 ? 0 : Math.Min(damage / 5, 1.0f) * damageMultiplier;
             if (damageParticleAmount > 0.001f)
@@ -734,7 +732,8 @@ namespace Barotrauma
             if (spriteParams == null || Alpha <= 0) { return; }
             float burn = spriteParams.IgnoreTint ? 0 : burnOverLayStrength;
             float brightness = Math.Max(1.0f - burn, 0.2f);
-            Color tintedColor = spriteParams.Color;
+            Color baseColor = randomColor ?? spriteParams.Color;
+            Color tintedColor = baseColor;
             if (!spriteParams.IgnoreTint)
             {
                 tintedColor = tintedColor.Multiply(ragdoll.RagdollParams.Color);
@@ -752,7 +751,7 @@ namespace Barotrauma
                 }
             }
             Color color = new Color(tintedColor.Multiply(brightness), tintedColor.A);
-            Color colorWithoutTint = new Color(spriteParams.Color.Multiply(brightness), spriteParams.Color.A);
+            Color colorWithoutTint = new Color(baseColor.Multiply(brightness), baseColor.A);
             Color blankColor = new Color(brightness, brightness, brightness, 1);
             if (deadTimer > 0)
             {

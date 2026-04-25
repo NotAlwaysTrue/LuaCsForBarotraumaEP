@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<contentpackage name="[DebugOnlyTest]TestPathFinding" modversion="1.0.0" corepackage="False" gameversion="1.12.4.0">
+  <Outpost file="%ModDir%/[DebugOnlyTest]TestPathFinding.sub" />
+
+  <RandomEvents file="%ModDir%/Events.xml" />
+  
+  
+</contentpackage>

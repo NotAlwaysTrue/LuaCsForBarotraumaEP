@@ -233,7 +233,7 @@ namespace Barotrauma
 
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             return State > 0 && State != HostagesKilledState;
         }

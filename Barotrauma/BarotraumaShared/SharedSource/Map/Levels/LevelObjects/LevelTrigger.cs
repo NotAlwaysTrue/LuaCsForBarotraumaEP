@@ -816,7 +816,7 @@ namespace Barotrauma
 
         public static float GetDistanceFactor(PhysicsBody triggererBody, PhysicsBody triggerBody, float colliderRadius)
         {
-            return 1.0f - ConvertUnits.ToDisplayUnits(Vector2.Distance(triggererBody.SimPosition, triggerBody.SimPosition)) / colliderRadius;
+            return 1.0f - ConvertUnits.ToDisplayUnits(Vector2.Distance(triggererBody.SimPosition, triggerBody.SimPosition) - triggererBody.GetMaxExtent() / 2) / colliderRadius;
         }
 
         public Vector2 GetWaterFlowVelocity(Vector2 viewPosition)

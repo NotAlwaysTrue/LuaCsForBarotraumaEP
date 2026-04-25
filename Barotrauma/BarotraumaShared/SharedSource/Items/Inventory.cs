@@ -569,16 +569,16 @@ namespace Barotrauma
         /// <summary>
         /// If there is room, puts the item in the inventory and returns true, otherwise returns false
         /// </summary>
-        public virtual bool TryPutItem(Item item, Character user, IEnumerable<InvSlotType> allowedSlots = null, bool createNetworkEvent = true, bool ignoreCondition = false)
+        public virtual bool TryPutItem(Item item, Character user, IEnumerable<InvSlotType> allowedSlots = null, bool createNetworkEvent = true, bool ignoreCondition = false, bool triggerOnInsertedEffects = true)
         {
             int slot = FindAllowedSlot(item, ignoreCondition);
             if (slot < 0) { return false; }
 
-            PutItem(item, slot, user, true, createNetworkEvent);
+            PutItem(item, slot, user, true, createNetworkEvent, triggerOnInsertedEffects);
             return true;
         }
 
-        public virtual bool TryPutItem(Item item, int i, bool allowSwapping, bool allowCombine, Character user, bool createNetworkEvent = true, bool ignoreCondition = false)
+        public virtual bool TryPutItem(Item item, int i, bool allowSwapping, bool allowCombine, Character user, bool createNetworkEvent = true, bool ignoreCondition = false, bool triggerOnInsertedEffects = true)
         {
             if (!IsIndexInRange(i))
             {
@@ -609,14 +609,14 @@ namespace Barotrauma
                     //item in the slot removed as a result of combining -> put this item in the now free slot
                     if (!slots[i].Any())
                     {
-                        return TryPutItem(item, i, allowSwapping, allowCombine, user, createNetworkEvent, ignoreCondition);
+                        return TryPutItem(item, i, allowSwapping, allowCombine, user, createNetworkEvent, ignoreCondition, triggerOnInsertedEffects);
                     }
                     return true;
                 }
             }
             if (CanBePutInSlot(item, i, ignoreCondition))
             {
-                PutItem(item, i, user, true, createNetworkEvent);
+                PutItem(item, i, user, true, createNetworkEvent, triggerOnInsertedEffects);
                 return true;
             }
             else if (slots[i].Any() && item.ParentInventory != null && allowSwapping)
@@ -642,7 +642,7 @@ namespace Barotrauma
             }
         }
 
-        protected virtual void PutItem(Item item, int i, Character user, bool removeItem = true, bool createNetworkEvent = true)
+        protected virtual void PutItem(Item item, int i, Character user, bool removeItem = true, bool createNetworkEvent = true, bool triggerOnInsertedEffects = true)
         {
             if (!IsIndexInRange(i))
             {
@@ -650,11 +650,6 @@ namespace Barotrauma
                 GameAnalyticsManager.AddErrorEventOnce("Inventory.PutItem:IndexOutOfRange", GameAnalyticsManager.ErrorSeverity.Error, errorMsg);
                 return;
             }
-
-            var should = GameMain.LuaCs.Hook.Call<bool?>("inventoryPutItem", this, item, user, i, removeItem);
-
-            if (should != null && should.Value)
-                return;
 
             if (Owner == null) { return; }
 
@@ -764,11 +759,6 @@ namespace Barotrauma
             if (item?.ParentInventory == null || !slots[index].Any()) { return false; }
             if (slots[index].Items.Any(it => !it.IsInteractable(user))) { return false; }
             if (!AllowSwappingContainedItems) { return false; }
-
-            var should = GameMain.LuaCs.Hook.Call<bool?>("inventoryItemSwap", this, item, user, index, swapWholeStack);
-
-            if (should != null)
-                return should.Value;
 
             //swap to InvSlotType.Any if possible
             Inventory otherInventory = item.ParentInventory;
@@ -951,7 +941,8 @@ namespace Barotrauma
                 {
                     foreach (var item in items)
                     {
-                        if (!inventory.TryPutItem(item, slotIndex, false, false, user, createNetworkEvent, ignoreCondition: true) &&
+                        //don't trigger OnInserted effects: we're not really "inserting" but just putting it back where it was because swapping failed
+                        if (!inventory.TryPutItem(item, slotIndex, false, false, user, createNetworkEvent, ignoreCondition: true, triggerOnInsertedEffects: false) &&
                             !inventory.GetItemsAt(slotIndex).Contains(item))
                         {
                             inventory.ForceToSlot(item, slotIndex);

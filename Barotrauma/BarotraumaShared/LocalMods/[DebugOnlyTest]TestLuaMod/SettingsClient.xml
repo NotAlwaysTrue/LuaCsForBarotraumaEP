@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <!-- Should match 'SettingsServer'. We define these on the client and server separately to give different values. -->
+  <Settings>
+    <Setting Name="TestSynchroClient" Type="int" NetSync="TwoWay" Value="3545" ShowInMenus="false"/>
+    <Setting Name="TestSynchroServer" Type="int" NetSync="ServerAuthority" Value="577" ShowInMenus="false"/>
+  </Settings>
+</Configuration>

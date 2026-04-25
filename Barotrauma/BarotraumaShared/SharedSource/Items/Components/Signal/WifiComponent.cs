@@ -1,10 +1,13 @@
-﻿using Barotrauma.Networking;
+﻿using Barotrauma.LuaCs.Events;
+using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
+using static Barotrauma.CharacterHealth;
+using static Barotrauma.MedicalClinic;
 
 namespace Barotrauma.Items.Components
 {
@@ -228,8 +231,8 @@ namespace Barotrauma.Items.Components
 
         public void TransmitSignal(Signal signal, bool sentFromChat)
         {
-            var should = GameMain.LuaCs.Hook.Call<bool?>("wifiSignalTransmitted", this, signal, sentFromChat);
-
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventWifiSignalTransmitted>(x => should = x.OnWifiSignalTransmitted(this, signal, sentFromChat) ?? should);
             if (should != null && should.Value) { return; }
 
             bool chatMsgSent = false;

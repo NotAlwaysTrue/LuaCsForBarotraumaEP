@@ -1,11 +1,13 @@
 ﻿using Barotrauma.Abilities;
 using Barotrauma.Extensions;
+using Barotrauma.LuaCs.Events;
 using Barotrauma.Networking;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Xml.Linq;
+using static OneOf.Types.TrueFalseOrNull;
 
 namespace Barotrauma.Items.Components
 {
@@ -114,7 +116,19 @@ namespace Barotrauma.Items.Components
                 float deconstructTime = 0.0f;
                 foreach (Item targetItem in inputContainer.Inventory.AllItems)
                 {
-                    deconstructTime += targetItem.Prefab.DeconstructTime / (deconstructionSpeed * deconstructionSpeedModifier);
+                    float itemDeconstructTime = item.Submarine is { Info.Type: SubmarineType.Outpost }
+                                                ? targetItem.Prefab.DeconstructTimeInOutposts : targetItem.Prefab.DeconstructTime;
+                    float targetDeconstructTime = itemDeconstructTime / (deconstructionSpeed * deconstructionSpeedModifier);
+
+                    var linkedCharacter = targetItem.GetComponent<LinkedControllerCharacterComponent>();
+                    if (linkedCharacter != null)
+                    {
+                        targetDeconstructTime *= linkedCharacter.DeconstructTimeMultiplier;
+                    }
+
+                    deconstructTime += targetDeconstructTime;
+
+                    ApplyDeconstructionStatusEffects(targetItem, ActionType.OnDeconstructing, deltaTime);
                 }
 
                 progressState = Math.Min(progressTimer / deconstructTime, 1.0f);
@@ -143,8 +157,21 @@ namespace Barotrauma.Items.Components
                 var targetItem = inputContainer.Inventory.LastOrDefault();
                 if (targetItem == null) { return; }
 
+                ApplyDeconstructionStatusEffects(targetItem, ActionType.OnDeconstructing, deltaTime);
+
                 var validDeconstructItems = targetItem.Prefab.DeconstructItems.Where(it => it.IsValidDeconstructor(item)).ToList();
-                float deconstructTime = validDeconstructItems.Any() ? targetItem.Prefab.DeconstructTime / (deconstructionSpeed * deconstructionSpeedModifier) : 1.0f;
+
+                float itemDeconstructTime = item.Submarine is { Info.Type: SubmarineType.Outpost } 
+                                            ? targetItem.Prefab.DeconstructTimeInOutposts : targetItem.Prefab.DeconstructTime;
+                
+                float deconstructTime = !targetItem.Prefab.DeconstructItems.Any() || validDeconstructItems.Any() 
+                    ? itemDeconstructTime / (deconstructionSpeed * deconstructionSpeedModifier) : 1.0f;
+
+                var linkedCharacter = targetItem.GetComponent<LinkedControllerCharacterComponent>();
+                if (linkedCharacter != null)
+                {
+                    deconstructTime *= linkedCharacter.DeconstructTimeMultiplier;
+                }
 
                 progressState = Math.Min(progressTimer / deconstructTime, 1.0f);
                 if (progressTimer > deconstructTime)
@@ -182,6 +209,8 @@ namespace Barotrauma.Items.Components
                 user.CheckTalents(AbilityEffectType.OnItemDeconstructedMaterial, itemCreationMultiplier);
                 amountMultiplier = (int)itemCreationMultiplier.Value;
             }
+
+            ApplyDeconstructionStatusEffects(targetItem, ActionType.OnDeconstructed, 1f);
 
             if (targetItem.Prefab.RandomDeconstructionOutput)
             {
@@ -297,30 +326,8 @@ namespace Barotrauma.Items.Components
                         {
                             humanAi.HandleRelocation(spawnedItem);
                         }
-                        for (int i = 0; i < outputContainer.Capacity; i++)
-                        {
-                            var containedItem = outputContainer.Inventory.GetItemAt(i);
-                            bool combined = false;
-                            if (containedItem?.OwnInventory != null)
-                            {
-                                foreach (Item subItem in containedItem.ContainedItems.ToList())
-                                {
-                                    if (subItem.Combine(spawnedItem, null)) 
-                                    {
-                                        combined = true;
-                                        break; 
-                                    }
-                                }
-                            }
-                            if (!combined)
-                            {
-                                if (containedItem?.Combine(spawnedItem, null) ?? false)
-                                {
-                                    break;
-                                }
-                            }
-                        }
-                        PutItemsToLinkedContainer();
+
+                        TryMoveItemToOutputContainers(spawnedItem);
                     });
                 }
             }
@@ -332,8 +339,9 @@ namespace Barotrauma.Items.Components
                 GameAnalyticsManager.AddDesignEvent("ItemDeconstructed:" + (GameMain.GameSession?.GameMode?.Preset.Identifier.Value ?? "none") + ":" + targetItem.Prefab.Identifier);
             }
 
-            bool? result = GameMain.LuaCs.Hook.Call<bool?>("item.deconstructed", targetItem, this, user, allowRemove);
-            if (result == true) { return; }
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventItemDeconstructed>(x => should = x.OnItemDeconstructed(targetItem, this, user, allowRemove) ?? should);
+            if (should == true) { return; }
 
             if (targetItem.AllowDeconstruct && allowRemove)
             {
@@ -350,6 +358,7 @@ namespace Barotrauma.Items.Components
                         }
                     }
                 }
+
                 inputContainer.Inventory.RemoveItem(targetItem);
                 Entity.Spawner.AddItemToRemoveQueue(targetItem);
                 MoveInputQueue();
@@ -384,6 +393,34 @@ namespace Barotrauma.Items.Components
             }
         }
 
+        private void TryMoveItemToOutputContainers(Item spawnedItem)
+        {
+            for (int i = 0; i < outputContainer.Capacity; i++)
+            {
+                var containedItem = outputContainer.Inventory.GetItemAt(i);
+                bool combined = false;
+                if (containedItem?.OwnInventory != null)
+                {
+                    foreach (Item subItem in containedItem.ContainedItems.ToList())
+                    {
+                        if (subItem.Combine(spawnedItem, null))
+                        {
+                            combined = true;
+                            break;
+                        }
+                    }
+                }
+                if (!combined)
+                {
+                    if (containedItem?.Combine(spawnedItem, null) ?? false)
+                    {
+                        break;
+                    }
+                }
+            }
+            PutItemsToLinkedContainer();
+        }
+
         private void PutItemsToLinkedContainer()
         {
             if (GameMain.NetworkMember != null && GameMain.NetworkMember.IsClient) { return; }
@@ -398,6 +435,72 @@ namespace Barotrauma.Items.Components
                     var itemContainer = linkedItem.GetComponent<ItemContainer>();
                     if (itemContainer == null) { continue; }
                     outputContainer.Inventory.AllItemsMod.ForEach(containedItem => itemContainer.Inventory.TryPutItem(containedItem, user: null, createNetworkEvent: true));
+                }
+            }
+        }
+
+        private void ApplyDeconstructionStatusEffects(Item targetItem, ActionType type, float deltaTime)
+        {
+            var linkedCharacterComponent = targetItem.GetComponent<LinkedControllerCharacterComponent>();
+            Character character = null;
+            if (linkedCharacterComponent is { Character.Removed: false })
+            {
+                character = linkedCharacterComponent.Character;
+            }
+
+            Limb limb = character?.AnimController.Limbs.GetRandomUnsynced();
+
+            if (user != null)
+            {
+                item.GetStatusEffectsOfType(type).ForEach(statusEffect => statusEffect.SetUser(user));
+                targetItem.GetStatusEffectsOfType(type).ForEach(statusEffect => statusEffect.SetUser(user));
+            }
+
+            // Apply OnDeconstruct/OnDeconstructing to the Deconstructor/item being deconstructed
+            item.ApplyStatusEffects(type, deltaTime, character, limb, useTarget: targetItem);
+            targetItem.ApplyStatusEffects(type, deltaTime, character, limb);
+
+            if (character != null)
+            {
+                if (type == ActionType.OnDeconstructed)
+                {
+                    // Move whatever was on the character inventory to free up space for status effects that spawn items
+                    MoveItemsFromCharacterToOutput();
+                }
+
+                character.ApplyStatusEffects(type, deltaTime);
+
+                if (type == ActionType.OnDeconstructed)
+                {
+                    // This needs to run next frame because the status effect might enqueue items to be spawned next frame
+                    CoroutineManager.Invoke(() =>
+                    {
+                        if (character.Removed) { return; }
+
+                        // Move items again since the status effect could have spawned additional items in the character inventory
+                        MoveItemsFromCharacterToOutput();
+
+                        Entity.Spawner?.AddEntityToRemoveQueue(character);
+                    }, 0.1f);
+                }
+
+                void MoveItemsFromCharacterToOutput()
+                {
+                    if (character.Inventory != null)
+                    {
+                        foreach (var item in character.Inventory.AllItemsMod)
+                        {
+                            if (item.Removed) { continue; }
+                            if (!item.IsPlayerTeamInteractable) { continue; }
+
+                            if (!outputContainer.Inventory.TryPutItem(item, user: null))
+                            {
+                                item.Drop(dropper: null);
+                            }
+
+                            TryMoveItemToOutputContainers(item);
+                        }
+                    }
                 }
             }
         }

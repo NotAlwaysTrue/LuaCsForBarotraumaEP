@@ -17,7 +17,7 @@ namespace Barotrauma
             }
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             if (Level.Loaded?.Type == LevelData.LevelType.Outpost)
             {
@@ -25,7 +25,7 @@ namespace Barotrauma
             }
             else
             {
-                return Submarine.MainSub is { AtEndExit: true };
+                return transitionType == CampaignMode.TransitionType.ProgressToNextLocation;
             }
         }
     }

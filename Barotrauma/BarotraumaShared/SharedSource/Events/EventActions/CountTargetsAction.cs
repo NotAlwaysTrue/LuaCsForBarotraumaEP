@@ -99,6 +99,7 @@ namespace Barotrauma
             else
             {
                 int compareToTargetCount = ParentEvent.GetTargets(CompareToTarget).Count();
+                if (compareToTargetCount == 0) { return false; }
                 float percentage = MathUtils.Percentage(targetCount, compareToTargetCount);
                 if (MinPercentageRelativeToTarget > -1 && percentage < MinPercentageRelativeToTarget) { return false; }
                 if (MaxPercentageRelativeToTarget > -1 && percentage > MaxPercentageRelativeToTarget) { return false; }

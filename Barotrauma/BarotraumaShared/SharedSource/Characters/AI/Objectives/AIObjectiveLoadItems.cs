@@ -112,7 +112,7 @@ namespace Barotrauma
                 float prio = objectiveManager.GetOrderPriority(this);
                 if (subObjectives.All(so => so.SubObjectives.None() || so.Priority <= 0))
                 {
-                    ForceWalk = true;
+                    ForceWalkTemporarily = true;
                 }
                 return prio;
             }

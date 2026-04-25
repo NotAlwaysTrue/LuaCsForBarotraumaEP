@@ -331,7 +331,7 @@ namespace Barotrauma
             }
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             if (Submarine.MainSub != null && Submarine.MainSub.AtEndExit)
             {

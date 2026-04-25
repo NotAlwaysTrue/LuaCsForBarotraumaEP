@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<infotexts language="English" nowhitespace="false" translatedname="English">
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestTickbox.DisplayName>Test TickBox</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestTickbox.DisplayName>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestTickbox.DisplayCategory>Tests</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestTickbox.DisplayCategory>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestFloat.DisplayName>Test Float</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestFloat.DisplayName>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestFloat.DisplayCategory>Tests</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestFloat.DisplayCategory>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestRangeFloat.DisplayName>Test Range Float</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestRangeFloat.DisplayName>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestRangeFloat.DisplayCategory>Tests</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestRangeFloat.DisplayCategory>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestRangeInt.DisplayName>Test Range Int</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestRangeInt.DisplayName>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestRangeInt.DisplayCategory>Tests</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestRangeInt.DisplayCategory>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestString.DisplayName>Test String</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestString.DisplayName>
+  <_x005B_DebugOnlyTest_x005D_TestLuaMod.TestString.DisplayCategory>Tests</_x005B_DebugOnlyTest_x005D_TestLuaMod.TestString.DisplayCategory>
+</infotexts>

@@ -64,7 +64,11 @@ namespace Barotrauma
             if (target == null || target.Removed) { return false; }
             //bots can't handle deconstructing items that require another item to deconstruct, let's not try to do that
             //in the vanilla game, this means unidentified genetic materials, which we don't want to "deconstruct" anyway
-            if (target.Prefab.DeconstructItems.All(d => d.RequiredOtherItem.Length > 0)) { return false; }
+            if (target.Prefab.DeconstructItems.Any() &&
+                target.Prefab.DeconstructItems.All(d => d.RequiredOtherItem.Length > 0)) 
+            { 
+                return false; 
+            }
             // If the target was selected as a valid target, we'll have to accept it so that the objective can be completed.
             // The validity changes when a character picks the item up.
             if (!IsValidTarget(target, character, checkInventory: true)) 

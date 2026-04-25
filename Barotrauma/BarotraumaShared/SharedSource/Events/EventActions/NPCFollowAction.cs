@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -17,6 +17,9 @@ namespace Barotrauma
 
         [Serialize(true, IsPropertySaveable.Yes, description: "Should the NPC start or stop following the target?")]
         public bool Follow { get; set; }
+
+        [Serialize(false, IsPropertySaveable.Yes, description: "Should the NPC be forced to walk towards the target?")]
+        public bool ForceWalk { get; set; }
 
         [Serialize(-1, IsPropertySaveable.Yes, description: "Maximum number of NPCs to target (e.g. you could choose to only make a specific number of security officers follow the player.)")]
         public int MaxTargets { get; set; }
@@ -65,7 +68,8 @@ namespace Barotrauma
                     var newObjective = new AIObjectiveGoTo(target, npc, humanAiController.ObjectiveManager, repeat: true)
                     {
                         OverridePriority = Priority,
-                        IsFollowOrder = true
+                        IsFollowOrder = true,
+                        ForceWalkPermanently = ForceWalk
                     };
                     humanAiController.ObjectiveManager.AddObjective(newObjective);
                     humanAiController.ObjectiveManager.WaitTimer = 0.0f;

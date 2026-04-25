@@ -715,7 +715,7 @@ namespace Barotrauma
             }            
         }
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             if (requiredDeliveryAmount < 1.0f)
             {

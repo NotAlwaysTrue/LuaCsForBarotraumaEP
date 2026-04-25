@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<contentpackage name="LuaCsForBarotrauma">
+  <Text file="%ModDir%/Texts/English.xml"/>
+  <UIStyle file="%ModDir%/Style.xml" />
+  <!--<Text file="%ModDir%/Texts/Portuguese.xml"/>-->
+</contentpackage>

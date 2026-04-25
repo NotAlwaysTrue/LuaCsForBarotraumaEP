@@ -551,9 +551,14 @@ namespace Barotrauma
 
         private static void UnlockKillAchievement(Character killer, Character target, Identifier identifier)
         {
-            if (killer != null && 
-                target.Params.UnlockKillAchievementForWholeCrew &&
-                GameSession.GetSessionCrewCharacters(CharacterType.Player).Contains(killer))
+            bool alwaysUnlockForWholeCrew = false;
+#if CLIENT
+            alwaysUnlockForWholeCrew = GameMain.GameSession?.Campaign is SinglePlayerCampaign;
+#endif
+
+            if (killer != null &&
+               (alwaysUnlockForWholeCrew || target.Params.UnlockKillAchievementForWholeCrew) &&
+                GameSession.GetSessionCrewCharacters(CharacterType.Both).Contains(killer))
             {
                 UnlockAchievement(identifier, unlockClients: true, characterConditions: c => c != null);
             }

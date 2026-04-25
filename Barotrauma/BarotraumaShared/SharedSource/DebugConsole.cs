@@ -2311,6 +2311,8 @@ namespace Barotrauma
                 NewMessage($"Start item set changed to \"{AutoItemPlacer.DefaultStartItemSet}\"");
             }, isCheat: false));
 
+            
+
             //"dummy commands" that only exist so that the server can give clients permissions to use them
             //TODO: alphabetical order?
             commands.Add(new Command("control", "control [character name]: Start controlling the specified character (client-only).", null, () =>
@@ -3020,7 +3022,10 @@ namespace Barotrauma
                     switch (args[argIndex].ToLowerInvariant())
                     {
                         case "inside":
-                            spawnPoint = WayPoint.GetRandom(SpawnType.Human, job, Submarine.MainSub);
+                            spawnPoint = 
+                                WayPoint.GetRandom(SpawnType.Human, job, Submarine.MainSub) ??
+                                //try a non-job-specific spawnpoint if a job-specific one can't be found
+                                WayPoint.GetRandom(SpawnType.Human, assignedJob: null, Submarine.MainSub);
                             break;
                         case "outside":
                             spawnPoint = WayPoint.GetRandom(SpawnType.Enemy);

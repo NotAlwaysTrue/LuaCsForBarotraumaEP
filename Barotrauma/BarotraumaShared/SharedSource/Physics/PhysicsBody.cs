@@ -534,8 +534,10 @@ namespace Barotrauma
                 default:
                     throw new NotImplementedException();
             }
-            return spritesheetRotation.HasValue ? Vector2.Transform(pos, Matrix.CreateRotationZ(-spritesheetRotation.Value)) : pos;
+            return spritesheetRotation.HasValue ? RotateVector(pos, spritesheetRotation.Value) : pos;
         }
+        
+        public static Vector2 RotateVector(Vector2 v, float rotation) => Vector2.Transform(v, Matrix.CreateRotationZ(-rotation));
 
         public float GetMaxExtent()
         {

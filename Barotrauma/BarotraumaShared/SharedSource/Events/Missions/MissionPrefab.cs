@@ -30,7 +30,8 @@ namespace Barotrauma
             { "GoTo".ToIdentifier(), typeof(GoToMission) },
             { "ScanAlienRuins".ToIdentifier(), typeof(ScanMission) },
             { "EliminateTargets".ToIdentifier(), typeof(EliminateTargetsMission) },
-            { "End".ToIdentifier(), typeof(EndMission) }
+            { "End".ToIdentifier(), typeof(EndMission) },
+            { "Custom".ToIdentifier(), typeof(CustomMission) }
         };
 
         /// <summary>
@@ -64,6 +65,7 @@ namespace Barotrauma
 
         public Type MissionClass { get; private set; }
 
+        public bool CampaignOnly { get; private set; }
         public bool MultiplayerOnly { get; private set; }
         public bool SingleplayerOnly { get; private set; }
 
@@ -319,8 +321,9 @@ namespace Barotrauma
 
             SonarIconIdentifier = ConfigElement.GetAttributeIdentifier("sonaricon", "");
 
-            MultiplayerOnly = ConfigElement.GetAttributeBool("multiplayeronly", false);
-            SingleplayerOnly = ConfigElement.GetAttributeBool("singleplayeronly", false);
+            CampaignOnly = ConfigElement.GetAttributeBool(nameof(CampaignOnly), false);
+            MultiplayerOnly = ConfigElement.GetAttributeBool(nameof(MultiplayerOnly), false);
+            SingleplayerOnly = ConfigElement.GetAttributeBool(nameof(SingleplayerOnly), false);
 
             AchievementIdentifier = ConfigElement.GetAttributeIdentifier("achievementidentifier", "");
 
@@ -543,7 +546,7 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// Returns all mission types that can be selected e.g. in the server lobby, excluding any special, hidden ones like EndMission 
+        /// Returns all mission types that can be selected in the server lobby, excluding any special, hidden ones like EndMission 
         /// (the mission at the end of the campaign)
         /// </summary>
         public static IEnumerable<Identifier> GetAllMultiplayerSelectableMissionTypes()
@@ -552,6 +555,7 @@ namespace Barotrauma
             foreach (var missionPrefab in Prefabs)
             {
                 if (missionPrefab.Commonness <= 0.0f) { continue; }
+                if (missionPrefab.CampaignOnly) { continue; }
                 if (missionPrefab.SingleplayerOnly) { continue; }
                 if (HiddenMissionTypes.Contains(missionPrefab.Type))
                 {

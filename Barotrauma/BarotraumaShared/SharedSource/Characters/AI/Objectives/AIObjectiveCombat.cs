@@ -258,13 +258,14 @@ namespace Barotrauma
 
         protected override bool CheckObjectiveState()
         {
-            if (character.Submarine is { TeamID: CharacterTeamType.FriendlyNPC } && character.Submarine == Enemy.Submarine)
+            // In a friendly outpost, and the target is still in the outpost
+            if (character.Submarine is { Info.IsOutpost: true } && character.IsOnFriendlyTeam(character.Submarine.TeamID) && 
+                character.Submarine == Enemy.Submarine)
             {
-                // Target still in the outpost
+                // Outpost guards shouldn't lose the target in friendly outposts,
+                // However, if we are not a guard, let's ensure that we allow the cooldown.
                 if (character.TeamID == CharacterTeamType.FriendlyNPC && !character.IsSecurity)
                 {
-                    // Outpost guards shouldn't lose the target in friendly outposts,
-                    // However, if we are not a guard, let's ensure that we allow the cooldown.
                     allowCooldown = true;
                 }
             }
@@ -286,7 +287,8 @@ namespace Barotrauma
                     {
                         allowCooldown = true;
                         // Target not in the outpost anymore.
-                        if (character.CanSeeTarget(Enemy))
+                        if (character.Submarine.IsConnectedTo(Enemy.Submarine) && 
+                            character.CanSeeTarget(Enemy))
                         {
                             allowCooldown = false;
                             coolDownTimer = DefaultCoolDown;
@@ -389,7 +391,7 @@ namespace Barotrauma
                         HumanAIController.AutoFaceMovement = false;
                         if (!gotoObjective.ShouldRun(true))
                         {
-                            ForceWalk = true;
+                            ForceWalkTemporarily = true;
                         }
                     }
                 }
@@ -468,7 +470,7 @@ namespace Barotrauma
                             isMoving = true;
                             if (!IsEnemyClose(MeleeDistance))
                             {
-                                ForceWalk = true;
+                                ForceWalkTemporarily = true;
                             }
                             HumanAIController.FaceTarget(Enemy);
                             HumanAIController.AutoFaceMovement = false;
@@ -1234,7 +1236,7 @@ namespace Barotrauma
             }
             if (isAimBlocked)
             {
-                ForceWalk = true;
+                ForceWalkTemporarily = true;
             }
             if (!followTargetObjective.IsCloseEnough)
             {

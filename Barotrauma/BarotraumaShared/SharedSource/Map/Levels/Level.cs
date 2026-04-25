@@ -7,6 +7,7 @@ using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -327,6 +328,7 @@ namespace Barotrauma
 
         public Submarine BeaconStation { get; private set; }
         private Sonar beaconSonar;
+        private ImmutableArray<SonarTransducer> beaconTransducers = ImmutableArray<SonarTransducer>.Empty;
 
         /// <summary>
         /// Special wall chunks that aren't part of the normal level geometry: includes things like the ocean floor, floating ice chunks and ice spires.
@@ -4398,6 +4400,13 @@ namespace Barotrauma
                     attempts++;
                 }
             }
+
+            foreach (var wreck in Wrecks)
+            {
+                wreck.SetCrushDepth(wreck.RealWorldDepth + 1000);
+                SetLinkedSubCrushDepth(wreck);
+            }
+
             totalSW.Stop();
             Debug.WriteLine($"{Wrecks.Count} wrecks created in { totalSW.ElapsedMilliseconds} (ms)");
         }
@@ -4782,6 +4791,7 @@ namespace Barotrauma
                 return;
             }
             beaconSonar = sonarItem.GetComponent<Sonar>();
+            beaconTransducers = sonarItem.GetConnectedComponents<SonarTransducer>().ToImmutableArray();
         }
 
         public void PrepareBeaconStation()
@@ -4908,9 +4918,20 @@ namespace Barotrauma
         public bool CheckBeaconActive()
         {
             if (beaconSonar == null) { return false; }
+            if (beaconSonar.UseTransducers)
+            {
+                var connectedTransducers = beaconSonar.Item.GetConnectedComponents<SonarTransducer>();
+                foreach (var beaconTransducer in beaconTransducers)
+                {
+                    if (!beaconTransducer.HasPower || !connectedTransducers.Contains(beaconTransducer)) { return false; }
+                }
+            }
             return beaconSonar.HasPower && beaconSonar.CurrentMode == Sonar.Mode.Active;
         }
 
+        /// <summary>
+        /// Set the crush depths of the connected subs to match the crush depth of the parent sub.
+        /// </summary>
         private void SetLinkedSubCrushDepth(Submarine parentSub)
         {
             foreach (var connectedSub in parentSub.GetConnectedSubs())
@@ -5149,6 +5170,7 @@ namespace Barotrauma
 
             BeaconStation = null;
             beaconSonar = null;
+            beaconTransducers = ImmutableArray<SonarTransducer>.Empty;
             StartOutpost = null;
             EndOutpost = null;
 

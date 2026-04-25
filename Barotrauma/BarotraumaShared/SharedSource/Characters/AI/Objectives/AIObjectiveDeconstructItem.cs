@@ -95,7 +95,11 @@ namespace Barotrauma
                 if (potentialDeconstructor?.InputContainer == null) { continue; }
                 if (!potentialDeconstructor.InputContainer.Inventory.CanBePut(Item)) { continue; }
                 if (!potentialDeconstructor.Item.HasAccess(character)) { continue; }
-                if (Item.Prefab.DeconstructItems.None(it => it.IsValidDeconstructor(otherItem))) { continue; }
+                if (Item.Prefab.DeconstructItems.Any() &&
+                    Item.Prefab.DeconstructItems.None(it => it.IsValidDeconstructor(otherItem))) 
+                { 
+                    continue; 
+                }
                 float distFactor = GetDistanceFactor(Item.WorldPosition, potentialDeconstructor.Item.WorldPosition, factorAtMaxDistance: 0.2f);
                 if (distFactor > bestDistFactor)
                 {

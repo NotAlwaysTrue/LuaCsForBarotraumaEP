@@ -26,6 +26,8 @@ namespace Barotrauma
         public static DateTime NextCommandPush;
         public static Tuple<SerializableProperty, PropertyCommand> CommandBuffer;
 
+        private bool dimOutDefaultValues;
+
         private bool isReadonly;
         public bool Readonly
         {
@@ -316,16 +318,17 @@ namespace Barotrauma
             }
         }
 
-        public SerializableEntityEditor(RectTransform parent, ISerializableEntity entity, bool inGame, bool showName, string style = "", int elementHeight = 24, GUIFont titleFont = null)
+        public SerializableEntityEditor(RectTransform parent, ISerializableEntity entity, bool inGame, bool showName, string style = "", int elementHeight = 24, GUIFont titleFont = null, bool dimOutDefaultValues = true)
             : this(parent, entity, inGame ? 
                 SerializableProperty.GetProperties<InGameEditable>(entity).Union(SerializableProperty.GetProperties<ConditionallyEditable>(entity).Where(p => p.GetAttribute<ConditionallyEditable>()?.IsEditable(entity) ?? false)) 
-                : SerializableProperty.GetProperties<Editable>(entity).Where(p => p.GetAttribute<ConditionallyEditable>()?.IsEditable(entity) ?? true), showName, style, elementHeight, titleFont)
+                : SerializableProperty.GetProperties<Editable>(entity).Where(p => p.GetAttribute<ConditionallyEditable>()?.IsEditable(entity) ?? true), showName, style, elementHeight, titleFont, dimOutDefaultValues)
         {
         }
 
-        public SerializableEntityEditor(RectTransform parent, ISerializableEntity entity, IEnumerable<SerializableProperty> properties, bool showName, string style = "", int elementHeight = 24, GUIFont titleFont = null)
+        public SerializableEntityEditor(RectTransform parent, ISerializableEntity entity, IEnumerable<SerializableProperty> properties, bool showName, string style = "", int elementHeight = 24, GUIFont titleFont = null, bool dimOutDefaultValues = true)
             : base(style, new RectTransform(Vector2.One, parent))
         {
+            this.dimOutDefaultValues = dimOutDefaultValues;
             elementHeight =  (int)(elementHeight * GUI.Scale);
             var tickBoxStyle = GUIStyle.GetComponentStyle("GUITickBox");
             var textBoxStyle = GUIStyle.GetComponentStyle("GUITextBox");
@@ -523,7 +526,65 @@ namespace Barotrauma
             {
                 propertyField = CreateStringField(entity, property, value.ToString(), displayName, toolTip);
             }
+            if (propertyField != null && dimOutDefaultValues)
+            {
+                UpdateTextColors(property, entity, propertyField);
+            }
             return propertyField;
+        }
+
+
+        private void UpdateTextColors(SerializableProperty property, object parentObject, GUIComponent parentElement)
+        {
+            if (!dimOutDefaultValues) { return; }
+
+            bool isSetToDefaultValue = false;
+            object currentValue = property.GetValue(parentObject);
+            foreach (var attribute in property.Attributes.OfType<Serialize>())
+            {
+                if (XMLExtensions.DefaultValueEquals(attribute.DefaultValue, currentValue) ||
+                    //treat null and empty strings as identical, because there's no way to differentiate between those in the editor
+                    (currentValue == null && attribute.DefaultValue is string defaultValueStr && defaultValueStr.IsNullOrEmpty()))
+                {
+                    isSetToDefaultValue = true;
+                    break;
+                }
+            }
+            foreach (var component in parentElement.GetAllChildren())
+            {
+                UpdateTextColors(component, isSetToDefaultValue);
+            }
+        }
+
+        private void UpdateTextColors(GUIComponent component, bool isSetToDefaultValue)
+        {
+            if (!dimOutDefaultValues) { return; }
+
+            if (component is GUINumberInput numberInput)
+            {
+                SetTextColor(numberInput.TextBox.TextBlock);
+            }
+            else if (component is GUIDropDown dropDown)
+            {
+                SetTextColor(dropDown.Button.TextBlock);
+            }
+            else if (component is GUITextBox textBox)
+            {
+                SetTextColor(textBox.TextBlock);
+            }
+            else if (component is GUITextBlock textBlock)
+            {
+                SetTextColor(textBlock);
+            }
+            else if (component is GUITickBox tickBox)
+            {
+                SetTextColor(tickBox.TextBlock);
+            }
+
+            void SetTextColor(GUITextBlock textBlock)
+            {
+                textBlock.TextColor = new Color(textBlock.TextColor, alpha: isSetToDefaultValue ? 0.5f : 1.0f);
+            }
         }
 
         public GUIComponent CreateBoolField(ISerializableEntity entity, SerializableProperty property, bool value, LocalizedString displayName, LocalizedString toolTip)
@@ -564,6 +625,7 @@ namespace Barotrauma
                             tickBox.Selected = propertyValue;
                             tickBox.Flash(Color.Red);
                         }
+                        UpdateTextColors(property, entity, tickBox);
                         return true;
                     }
                 };
@@ -611,6 +673,7 @@ namespace Barotrauma
                     {
                         TrySendNetworkUpdate(entity, property);
                     }
+                    UpdateTextColors(property, entity, frame);
                 };
                 refresh += () =>
                 {
@@ -654,6 +717,7 @@ namespace Barotrauma
                 {
                     TrySendNetworkUpdate(entity, property);
                 }
+                UpdateTextColors(property, entity, frame);
             };
 
             HandleSetterValueTampering(numberInput, () => property.GetFloatValue(entity));
@@ -711,6 +775,7 @@ namespace Barotrauma
                 {
                     TrySendNetworkUpdate(entity, property);
                 }
+                UpdateTextColors(property, entity, frame);
                 return true;
             };
             refresh += () =>
@@ -829,6 +894,7 @@ namespace Barotrauma
                     TrySendNetworkUpdate(entity, property);
                     textBox.Text = StripPrefabTags(property.GetValue(entity).ToString());
                     textBox.Flash(GUIStyle.Green, flashDuration: 1f);
+                    UpdateTextColors(property, entity, frame);
                 }
                 //restore the entities that were selected before applying
                 MapEntity.SelectedList.Clear();
@@ -973,6 +1039,7 @@ namespace Barotrauma
                     {
                         TrySendNetworkUpdate(entity, property);
                     }
+                    UpdateTextColors(property, entity, frame);
                 };
                 fields[i] = numberInput;
             }
@@ -1046,6 +1113,7 @@ namespace Barotrauma
                     {
                         TrySendNetworkUpdate(entity, property);
                     }
+                    UpdateTextColors(property, entity, frame);
                 };
                 HandleSetterValueTampering(numberInput, () =>
                 {
@@ -1126,6 +1194,7 @@ namespace Barotrauma
                     {
                         TrySendNetworkUpdate(entity, property);
                     }
+                    UpdateTextColors(property, entity, frame);
                 };
                 fields[i] = numberInput;
             }
@@ -1206,6 +1275,7 @@ namespace Barotrauma
                     {
                         TrySendNetworkUpdate(entity, property);
                     }
+                    UpdateTextColors(property, entity, frame);
                 };
                 fields[i] = numberInput;
             }
@@ -1299,6 +1369,7 @@ namespace Barotrauma
                         TrySendNetworkUpdate(entity, property);
                         colorBox.Color = colorBox.HoverColor = colorBox.PressedColor = colorBox.SelectedTextColor = newVal;
                     }
+                    UpdateTextColors(property, entity, frame);
                 };
                 colorBox.Color = colorBox.HoverColor = colorBox.PressedColor = colorBox.SelectedTextColor = (Color)property.GetValue(entity);
                 fields[i] = numberInput;
@@ -1373,6 +1444,7 @@ namespace Barotrauma
                     {
                         TrySendNetworkUpdate(entity, property);
                     }
+                    UpdateTextColors(property, entity, frame);
                 };
                 fields[i] = numberInput;
             }
@@ -1437,6 +1509,7 @@ namespace Barotrauma
                             TrySendNetworkUpdate(entity, property);
                             textBox.Flash(color: GUIStyle.Green, flashDuration: 1f);
                         }
+                        UpdateTextColors(property, entity, frame);
                     }
                     else
                     {

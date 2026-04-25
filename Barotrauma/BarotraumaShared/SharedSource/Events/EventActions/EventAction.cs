@@ -9,14 +9,7 @@ namespace Barotrauma
     {
         public class SubactionGroup
         {
-            public string Text;
             public List<EventAction> Actions;
-            /// <summary>
-            /// Should this option end the conversation (closing the conversation prompt?). By default, options that don't have any actions inside them, or that only have a GoTo action, end the conversation.
-            /// But if there are other actions inside the option, the game assumes there may be some kind of a follow-up coming to the conversation, and by default leaves it open.
-            /// </summary>
-            public bool EndConversation;
-
             private int currentSubAction = 0;
 
             public EventAction CurrentSubAction
@@ -31,17 +24,17 @@ namespace Barotrauma
                 }
             }
 
-            public SubactionGroup(ScriptedEvent scriptedEvent, ContentXElement elem)
+            public SubactionGroup(ScriptedEvent scriptedEvent, ContentXElement element)
             {
-                Text = elem.GetAttribute("text")?.Value ?? "";
+                SerializableProperty.DeserializeProperties(this, element);
+
                 Actions = new List<EventAction>();
-                EndConversation = elem.GetAttributeBool("endconversation", false);
-                foreach (var e in elem.Elements())
+                foreach (var e in element.Elements())
                 {
                     if (e.Name.ToString().Equals("statuseffect", StringComparison.OrdinalIgnoreCase))
                     {
-                        DebugConsole.ThrowError($"Error in event prefab \"{scriptedEvent.Prefab.Identifier}\". Status effect configured as a sub action (text: \"{Text}\"). Please configure status effects as child elements of a StatusEffectAction.",
-                            contentPackage: elem.ContentPackage);
+                        DebugConsole.ThrowError($"Error in event prefab \"{scriptedEvent.Prefab.Identifier}\". Status effect configured as a sub action. Please configure status effects as child elements of a StatusEffectAction.",
+                            contentPackage: element.ContentPackage);
                         continue;
                     }
                     var action = Instantiate(scriptedEvent, e);

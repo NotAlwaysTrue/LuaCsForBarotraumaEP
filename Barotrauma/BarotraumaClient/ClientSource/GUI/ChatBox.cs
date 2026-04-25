@@ -1,5 +1,6 @@
 ﻿using Barotrauma.Extensions;
 using Barotrauma.Items.Components;
+using Barotrauma.LuaCs.Events;
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
@@ -413,7 +414,8 @@ namespace Barotrauma
         {
             if (GameMain.IsSingleplayer)
             {
-                var should = GameMain.LuaCs.Hook.Call<bool?>("chatMessage", message.Text, message.SenderClient, message.Type, message);
+                bool? should = null;
+                LuaCsSetup.Instance.EventService.PublishEvent<IEventChatMessage>(x => should = x.OnChatMessage(message.Text, message.SenderClient, message.Type, message) ?? should);
                 if (should != null && should.Value) { return; }
             }
 

@@ -46,7 +46,7 @@ namespace Barotrauma.Networking
                 .Aggregate(NetFlags.None, (f1, f2) => f1 | f2);
 
         private bool IsFlagRequired(Client c, NetFlags flag)
-            => NetIdUtils.IdMoreRecent(LastUpdateIdForFlag[flag], c.LastRecvLobbyUpdate);
+            => NetIdUtils.IdMoreRecent(LastUpdateIdForFlag[flag], c.LastRecvLobbyUpdate) || !c.InitialLobbyUpdateSent;
         
         public NetFlags GetRequiredFlags(Client c)
             => LastUpdateIdForFlag.Keys

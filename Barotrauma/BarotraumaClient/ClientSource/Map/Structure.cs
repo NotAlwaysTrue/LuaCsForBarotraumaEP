@@ -193,7 +193,12 @@ namespace Barotrauma
             {
                 CanTakeKeyBoardFocus = false
             };
-            var editor = new SerializableEntityEditor(listBox.Content.RectTransform, this, inGame, showName: true, titleFont: GUIStyle.LargeFont) { UserData = this };
+            var editor = new SerializableEntityEditor(listBox.Content.RectTransform, this, inGame, showName: true, 
+                titleFont: GUIStyle.LargeFont,
+                dimOutDefaultValues: false) 
+            { 
+                UserData = this 
+            };
           
             if (editor.Fields.TryGetValue(nameof(Scale).ToIdentifier(), out GUIComponent[] scaleFields) &&
                 scaleFields.FirstOrDefault() is GUINumberInput scaleInput)

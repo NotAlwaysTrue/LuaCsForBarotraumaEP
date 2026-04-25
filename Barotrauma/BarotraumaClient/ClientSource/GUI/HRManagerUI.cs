@@ -710,19 +710,24 @@ namespace Barotrauma
 
             if (listBox == pendingList || listBox == crewList)
             {
-                nameBlock.RectTransform.Resize(new Point(nameBlock.Rect.Width - nameBlock.Rect.Height, nameBlock.Rect.Height));
-                nameBlock.Text = ToolBox.LimitString(characterName, nameBlock.Font, nameBlock.Rect.Width);
-                nameBlock.RectTransform.Resize(new Point((int)(nameBlock.Padding.X + nameBlock.TextSize.X + nameBlock.Padding.Z), nameBlock.Rect.Height));
-                Point size = new Point((int)(0.7f * nameBlock.Rect.Height));
-                new GUIImage(new RectTransform(size, nameGroup.RectTransform), "EditIcon") { CanBeFocused = false };
-                size = new Point(3 * mainGroup.AbsoluteSpacing + icon.Rect.Width + nameAndJobGroup.Rect.Width, mainGroup.Rect.Height);
-                new GUIButton(new RectTransform(size, frame.RectTransform) { RelativeOffset = new Vector2(0.025f) }, style: null)
+                //if the character is already in the crew, only check permissions - reputation doesn't matter for renaming an already-hired bot
+                bool canRename = listBox == crewList ? HasPermissionToHire : CanHire(characterInfo);
+                if (canRename)
                 {
-                    Enabled = CanHire(characterInfo),
-                    ToolTip = TextManager.GetWithVariable("campaigncrew.givenicknametooltip", "[mouseprimary]", PlayerInput.PrimaryMouseLabel),
-                    UserData = characterInfo,
-                    OnClicked = CreateRenamingComponent
-                };
+                    nameBlock.RectTransform.Resize(new Point(nameBlock.Rect.Width - nameBlock.Rect.Height, nameBlock.Rect.Height));
+                    nameBlock.Text = ToolBox.LimitString(characterName, nameBlock.Font, nameBlock.Rect.Width);
+                    nameBlock.RectTransform.Resize(new Point((int)(nameBlock.Padding.X + nameBlock.TextSize.X + nameBlock.Padding.Z), nameBlock.Rect.Height));
+                    Point iconSize = new Point((int)(0.7f * nameBlock.Rect.Height));
+                    new GUIImage(new RectTransform(iconSize, nameGroup.RectTransform), "EditIcon") { CanBeFocused = false };
+                    Point buttonSize = new Point(3 * mainGroup.AbsoluteSpacing + icon.Rect.Width + nameAndJobGroup.Rect.Width + (int)(iconSize.X * 1.5f), mainGroup.Rect.Height);
+                    new GUIButton(new RectTransform(buttonSize, frame.RectTransform) { RelativeOffset = new Vector2(0.025f) }, style: null)
+                    {
+                        ClampMouseRectToParent = false,
+                        ToolTip = TextManager.GetWithVariable("campaigncrew.givenicknametooltip", "[mouseprimary]", PlayerInput.PrimaryMouseLabel),
+                        UserData = characterInfo,
+                        OnClicked = CreateRenamingComponent
+                    };
+                }
             }
 
             //recalculate everything and truncate texts if needed

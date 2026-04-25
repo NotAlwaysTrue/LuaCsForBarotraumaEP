@@ -535,9 +535,9 @@ namespace Barotrauma.Steam
                 = new GUIListBox(rectT, style: null, isHorizontal: false)
                 {
                     UseGridLayout = true,
-                    ScrollBarEnabled = false,
+                    ScrollBarEnabled = true,
                     ScrollBarVisible = false,
-                    HideChildrenOutsideFrame = false,
+                    HideChildrenOutsideFrame = true,
                     Spacing = GUI.IntScale(4)
                 };
             tagsList.Content.ClampMouseRectToParent = false;

@@ -398,7 +398,7 @@ namespace Barotrauma
                 }
                 foreach (Item contained in container.Inventory.AllItems)
                 {
-                    if (TargetSlot > -1 && parentItem.OwnInventory.FindIndex(contained) != TargetSlot) { continue; }
+                    if (TargetSlot > -1 && container.Inventory.FindIndex(contained) != TargetSlot) { continue; }
                     if ((!ExcludeBroken || contained.Condition > 0.0f) && (!ExcludeFullCondition || !contained.IsFullCondition) && MatchesItem(contained)) { return true; }
                     if (CheckContained(contained)) { return true; }
                 }

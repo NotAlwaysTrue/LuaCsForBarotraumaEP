@@ -443,6 +443,7 @@ namespace Barotrauma.Items.Components
             var wire = targetItem.GetComponent<Wire>();
             if (wire != null && wire.Connections.Any(c => c != null)) { return false; }
 
+            if (targetItem.Container is { NonInteractable: true }) { return false; }
             if (targetItem.Container?.GetComponent<ItemContainer>() is { DrawInventory: false } or { AllowAccess: false }) { return false; }
 
             if (targetItem.HasTag(Tags.TraitorMissionItem)) { return false; }
