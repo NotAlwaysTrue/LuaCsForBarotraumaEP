@@ -843,7 +843,7 @@ namespace Barotrauma
                 {
                     lastUpdatedItem = item;
                     item.Update(deltaTime, cam);
-                }
+                });
             }
             catch (InvalidOperationException e)
             {
