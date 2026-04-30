@@ -656,6 +656,11 @@ namespace Barotrauma
             List<Gap> gapList = Gap.GapList.ToList();
 
             // This should never break again... right?
+
+            //update gaps in random order, because otherwise in rooms with multiple gaps
+            //the water/air will always tend to flow through the first gap in the list,
+            //which may lead to weird behavior like water draining down only through
+            //one gap in a room even if there are several
             int n = gapList.Count;
             while (n > 1)
             {
@@ -685,11 +690,6 @@ namespace Barotrauma
                     });
                 },
                 () =>
-                //update gaps in random order, because otherwise in rooms with multiple gaps
-                //the water/air will always tend to flow through the first gap in the list,
-                //which may lead to weird behavior like water draining down only through
-                //one gap in a room even if there are several
-
                 // moved waterflow reset here to see if we can reduce at least some time
                 {
                     // PLEASE WORK

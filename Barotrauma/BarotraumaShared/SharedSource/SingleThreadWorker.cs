@@ -87,7 +87,7 @@ namespace Barotrauma
             {
                 try
                 {
-                    action.Invoke();
+                    action?.Invoke();
                 }
                 catch (Exception e)
                 {
