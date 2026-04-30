@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Barotrauma.LuaCs;
 
 namespace Barotrauma
 {
@@ -9,11 +10,11 @@ namespace Barotrauma
     {
         public static void Install()
         {
-            ContentPackage luaPackage = LuaCsSetup.GetPackage(LuaCsSetup.LuaForBarotraumaId);
+            ContentPackage luaPackage = LuaCsSetup.GetLuaCsPackage();
 
             if (luaPackage == null)
             {
-                GameMain.Server.SendChatMessage("Couldn't find the LuaCs For Barotrauma package.", ChatMessageType.ServerMessageBox);
+                GameMain.Server.SendChatMessage("Couldn't find the ProjectEP package.", ChatMessageType.ServerMessageBox);
                 return;
             }
 
@@ -45,15 +46,13 @@ namespace Barotrauma
                     File.Copy(Path.Combine(path, "Binary", file), file, true);
                 }
 
-                File.WriteAllText(LuaCsSetup.VersionFile, luaPackage.ModVersion);
-
 #if WINDOWS
                 File.WriteAllText("LuaCsDedicatedServer.bat", "\"%LocalAppData%/Daedalic Entertainment GmbH/Barotrauma/WorkshopMods/Installed/2559634234/Binary/DedicatedServer.exe\"");
 #endif
             }
             catch (UnauthorizedAccessException e)
             {
-                LuaCsLogger.LogError($"Unauthorized file access exception. This usually means you already have LuaCs installed. ${e}", LuaCsMessageOrigin.LuaCs);
+                LuaCsLogger.LogError($"Unauthorized file access exception. This usually means you already have ProjectEP installed. ${e}", LuaCsMessageOrigin.LuaCs);
 
                 return;
             }
@@ -64,7 +63,7 @@ namespace Barotrauma
                 return;
             }
 
-            GameMain.Server.SendChatMessage("Client-Side LuaCs installed, restart your game to apply changes.", ChatMessageType.ServerMessageBox);
+            GameMain.Server.SendChatMessage("Client-Side ProjectEP installed, restart your game to apply changes.", ChatMessageType.ServerMessageBox);
         }
     }
 }

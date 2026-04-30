@@ -1,9 +1,9 @@
-﻿using FarseerPhysics;
+﻿using Barotrauma.LuaCs.Events;
+using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using FarseerPhysics.Dynamics.Contacts;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -25,7 +25,7 @@ namespace Barotrauma.Items.Components
 
         private readonly HashSet<Entity> hitTargets = new HashSet<Entity>();
 
-        private readonly ConcurrentQueue<Fixture> impactQueue = new ConcurrentQueue<Fixture>();
+        private readonly Queue<Fixture> impactQueue = new Queue<Fixture>();
 
         public Character User { get; private set; }
 
@@ -191,16 +191,17 @@ namespace Barotrauma.Items.Components
         {
             if (!item.body.Enabled)
             {
-                while (impactQueue.TryDequeue(out _)) { } // Clear queue
+                impactQueue.Clear();
                 return;
             }
             if (picker == null || !picker.HeldItems.Contains(item))
             {
-                while (impactQueue.TryDequeue(out _)) { } // Clear queue
+                impactQueue.Clear();
                 IsActive = false;
             }
-            while (impactQueue.TryDequeue(out var impact))
+            while (impactQueue.Count > 0)
             {
+                var impact = impactQueue.Dequeue();
                 HandleImpact(impact);
             }
             //in case handling the impact does something to the picker
@@ -300,7 +301,7 @@ namespace Barotrauma.Items.Components
 
         private void RestoreCollision()
         {
-            while (impactQueue.TryDequeue(out _)) { } // Clear queue
+            impactQueue.Clear();
             item.body.FarseerBody.OnCollision -= OnCollision;
             item.body.CollisionCategories = Physics.CollisionItem;
             item.body.CollidesWith = Physics.DefaultItemCollidesWith;
@@ -347,18 +348,9 @@ namespace Barotrauma.Items.Components
             }
             else if (f2.Body.UserData is Character targetCharacter)
             {
-                if (targetCharacter == picker || targetCharacter == User) { return false; }
-                if (targetCharacter.IgnoreMeleeWeapons) { return false; }
-                if (HitFriendlyTarget(targetCharacter)) { return false; }
-                if (AllowHitMultiple)
-                {
-                    if (hitTargets.Contains(targetCharacter)) { return false; }
-                }
-                else
-                {
-                    if (hitTargets.Any(t => t is Character)) { return false; }
-                }
-                hitTargets.Add(targetCharacter);
+                //only allow hitting limbs, not the main collider
+                //otherwise it's difficult to make certain parts of the ragdoll not take hits by making them ignore collisions or melee weapons
+                return false;
             }
             else if (!HitOnlyCharacters)
             {
@@ -435,7 +427,7 @@ namespace Barotrauma.Items.Components
             Structure targetStructure = target.UserData as Structure ?? targetFixture.UserData as Structure;
             Item targetItem = target.UserData is Holdable h ? h.Item : target.UserData as Item ?? targetFixture.UserData as Item;
             Entity targetEntity = targetCharacter ?? targetStructure ?? targetItem ?? target.UserData as Entity;
-            GameMain.LuaCs.Hook.Call("meleeWeapon.handleImpact", this, target);
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventMeleeWeaponHandleImpact>(x => x.OnMeleeWeaponHandleImpact(this, target));
 
             if (Attack != null)
             {

@@ -448,16 +448,16 @@ namespace Barotrauma.Items.Components
             UpdateProjSpecific(deltaTime);
             IsTinkering = false;
 
-            if (prevSentConditionValue != (int)item.ConditionPercentage || conditionSignal == null)
+            int condition = (int)(item.Condition / (item.MaxCondition / item.MaxRepairConditionMultiplier) * 100f);
+            if (prevSentConditionValue != condition || conditionSignal == null)
             {
-                prevSentConditionValue = (int)item.ConditionPercentage;
+                prevSentConditionValue = condition;
                 conditionSignal = prevSentConditionValue.ToString();
             }
 
             item.SendSignal(conditionSignal, "condition_out");
 
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (var component in item.Components.ToArray())
+            foreach (var component in item.Components)
             {
                 if (component is IDeteriorateUnderStress deteriorateUnderStress)
                 {
@@ -714,8 +714,7 @@ namespace Barotrauma.Items.Components
 #endif
 
             if (LastActiveTime > Timing.TotalTime) { return true; }
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (ItemComponent ic in item.Components.ToArray())
+            foreach (ItemComponent ic in item.Components)
             {
                 if (ic is Fabricator || ic is Deconstructor)
                 {
@@ -763,8 +762,7 @@ namespace Barotrauma.Items.Components
 
         private float GetDeteriorationDelayMultiplier()
         {
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (ItemComponent ic in item.Components.ToArray())
+            foreach (ItemComponent ic in item.Components)
             {
                 if (ic is Engine engine)
                 {

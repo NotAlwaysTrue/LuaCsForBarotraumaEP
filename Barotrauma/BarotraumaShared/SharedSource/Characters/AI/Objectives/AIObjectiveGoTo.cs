@@ -958,6 +958,7 @@ namespace Barotrauma
         
         public bool ShouldRun(bool run)
         {
+            if (ForceWalk) { return false; }
             if (run && objectiveManager.ForcedOrder == this && IsWaitOrder && !character.IsOnPlayerTeam)
             {
                 // NPCs with a wait order don't run.

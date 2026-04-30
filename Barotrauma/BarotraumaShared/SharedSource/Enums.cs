@@ -131,6 +131,14 @@ namespace Barotrauma
         /// </summary>
         OnRemoved = 25,
         /// <summary>
+        /// Executes continuously while the item/character is being deconstructed.
+        /// </summary>
+        OnDeconstructing = 26,
+        /// <summary>
+        /// Executed once when the item/character is deconstructed.
+        /// </summary>
+        OnDeconstructed = 27,
+        /// <summary>
         /// Executes when the character dies. Only valid for characters.
         /// </summary>
         OnDeath = OnBroken

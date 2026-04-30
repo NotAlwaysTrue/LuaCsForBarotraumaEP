@@ -1597,7 +1597,8 @@ namespace Barotrauma
             {
                 if (DraggingSlot == null || (!DraggingSlot.MouseOn()))
                 {
-                    Sprite sprite = DraggingItems.First().Prefab.InventoryIcon ?? DraggingItems.First().Sprite;
+                    Item firstDraggingItem = DraggingItems.First();
+                    Sprite sprite = firstDraggingItem.OverrideInventorySprite ?? firstDraggingItem.Prefab.InventoryIcon ?? firstDraggingItem.Sprite;
 
                     int iconSize = (int)(64 * GUI.Scale);
                     float scale = Math.Min(Math.Min(iconSize / sprite.size.X, iconSize / sprite.size.Y), 1.5f);
@@ -1854,7 +1855,7 @@ namespace Barotrauma
 
             if (item != null && drawItem)
             {
-                Sprite sprite = item.Prefab.InventoryIcon ?? item.Sprite;
+                Sprite sprite = item.OverrideInventorySprite ?? item.Prefab.InventoryIcon ?? item.Sprite;
                 float scale = Math.Min(Math.Min((rect.Width - 10) / sprite.size.X, (rect.Height - 10) / sprite.size.Y), 2.0f);
                 Vector2 itemPos = rect.Center.ToVector2();
                 if (itemPos.Y > GameMain.GraphicsHeight)
@@ -1891,7 +1892,7 @@ namespace Barotrauma
                        
                     }
                 }
-                else if (Item.IsMarkedForDeconstruction(item) &&
+                else if (Item.DeconstructItems.Contains(item) &&
                     OrderPrefab.Prefabs.TryGet(Tags.DeconstructThis, out OrderPrefab deconstructOrder))
                 {
                     DrawSideIcon(deconstructOrder.SymbolSprite, Direction.Right, TextManager.Get("tooltip.markedfordeconstruction"), GUIStyle.Red, out bool mouseOn);

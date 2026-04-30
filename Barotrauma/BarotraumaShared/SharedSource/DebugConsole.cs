@@ -1478,7 +1478,7 @@ namespace Barotrauma
                     newItemName = args[2];
                 }
 
-                var oldItem = Item.ItemList.Where(it => it.Name == args[0]).ElementAtOrDefault(itemIndex);
+                var oldItem = Item.ItemList.FindAll(it => it.Name == args[0]).ElementAtOrDefault(itemIndex);
                 if (oldItem == null)
                 {
                     ThrowError($"Could not find an item with the name {args[0]} (index {itemIndex}).");
@@ -1852,7 +1852,7 @@ namespace Barotrauma
 
             commands.Add(new Command("power", "power: Immediately powers up the submarine's nuclear reactor.", (string[] args) =>
             {
-                Item reactorItem = Item.ItemList.FirstOrDefault(i => i.GetComponent<Reactor>() != null);
+                Item reactorItem = Item.ItemList.Find(i => i.GetComponent<Reactor>() != null);
                 if (reactorItem == null) { return; }
 
                 var reactor = reactorItem.GetComponent<Reactor>();
@@ -2310,6 +2310,8 @@ namespace Barotrauma
                 AutoItemPlacer.DefaultStartItemSet = args[0].ToIdentifier();
                 NewMessage($"Start item set changed to \"{AutoItemPlacer.DefaultStartItemSet}\"");
             }, isCheat: false));
+
+            
 
             //"dummy commands" that only exist so that the server can give clients permissions to use them
             //TODO: alphabetical order?
@@ -3020,7 +3022,10 @@ namespace Barotrauma
                     switch (args[argIndex].ToLowerInvariant())
                     {
                         case "inside":
-                            spawnPoint = WayPoint.GetRandom(SpawnType.Human, job, Submarine.MainSub);
+                            spawnPoint = 
+                                WayPoint.GetRandom(SpawnType.Human, job, Submarine.MainSub) ??
+                                //try a non-job-specific spawnpoint if a job-specific one can't be found
+                                WayPoint.GetRandom(SpawnType.Human, assignedJob: null, Submarine.MainSub);
                             break;
                         case "outside":
                             spawnPoint = WayPoint.GetRandom(SpawnType.Enemy);
@@ -3225,7 +3230,7 @@ namespace Barotrauma
                 if (args.Length > spawnLocationIndex + 1)
                 {
                     if (!int.TryParse(args[spawnLocationIndex + 1], NumberStyles.Any, CultureInfo.InvariantCulture, out amount)) { amount = 1; }
-                    amount = Math.Min(amount, 100000);
+                    amount = Math.Min(amount, 100);
                 }
                 
                 if (args.Length > spawnLocationIndex + 2)

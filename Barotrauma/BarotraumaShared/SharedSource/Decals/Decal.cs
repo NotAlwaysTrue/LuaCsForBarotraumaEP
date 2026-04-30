@@ -34,11 +34,12 @@ namespace Barotrauma
             get { return Prefab.LifeTime; }
         }
 
+        private float baseAlpha = 1.0f;
         public float BaseAlpha
         {
-            get;
-            set;
-        } = 1.0f;
+            get => baseAlpha;
+            set => baseAlpha = MathHelper.Clamp(value, 0f, 1f);
+        }
 
         public Color Color
         {

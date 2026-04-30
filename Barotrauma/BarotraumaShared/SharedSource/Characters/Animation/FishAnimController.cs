@@ -685,7 +685,7 @@ namespace Barotrauma
         {
             movement = MathUtils.SmoothStep(movement, TargetMovement, 0.2f);
 
-            if (Collider.BodyType == BodyType.Dynamic)
+            if (Collider.BodyType == BodyType.Dynamic && onGround)
             {
                 Collider.LinearVelocity = new Vector2(
                     movement.X,

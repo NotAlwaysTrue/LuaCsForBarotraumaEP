@@ -40,7 +40,7 @@ namespace Barotrauma
                 if (subObjectives.All(so => so.SubObjectives.None()))
                 {
                     // If none of the subobjectives have subobjectives, no valid container was found. Don't allow running.
-                    ForceWalk = true;
+                    ForceWalkTemporarily = true;
                 }
                 return prio;
             }
@@ -114,7 +114,7 @@ namespace Barotrauma
                 if (!allowUnloading) { return false; }
                 if (requireValidContainer && !IsValidContainer(item.Container, character)) { return false; }
             }
-            if (ignoreItemsMarkedForDeconstruction && Item.IsMarkedForDeconstruction(item)) { return false; }
+            if (ignoreItemsMarkedForDeconstruction && Item.DeconstructItems.Contains(item)) { return false; }
             if (!item.HasAccess(character)) { return false; }
             if (character != null && !IsItemInsideValidSubmarine(item, character)) { return false; }
             if (item.HasBallastFloraInHull) { return false; }

@@ -119,7 +119,7 @@ namespace Barotrauma
 
         protected override bool CheckObjectiveState()
         {
-            if (item.IgnoreByAI(character) || Item.IsMarkedForDeconstruction(item))
+            if (item.IgnoreByAI(character) || Item.DeconstructItems.Contains(item))
             {
                 Abandon = true;
             }

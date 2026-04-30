@@ -1,6 +1,5 @@
 ﻿#nullable enable
 using Microsoft.Xna.Framework;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Barotrauma.Items.Components;
@@ -69,9 +68,8 @@ namespace Barotrauma
 
         /// <summary>
         /// When did the character last inspect whether some other character has stolen items on them?
-        /// Thread-safe dictionary for concurrent access.
         /// </summary>
-        private static readonly ConcurrentDictionary<Character, double> lastInspectionTimes = new ConcurrentDictionary<Character, double>();
+        private static readonly Dictionary<Character, double> lastInspectionTimes = new Dictionary<Character, double>();
         
         private const float NormalInspectionInterval = 120.0f;
         private const float CriminalInspectionInterval = 30.0f;

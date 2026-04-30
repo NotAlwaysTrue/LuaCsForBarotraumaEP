@@ -548,6 +548,8 @@ namespace Barotrauma
 
         public float DeconstructTime { get; private set; }
 
+        public float DeconstructTimeInOutposts { get; private set; }
+
         public bool AllowDeconstruct { get; private set; }
 
         //Containers (by identifiers or tags) that this item should be placed in. These are preferences, which are not enforced.
@@ -1074,6 +1076,7 @@ namespace Barotrauma
             var storePrices = new Dictionary<Identifier, PriceInfo>();
             var preferredContainers = new List<PreferredContainer>();
             DeconstructTime = 1.0f;
+            DeconstructTimeInOutposts = DeconstructTime;
 
             if (ConfigElement.GetAttribute("allowasextracargo") != null)
             {
@@ -1174,6 +1177,7 @@ namespace Barotrauma
                         break;
                     case "deconstruct":
                         DeconstructTime = subElement.GetAttributeFloat("time", 1.0f);
+                        DeconstructTimeInOutposts = subElement.GetAttributeFloat("timeinoutposts", DeconstructTime);
                         AllowDeconstruct = true;
                         RandomDeconstructionOutput = subElement.GetAttributeBool("chooserandom", false);
                         RandomDeconstructionOutputAmount = subElement.GetAttributeInt("amount", 1);

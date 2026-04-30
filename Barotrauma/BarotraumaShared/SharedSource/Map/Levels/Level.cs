@@ -7,6 +7,7 @@ using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -328,6 +329,7 @@ namespace Barotrauma
 
         public Submarine BeaconStation { get; private set; }
         private Sonar beaconSonar;
+        private ImmutableArray<SonarTransducer> beaconTransducers = ImmutableArray<SonarTransducer>.Empty;
 
         /// <summary>
         /// Special wall chunks that aren't part of the normal level geometry: includes things like the ocean floor, floating ice chunks and ice spires.
@@ -4406,6 +4408,13 @@ namespace Barotrauma
                     attempts++;
                 }
             }
+
+            foreach (var wreck in Wrecks)
+            {
+                wreck.SetCrushDepth(wreck.RealWorldDepth + 1000);
+                SetLinkedSubCrushDepth(wreck);
+            }
+
             totalSW.Stop();
             Debug.WriteLine($"{Wrecks.Count} wrecks created in { totalSW.ElapsedMilliseconds} (ms)");
         }
@@ -4783,13 +4792,14 @@ namespace Barotrauma
             //     BeaconStation.FlipX();
             // }
 
-            Item sonarItem = Item.ItemList.FirstOrDefault(it => it.Submarine == BeaconStation && it.GetComponent<Sonar>() != null);
+            Item sonarItem = Item.ItemList.Find(it => it.Submarine == BeaconStation && it.GetComponent<Sonar>() != null);
             if (sonarItem == null)
             {
                 DebugConsole.ThrowError($"No sonar found in the beacon station \"{beaconStationName}\"!");
                 return;
             }
             beaconSonar = sonarItem.GetComponent<Sonar>();
+            beaconTransducers = sonarItem.GetConnectedComponents<SonarTransducer>().ToImmutableArray();
         }
 
         public void PrepareBeaconStation()
@@ -4802,7 +4812,7 @@ namespace Barotrauma
                 throw new InvalidOperationException("Failed to prepare beacon station (no beacon station in the level).");
             }
 
-            List<Item> beaconItems = Item.ItemList.Where(it => it.Submarine == BeaconStation).ToList();
+            List<Item> beaconItems = Item.ItemList.FindAll(it => it.Submarine == BeaconStation);
 
             Item reactorItem = beaconItems.Find(it => it.GetComponent<Reactor>() != null);
             Reactor reactorComponent = null;
@@ -4848,7 +4858,7 @@ namespace Barotrauma
             if (BeaconStation?.Info?.BeaconStationInfo is { AllowDisconnectedWires: false }) { return; }
 
             if (disconnectWireProbability <= 0.0f) { return; }
-            List<Item> beaconItems = Item.ItemList.Where(it => it.Submarine == BeaconStation).ToList();
+            List<Item> beaconItems = Item.ItemList.FindAll(it => it.Submarine == BeaconStation);
             foreach (Item item in beaconItems.Where(it => it.GetComponent<Wire>() != null).ToList())
             {
                 if (item.NonInteractable || item.InvulnerableToDamage) { continue; }
@@ -4886,7 +4896,7 @@ namespace Barotrauma
 
             if (breakDeviceProbability <= 0.0f) { return; }
             //break powered items
-            List<Item> beaconItems = Item.ItemList.Where(it => it.Submarine == BeaconStation).ToList();
+            List<Item> beaconItems = Item.ItemList.FindAll(it => it.Submarine == BeaconStation);
             foreach (Item item in beaconItems.Where(it => it.Components.Any(c => c is Powered) && it.Components.Any(c => c is Repairable)))
             {
                 if (item.NonInteractable || item.InvulnerableToDamage) { continue; }
@@ -4916,9 +4926,20 @@ namespace Barotrauma
         public bool CheckBeaconActive()
         {
             if (beaconSonar == null) { return false; }
+            if (beaconSonar.UseTransducers)
+            {
+                var connectedTransducers = beaconSonar.Item.GetConnectedComponents<SonarTransducer>();
+                foreach (var beaconTransducer in beaconTransducers)
+                {
+                    if (!beaconTransducer.HasPower || !connectedTransducers.Contains(beaconTransducer)) { return false; }
+                }
+            }
             return beaconSonar.HasPower && beaconSonar.CurrentMode == Sonar.Mode.Active;
         }
 
+        /// <summary>
+        /// Set the crush depths of the connected subs to match the crush depth of the parent sub.
+        /// </summary>
         private void SetLinkedSubCrushDepth(Submarine parentSub)
         {
             foreach (var connectedSub in parentSub.GetConnectedSubs())
@@ -5157,6 +5178,7 @@ namespace Barotrauma
 
             BeaconStation = null;
             beaconSonar = null;
+            beaconTransducers = ImmutableArray<SonarTransducer>.Empty;
             StartOutpost = null;
             EndOutpost = null;
 

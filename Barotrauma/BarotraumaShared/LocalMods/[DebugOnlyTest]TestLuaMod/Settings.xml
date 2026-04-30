@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Settings>
+    <Setting Name="TestTickbox" Type="bool" Value="true"/>
+	  <Setting Name="TestSynchroClient" Type="int" NetSync="TwoWay" Value="40"/>
+	  <Setting Name="TestSynchroServer" Type="int" NetSync="ServerAuthority" Value="25"/>
+    <Setting Name="TestFloat" Type="float" Value="3498"/>
+    <Setting Name="TestHidden" Type="bool" ShowInMenus="false" Value="false"/>
+    <Setting Name="TestRangeFloat" Type="rangeFloat" Min="0" Max="25" Steps="11" Value="4.5"/>
+    <Setting Name="TestRangeInt" Type="rangeInt" Min="0" Max="10" Steps="11" Value="4"/>
+    <Setting Name="TestString" Type="string" Value="ok"/>
+    <Setting Name="TestControl" Type="control" Value="A"/>
+    <Setting Name="TestDropdownList" Type="listString" Value="Hi">
+      <Values>
+        <Value Value="Entry A"/>
+        <Value Value="Entry B"/>
+        <Value Value="Hi"/>
+        <Value Value="YourMom"/>
+      </Values>
+    </Setting>
+  </Settings>
+  <Profiles>
+    <Profile Name="default">
+      <SettingValue Name="TestTickbox" Value="true"/>
+      <SettingValue Name="TestFloat" Value="5"/>
+      <SettingValue Name="TestHidden" Value="true"/>
+      <SettingValue Name="TestRangeFloat" Value="15"/>
+      <SettingValue Name="TestRangeInt" Value="7"/>
+      <SettingValue Name="TestString" Value="Hello!"/>
+    </Profile>
+    <Profile Name="other">
+      <SettingValue Name="TestTickbox" Value="false"/>
+      <SettingValue Name="TestFloat" Value="9"/>
+      <SettingValue Name="TestHidden" Value="false"/>
+      <SettingValue Name="TestRangeFloat" Value="4"/>
+      <SettingValue Name="TestRangeInt" Value="4"/>
+      <SettingValue Name="TestString" Value="Other loaded!"/>
+    </Profile>
+  </Profiles>
+</Configuration>

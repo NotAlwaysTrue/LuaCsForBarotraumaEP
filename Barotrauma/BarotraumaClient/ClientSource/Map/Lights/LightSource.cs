@@ -50,8 +50,14 @@ namespace Barotrauma.Lights
         [Serialize("0, 0", IsPropertySaveable.Yes), Editable(ValueStep = 1, DecimalCount = 1, MinValueFloat = -1000f, MaxValueFloat = 1000f)]
         public Vector2 Offset { get; set; }
 
+        public float RotationRad { get; private set; }
+
         [Serialize(0f, IsPropertySaveable.Yes), Editable(MinValueFloat = -360, MaxValueFloat = 360, ValueStep = 1, DecimalCount = 0)]
-        public float Rotation { get; set; }
+        public float Rotation 
+        {
+            get => MathHelper.ToDegrees(RotationRad);
+            set => RotationRad = MathHelper.ToRadians(value);
+        }
 
         [Serialize(false, IsPropertySaveable.Yes, "Directional lights only shine in \"one direction\", meaning no shadows are cast behind them."+
             " Note that this does not affect how the light texture is drawn: if you want something like a conical spotlight, you should use an appropriate texture for that.")]
@@ -314,6 +320,10 @@ namespace Barotrauma.Lights
 
         private float prevCalculatedRotation;
         private float rotation;
+
+        /// <summary>
+        /// Current rotation in radians. Note that LightSourceParams.RotationRad also affects the final rotation of the light.
+        /// </summary>
         public float Rotation
         {
             get { return rotation; }
@@ -322,7 +332,7 @@ namespace Barotrauma.Lights
                 if (Math.Abs(value - rotation) < 0.001f) { return; }
                 rotation = value;
 
-                dir = new Vector2(MathF.Cos(rotation), -MathF.Sin(rotation));
+                RefreshDirection();
 
                 if (Math.Abs(rotation - prevCalculatedRotation) < RotationRecalculationThreshold && vertices != null)
                 {
@@ -486,6 +496,9 @@ namespace Barotrauma.Lights
                         break;
                 }
             }
+            //make sure the rotation defined in the parameters is taken into account
+            RefreshDirection();
+            NeedsRecalculation = true;
         }
 
         public LightSource(LightSourceParams lightSourceParams)
@@ -497,6 +510,9 @@ namespace Barotrauma.Lights
             {
                 DeformableLightSprite = new DeformableSprite(lightSourceParams.DeformableLightSpriteElement, invert: true);
             }
+            //make sure the rotation defined in the parameters is taken into account
+            RefreshDirection();
+            NeedsRecalculation = true;
         }
 
         public LightSource(Vector2 position, float range, Color color, Submarine submarine, bool addLight=true)
@@ -509,6 +525,14 @@ namespace Barotrauma.Lights
             texture = LightTexture;
             diffToSub = new Dictionary<Submarine, Vector2>();
             if (addLight) { GameMain.LightManager.AddLight(this); }
+        }
+
+        /// <summary>
+        /// Refresh the direction vector of the light (which is used for calculating shadows) based on the rotation and <see cref="LightSourceParams.RotationRad"/>
+        /// </summary>
+        private void RefreshDirection()
+        {
+            dir = new Vector2(MathF.Cos(rotation - LightSourceParams.RotationRad), -MathF.Sin(rotation - LightSourceParams.RotationRad));
         }
 
         public void Update(float time)
@@ -773,9 +797,6 @@ namespace Barotrauma.Lights
             float boundsExtended = TextureRange;
             if (OverrideLightTexture != null)
             {
-                float cosAngle = (float)Math.Cos(rotation);
-                float sinAngle = -(float)Math.Sin(rotation);
-
                 var overrideTextureDims = new Vector2(OverrideLightTexture.SourceRect.Width, OverrideLightTexture.SourceRect.Height);
 
                 Vector2 origin = OverrideLightTextureOrigin;
@@ -790,8 +811,11 @@ namespace Barotrauma.Lights
 
                 origin *= TextureRange;
 
-                drawOffset.X = -origin.X * cosAngle - origin.Y * sinAngle;
-                drawOffset.Y = origin.X * sinAngle + origin.Y * cosAngle;
+                //rotate the origin based on the direction
+                float cos = dir.X;
+                float sin = dir.Y;
+                drawOffset.X = -origin.X * cos - origin.Y * sin;
+                drawOffset.Y = origin.X * sin + origin.Y * cos;
             }
 
             //add a square-shaped boundary to make sure we've got something to construct the triangles from
@@ -1536,7 +1560,6 @@ namespace Barotrauma.Lights
             Vector2 offset = ParentSub == null ? Vector2.Zero : ParentSub.DrawPosition;
             lightEffect.World =
                 Matrix.CreateTranslation(-new Vector3(position, 0.0f)) *
-                Matrix.CreateRotationZ(MathHelper.ToRadians(LightSourceParams.Rotation)) *
                 Matrix.CreateTranslation(new Vector3(position + offset + translateVertices, 0.0f)) *
                 transform;
 

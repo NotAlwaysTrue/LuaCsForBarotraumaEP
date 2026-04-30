@@ -152,7 +152,7 @@ namespace Barotrauma.Networking
                 if (!MathUtils.NearlyEqual(karma, syncedKarma, 10.0f))
                 {
                     syncedKarma = karma;
-                    GameMain.NetworkMember.IncrementLastClientListUpdateID();
+                    GameMain.NetworkMember.LastClientListUpdateID++;
                 }
             }
         }

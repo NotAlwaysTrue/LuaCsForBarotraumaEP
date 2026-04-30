@@ -7,18 +7,15 @@ using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
 using Steamworks;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using System.Threading;
 using System.Xml.Linq;
 
 namespace Barotrauma
 {
     class DurationListElement
     {
-        public readonly long Id;
         public readonly StatusEffect Parent;
         public readonly Entity Entity;
         public float Duration
@@ -27,24 +24,12 @@ namespace Barotrauma
             private set;
         }
         public readonly List<ISerializableEntity> Targets;
-        
-        private volatile Character _user;
-        public Character User 
-        { 
-            get => _user; 
-            private set => _user = value; 
-        }
+        public Character User { get; private set; }
 
-        private volatile float _timer;
-        public float Timer
-        {
-            get => _timer;
-            set => _timer = value;
-        }
+        public float Timer;
 
         public DurationListElement(StatusEffect parentEffect, Entity parentEntity, IEnumerable<ISerializableEntity> targets, float duration, Character user)
         {
-            Id = Interlocked.Increment(ref StatusEffect._durationElementIdCounter);
             Parent = parentEffect;
             Entity = parentEntity;
             Targets = new List<ISerializableEntity>(targets);
@@ -54,9 +39,8 @@ namespace Barotrauma
 
         public void Reset(float duration, Character newUser)
         {
-            Duration = duration;
-            Volatile.Write(ref _timer, duration);
-            _user = newUser;
+            Timer = Duration = duration;
+            User = newUser;
         }
     }
 
@@ -617,23 +601,14 @@ namespace Barotrauma
         private readonly float lifeTime;
         private float lifeTimer;
 
-        private ConcurrentDictionary<Entity, float> intervalTimers;
+        private Dictionary<Entity, float> intervalTimers;
 
         /// <summary>
         /// Makes the effect only execute once. After it has executed, it'll never execute again (during the same round).
         /// </summary>
         private readonly bool oneShot;
 
-        // Thread-safe counter for generating unique IDs for DurationListElement
-        internal static long _durationElementIdCounter;
-        
-        // Thread-safe dictionary for duration effects
-        public static readonly ConcurrentDictionary<long, DurationListElement> DurationListDict = new ConcurrentDictionary<long, DurationListElement>();
-        
-        /// <summary>
-        /// Provides a thread-safe enumerable view of the duration list for iteration.
-        /// </summary>
-        public static IEnumerable<DurationListElement> DurationList => DurationListDict.Values;
+        public static readonly List<DurationListElement> DurationList = new List<DurationListElement>();
 
         /// <summary>
         /// Only applicable for StatusEffects with a duration or delay. Should the conditional checks only be done when the effect triggers, 
@@ -869,6 +844,12 @@ namespace Barotrauma
         public Vector2 Offset { get; private set; }
 
         /// <summary>
+        /// Should <see cref="Offset"/> be rotated, flipped and scaled based on the entity that this effect is executed by?
+        /// Currently only supports status effects in items.
+        /// </summary>
+        public bool OffsetCopiesEntityTransform { get; private set; }
+
+        /// <summary>
         /// An random offset (in a random direction) added to the position of the effect is executed at. Only relevant if the effect does something where position matters,
         /// for example emitting particles or explosions, spawning something or playing sounds.
         /// </summary>
@@ -928,6 +909,7 @@ namespace Barotrauma
 
             Range = element.GetAttributeFloat("range", 0.0f);
             Offset = element.GetAttributeVector2("offset", Vector2.Zero);
+            OffsetCopiesEntityTransform = element.GetAttributeBool(nameof(OffsetCopiesEntityTransform), false);
             RandomOffset = element.GetAttributeFloat("randomoffset", 0.0f);
             string[] targetLimbNames = element.GetAttributeStringArray("targetlimb", null) ?? element.GetAttributeStringArray("targetlimbs", null);
             if (targetLimbNames != null)
@@ -1649,52 +1631,22 @@ namespace Barotrauma
             }
         }
 
-        // Thread-local list to avoid contention when cleaning up removed entities
-        [ThreadStatic]
-        private static List<Entity> _threadLocalIntervalsToRemove;
-        
-        private static List<Entity> IntervalsToRemove
-        {
-            get
-            {
-                _threadLocalIntervalsToRemove ??= new List<Entity>();
-                return _threadLocalIntervalsToRemove;
-            }
-        }
+        private static readonly List<Entity> intervalsToRemove = new List<Entity>();
 
         public bool ShouldWaitForInterval(Entity entity, float deltaTime)
         {
-            if (Interval > 0.0f && entity != null)
+            if (Interval > 0.0f && entity != null && intervalTimers != null)
             {
-                // Thread-safe lazy initialization
-                if (intervalTimers == null)
+                if (intervalTimers.ContainsKey(entity))
                 {
-                    Interlocked.CompareExchange(ref intervalTimers, new ConcurrentDictionary<Entity, float>(), null);
+                    intervalTimers[entity] -= deltaTime;
+                    if (intervalTimers[entity] > 0.0f) { return true; }
                 }
-                
-                if (intervalTimers.TryGetValue(entity, out float currentTimer))
+                intervalsToRemove.Clear();
+                intervalsToRemove.AddRange(intervalTimers.Keys.Where(e => e.Removed));
+                foreach (var toRemove in intervalsToRemove)
                 {
-                    float newTimer = currentTimer - deltaTime;
-                    if (newTimer > 0.0f)
-                    {
-                        intervalTimers.AddOrUpdate(entity, newTimer, (_, __) => newTimer);
-                        return true;
-                    }
-                }
-                
-                // Clean up removed entities using thread-local list
-                var toRemove = IntervalsToRemove;
-                toRemove.Clear();
-                foreach (var key in intervalTimers.Keys)
-                {
-                    if (key.Removed)
-                    {
-                        toRemove.Add(key);
-                    }
-                }
-                foreach (var key in toRemove)
-                {
-                    intervalTimers.TryRemove(key, out _);
+                    intervalTimers.Remove(toRemove);
                 }
             }
             return false;
@@ -1710,7 +1662,7 @@ namespace Barotrauma
             if (Duration > 0.0f && !Stackable)
             {
                 //ignore if not stackable and there's already an identical statuseffect
-                DurationListElement existingEffect = FindExistingDurationEffect(target);
+                DurationListElement existingEffect = DurationList.Find(d => d.Parent == this && d.Targets.FirstOrDefault() == target);
                 if (existingEffect != null)
                 {
                     if (ResetDurationWhenReapplied)
@@ -1721,74 +1673,30 @@ namespace Barotrauma
                 }
             }
 
-            var targets = CurrentTargets;
-            targets.Clear();
-            targets.Add(target);
-            if (!HasRequiredConditions(targets)) { return; }
-            Apply(deltaTime, entity, targets, worldPosition);
+            currentTargets.Clear();
+            currentTargets.Add(target);
+            if (!HasRequiredConditions(currentTargets)) { return; }
+            Apply(deltaTime, entity, currentTargets, worldPosition);
         }
 
-        // Thread-local list to avoid contention when collecting targets
-        [ThreadStatic]
-        private static List<ISerializableEntity> _threadLocalCurrentTargets;
-        
-        protected List<ISerializableEntity> CurrentTargets
-        {
-            get
-            {
-                _threadLocalCurrentTargets ??= new List<ISerializableEntity>();
-                return _threadLocalCurrentTargets;
-            }
-        }
-        
-        /// <summary>
-        /// Thread-safe method to find an existing duration effect for a single target.
-        /// </summary>
-        private DurationListElement FindExistingDurationEffect(ISerializableEntity target)
-        {
-            foreach (var element in DurationListDict.Values)
-            {
-                if (element.Parent == this && element.Targets.FirstOrDefault() == target)
-                {
-                    return element;
-                }
-            }
-            return null;
-        }
-        
-        /// <summary>
-        /// Thread-safe method to find an existing duration effect for multiple targets.
-        /// </summary>
-        private DurationListElement FindExistingDurationEffect(IReadOnlyList<ISerializableEntity> targets)
-        {
-            foreach (var element in DurationListDict.Values)
-            {
-                if (element.Parent == this && element.Targets.SequenceEqual(targets))
-                {
-                    return element;
-                }
-            }
-            return null;
-        }
-        
+        protected readonly List<ISerializableEntity> currentTargets = new List<ISerializableEntity>();
         public virtual void Apply(ActionType type, float deltaTime, Entity entity, IReadOnlyList<ISerializableEntity> targets, Vector2? worldPosition = null)
         {
             if (Disabled) { return; }
             if (this.type != type) { return; }
             if (ShouldWaitForInterval(entity, deltaTime)) { return; }
 
-            var localTargets = CurrentTargets;
-            localTargets.Clear();
+            currentTargets.Clear();
             foreach (ISerializableEntity target in targets)
             {
                 if (!IsValidTarget(target)) { continue; }
-                localTargets.Add(target);
+                currentTargets.Add(target);
             }
 
-            if (TargetIdentifiers != null && localTargets.Count == 0) { return; }
+            if (TargetIdentifiers != null && currentTargets.Count == 0) { return; }
 
             bool hasRequiredItems = HasRequiredItems(entity);
-            if (!hasRequiredItems || !HasRequiredConditions(localTargets))
+            if (!hasRequiredItems || !HasRequiredConditions(currentTargets))
             {
 #if CLIENT
                 if (!hasRequiredItems && playSoundOnRequiredItemFailure)
@@ -1802,15 +1710,15 @@ namespace Barotrauma
             if (Duration > 0.0f && !Stackable)
             {
                 //ignore if not stackable and there's already an identical statuseffect
-                DurationListElement existingEffect = FindExistingDurationEffect(localTargets);
+                DurationListElement existingEffect = DurationList.Find(d => d.Parent == this && d.Targets.SequenceEqual(currentTargets));
                 if (existingEffect != null)
                 {
-                    existingEffect.Reset(Math.Max(existingEffect.Timer, Duration), user);
+                    existingEffect?.Reset(Math.Max(existingEffect.Timer, Duration), user);
                     return;
                 }
             }
 
-            Apply(deltaTime, entity, localTargets, worldPosition);
+            Apply(deltaTime, entity, currentTargets, worldPosition);
         }
 
         private Hull GetHull(Entity entity)
@@ -1830,6 +1738,7 @@ namespace Barotrauma
         protected Vector2 GetPosition(Entity entity, IReadOnlyList<ISerializableEntity> targets, Vector2? worldPosition = null)
         {
             Vector2 position = worldPosition ?? (entity == null || entity.Removed ? Vector2.Zero : entity.WorldPosition);
+
             if (worldPosition == null)
             {
                 if (entity is Character character && !character.Removed && targetLimbs != null)
@@ -1866,9 +1775,22 @@ namespace Barotrauma
                         }
                     }
                 }
-
             }
-            position += Offset;
+
+            Vector2 offset = Offset;
+
+            if (OffsetCopiesEntityTransform)
+            {
+                if (entity is Item item)
+                {
+                    offset *= item.Scale;
+                    if (item.FlippedX) { offset.X *= -1; }
+                    if (item.FlippedY) { offset.Y *= -1; }
+                    offset = Vector2.Transform(offset, Matrix.CreateRotationZ(-item.RotationRad));
+                }
+            }
+
+            position += offset;
             position += Rand.Vector(Rand.Range(0.0f, RandomOffset));
             return position;
         }
@@ -1886,14 +1808,14 @@ namespace Barotrauma
             {
                 if (entity is Item item)
                 {
-                    var result = GameMain.LuaCs.Hook.Call<bool?>("statusEffect.apply." + item.Prefab.Identifier, this, deltaTime, entity, targets, worldPosition);
+                    var result = LuaCsSetup.Instance.Hook.Call<bool?>("statusEffect.apply." + item.Prefab.Identifier, this, deltaTime, entity, targets, worldPosition);
 
                     if (result != null && result.Value) { return; }
                 }
 
                 if (entity is Character character)
                 {
-                    var result = GameMain.LuaCs.Hook.Call<bool?>("statusEffect.apply." + character.SpeciesName, this, deltaTime, entity, targets, worldPosition);
+                    var result = LuaCsSetup.Instance.Hook.Call<bool?>("statusEffect.apply." + character.SpeciesName, this, deltaTime, entity, targets, worldPosition);
 
                     if (result != null && result.Value) { return; }
                 }
@@ -1903,7 +1825,7 @@ namespace Barotrauma
             {
                 foreach ((string hookName, ContentXElement element) in luaHook)
                 {
-                    var result = GameMain.LuaCs.Hook.Call<bool?>(hookName, this, deltaTime, entity, targets, worldPosition, element);
+                    var result = LuaCsSetup.Instance.Hook.Call<bool?>(hookName, this, deltaTime, entity, targets, worldPosition, element);
 
                     if (result != null && result.Value) { return; }
                 }
@@ -2023,8 +1945,7 @@ namespace Barotrauma
 
             if (Duration > 0.0f)
             {
-                var element = new DurationListElement(this, entity, targets, Duration, user);
-                DurationListDict.TryAdd(element.Id, element);
+                DurationList.Add(new DurationListElement(this, entity, targets, Duration, user));
             }
             else
             {
@@ -2193,24 +2114,9 @@ namespace Barotrauma
                 {
                     LocalizedString messageToSay = TextManager.Get(forceSayIdentifier).Fallback(forceSayIdentifier.Value);
 
-                    if (!messageToSay.IsNullOrEmpty() && target is Character targetCharacter && targetCharacter.SpeechImpediment < 100.0f && !targetCharacter.IsDead)
+                    if (!messageToSay.IsNullOrEmpty() && target is Character targetCharacter)
                     {
-                        ChatMessageType messageType = ChatMessageType.Default;
-                        bool canUseRadio = ChatMessage.CanUseRadio(targetCharacter, out WifiComponent radio);
-                        if (canUseRadio && forceSayInRadio)
-                        {
-                            messageType = ChatMessageType.Radio;
-                        }
-#if SERVER
-                        GameMain.Server?.SendChatMessage(messageToSay.Value, messageType, senderClient: null, targetCharacter);
-#elif CLIENT
-                        //no need to create the message when playing as a client, the server will send it to us
-                        if (isNotClient)
-                        {                            
-                            AIChatMessage message = new AIChatMessage(messageToSay.Value, messageType);
-                            targetCharacter.SendSinglePlayerMessage(message, canUseRadio, radio);
-                        }
-#endif
+                        targetCharacter.ForceSay(messageToSay, forceSayInRadio);
                     }
                 }
 
@@ -2362,7 +2268,10 @@ namespace Barotrauma
                             inheritedTeam = entity switch
                             {
                                 Character c => c.TeamID,
-                                Item it => it.GetRootInventoryOwner() is Character owner ? owner.TeamID : GetTeamFromSubmarine(it),
+                                Item it => 
+                                    (it.GetRootInventoryOwner() as Character ?? it.PreviousParentInventory?.Owner as Character) is { } owner ? 
+                                        owner.TeamID : 
+                                        GetTeamFromSubmarine(it),
                                 MapEntity e => GetTeamFromSubmarine(e),
                                 _ => null
                                 // Default to Team1, when we can't deduce the team (for example when spawning outside the sub AND character inventory).
@@ -2552,7 +2461,7 @@ namespace Barotrauma
             }
             if (Interval > 0.0f && entity != null)
             {
-                intervalTimers ??= new ConcurrentDictionary<Entity, float>();
+                intervalTimers ??= new Dictionary<Entity, float>();
                 intervalTimers[entity] = Interval;
             }
         }
@@ -2949,15 +2858,13 @@ namespace Barotrauma
             UpdateAllProjSpecific(deltaTime);
 
             DelayedEffect.Update(deltaTime);
-            
-            // Thread-safe iteration over ConcurrentDictionary
-            foreach (var kvp in DurationListDict)
+            for (int i = DurationList.Count - 1; i >= 0; i--)
             {
-                DurationListElement element = kvp.Value;
+                DurationListElement element = DurationList[i];
 
                 if (element.Parent.CheckConditionalAlways && !element.Parent.HasRequiredConditions(element.Targets))
                 {
-                    DurationListDict.TryRemove(element.Id, out _);
+                    DurationList.RemoveAt(i);
                     continue;
                 }
 
@@ -2966,7 +2873,7 @@ namespace Barotrauma
                     (t is Limb limb && (limb.character == null || limb.character.Removed)));
                 if (element.Targets.Count == 0)
                 {
-                    DurationListDict.TryRemove(element.Id, out _);
+                    DurationList.RemoveAt(i);
                     continue;
                 }
 
@@ -3061,7 +2968,7 @@ namespace Barotrauma
                 element.Timer -= deltaTime;
 
                 if (element.Timer > 0.0f) { continue; }
-                DurationListDict.TryRemove(element.Id, out _);
+                DurationList.Remove(element);
             }
         }
 
@@ -3161,8 +3068,8 @@ namespace Barotrauma
         public static void StopAll()
         {
             CoroutineManager.StopCoroutines("statuseffect");
-            DelayedEffect.DelayListDict.Clear();
-            DurationListDict.Clear();
+            DelayedEffect.DelayList.Clear();
+            DurationList.Clear();
         }
 
         public void AddTag(Identifier tag)

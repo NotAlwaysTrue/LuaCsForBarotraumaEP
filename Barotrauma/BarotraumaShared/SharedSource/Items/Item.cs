@@ -1,22 +1,23 @@
-﻿using Barotrauma.Items.Components;
+﻿using Barotrauma.Abilities;
+using Barotrauma.Extensions;
+using Barotrauma.Items.Components;
+using Barotrauma.LuaCs.Events;
+using Barotrauma.MapCreatures.Behavior;
 using Barotrauma.Networking;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using FarseerPhysics.Dynamics.Contacts;
 using Microsoft.Xna.Framework;
+using MoonSharp.Interpreter;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
-using Barotrauma.Extensions;
-using Barotrauma.MapCreatures.Behavior;
-using MoonSharp.Interpreter;
-using System.Collections.Immutable;
-using System.Threading;
-using Barotrauma.Abilities;
-using HarmonyLib;
+using static Barotrauma.CharacterHealth;
+using static Barotrauma.MedicalClinic;
 
 #if CLIENT
 using Microsoft.Xna.Framework.Graphics;
@@ -29,171 +30,56 @@ namespace Barotrauma
         #region Lists
 
         /// <summary>
-        /// Thread-safe dictionary of all items by ID.
+        /// A list of every item that exists somewhere in the world. Note that there can be a huge number of items in the list, 
+        /// and you probably shouldn't be enumerating it to find some that match some specific criteria (unless that's done very, very sparsely or during initialization).
         /// </summary>
-        private static readonly ConcurrentDictionary<ushort, Item> _itemDictionary = new ConcurrentDictionary<ushort, Item>();
+        public static readonly List<Item> ItemList = new List<Item>();
 
-        /// <summary>
-        /// Provides thread-safe enumeration over all items.
-        /// </summary>
-        public static ICollection<Item> ItemList => _itemDictionary.Values;
-
-        /// <summary>
-        /// Thread-safe item lookup by ID.
-        /// </summary>
-        public static Item GetItemById(ushort id)
-        {
-            _itemDictionary.TryGetValue(id, out var item);
-            return item;
-        }
-
-        // Thread-safe optimized item collections using Immutable + atomic swap pattern
-        private static volatile ImmutableHashSet<Item> _dangerousItems = ImmutableHashSet<Item>.Empty;
-        private static volatile ImmutableHashSet<Item> _repairableItems = ImmutableHashSet<Item>.Empty;
-        private static volatile ImmutableHashSet<Item> _cleanableItems = ImmutableHashSet<Item>.Empty;
-        private static volatile ImmutableHashSet<Item> _sonarVisibleItems = ImmutableHashSet<Item>.Empty;
-        private static volatile ImmutableHashSet<Item> _turretTargetItems = ImmutableHashSet<Item>.Empty;
-        private static volatile ImmutableHashSet<Item> _chairItems = ImmutableHashSet<Item>.Empty;
-
-        // DeconstructItems uses ConcurrentDictionary to simulate a thread-safe HashSet
-        private static readonly ConcurrentDictionary<Item, byte> _deconstructItems = new ConcurrentDictionary<Item, byte>();
+        private static readonly HashSet<Item> _dangerousItems = new HashSet<Item>();
 
         public static IReadOnlyCollection<Item> DangerousItems => _dangerousItems;
+
+        private static readonly List<Item> _repairableItems = new List<Item>();
 
         /// <summary>
         /// Items that have one more more Repairable component
         /// </summary>
         public static IReadOnlyCollection<Item> RepairableItems => _repairableItems;
 
+        private static readonly List<Item> _cleanableItems = new List<Item>();
+
         /// <summary>
         /// Items that may potentially need to be cleaned up (pickable, not attached to a wall, and not inside a valid container)
         /// </summary>
         public static IReadOnlyCollection<Item> CleanableItems => _cleanableItems;
 
+        private static readonly HashSet<Item> _deconstructItems = new HashSet<Item>();
+
         /// <summary>
-        /// Items that have been marked for deconstruction. Thread-safe collection.
+        /// Items that have been marked for deconstruction
         /// </summary>
-        public static ICollection<Item> DeconstructItems => _deconstructItems.Keys;
+        public static HashSet<Item> DeconstructItems => _deconstructItems;
+
+        private static readonly List<Item> _sonarVisibleItems = new List<Item>();
 
         /// <summary>
         /// Items whose <see cref="ItemPrefab.SonarSize"/> is larger than 0
         /// </summary>
         public static IReadOnlyCollection<Item> SonarVisibleItems => _sonarVisibleItems;
 
+        private static readonly List<Item> _turretTargetItems = new List<Item>();
+
         /// <summary>
         /// Items whose <see cref="ItemPrefab.IsAITurretTarget"/> is true.
         /// </summary>
         public static IReadOnlyCollection<Item> TurretTargetItems => _turretTargetItems;
 
+        private static readonly List<Item> _chairItems = new List<Item>();
+
         /// <summary>
         /// Items that have the tag <see cref="Tags.ChairItem"/>. Which is an oddly specific thing, but useful as an optimization for NPC AI.
         /// </summary>
         public static IReadOnlyCollection<Item> ChairItems => _chairItems;
-
-        #region Thread-safe collection helpers
-
-        /// <summary>
-        /// Atomically adds an item to an immutable set using compare-and-swap.
-        /// </summary>
-        private static void AddToImmutableSet(ref ImmutableHashSet<Item> location, Item item)
-        {
-            ImmutableHashSet<Item> original, updated;
-            do
-            {
-                original = location;
-                updated = original.Add(item);
-                if (ReferenceEquals(original, updated)) return; // Already exists
-            }
-            while (Interlocked.CompareExchange(ref location, updated, original) != original);
-        }
-
-        /// <summary>
-        /// Atomically removes an item from an immutable set using compare-and-swap.
-        /// </summary>
-        private static void RemoveFromImmutableSet(ref ImmutableHashSet<Item> location, Item item)
-        {
-            ImmutableHashSet<Item> original, updated;
-            do
-            {
-                original = location;
-                updated = original.Remove(item);
-                if (ReferenceEquals(original, updated)) return; // Doesn't exist
-            }
-            while (Interlocked.CompareExchange(ref location, updated, original) != original);
-        }
-
-        /// <summary>
-        /// Marks an item for deconstruction (thread-safe).
-        /// </summary>
-        public static void MarkForDeconstruction(Item item)
-        {
-            _deconstructItems.TryAdd(item, 0);
-        }
-
-        /// <summary>
-        /// Unmarks an item for deconstruction (thread-safe).
-        /// </summary>
-        public static void UnmarkForDeconstruction(Item item)
-        {
-            _deconstructItems.TryRemove(item, out _);
-        }
-
-        /// <summary>
-        /// Checks if an item is marked for deconstruction (thread-safe).
-        /// </summary>
-        public static bool IsMarkedForDeconstruction(Item item)
-        {
-            return _deconstructItems.ContainsKey(item);
-        }
-
-        /// <summary>
-        /// Clears all item collections (thread-safe). Used during unloading.
-        /// </summary>
-        public static void ClearAllItemCollections()
-        {
-            _itemDictionary.Clear();
-            _dangerousItems = ImmutableHashSet<Item>.Empty;
-            _repairableItems = ImmutableHashSet<Item>.Empty;
-            _cleanableItems = ImmutableHashSet<Item>.Empty;
-            _sonarVisibleItems = ImmutableHashSet<Item>.Empty;
-            _turretTargetItems = ImmutableHashSet<Item>.Empty;
-            _chairItems = ImmutableHashSet<Item>.Empty;
-            _deconstructItems.Clear();
-            while (_pendingConditionUpdates.TryDequeue(out _)) { }
-            _cachedItemList = null;
-            _cachedItemListVersion = -1;
-        }
-
-        // Cached item list for indexed access (used by AI systems)
-        private static volatile List<Item> _cachedItemList;
-        private static volatile int _cachedItemListVersion = -1;
-        private static volatile int _itemListVersion;
-
-        /// <summary>
-        /// Gets a cached list snapshot of all items for indexed access.
-        /// The list is refreshed when items are added or removed.
-        /// Thread-safe but may return slightly stale data.
-        /// </summary>
-        public static List<Item> GetCachedItemList()
-        {
-            int currentVersion = _itemListVersion;
-            if (_cachedItemList == null || _cachedItemListVersion != currentVersion)
-            {
-                _cachedItemList = _itemDictionary.Values.ToList();
-                _cachedItemListVersion = currentVersion;
-            }
-            return _cachedItemList;
-        }
-
-        /// <summary>
-        /// Called when items are added or removed to invalidate the cached list.
-        /// </summary>
-        private static void InvalidateCachedItemList()
-        {
-            Interlocked.Increment(ref _itemListVersion);
-        }
-
-        #endregion
 
         #endregion
 
@@ -296,12 +182,7 @@ namespace Barotrauma
 
         private bool transformDirty = true;
 
-        private static readonly ConcurrentQueue<Item> _pendingConditionUpdates = new ConcurrentQueue<Item>();
-
-        /// <summary>
-        /// Flag to avoid duplicate enqueue for pending condition updates.
-        /// </summary>
-        private volatile bool _hasPendingConditionUpdate;
+        private static readonly List<Item> itemsWithPendingConditionUpdates = new List<Item>();
 
         private float lastSentCondition;
         private float sendConditionUpdateTimer;
@@ -385,6 +266,8 @@ namespace Barotrauma
         /// </summary>
         public Character Equipper;
 
+        public Inventory PreviousParentInventory { get; set; }
+
         //the inventory in which the item is contained in
         public Inventory ParentInventory
         {
@@ -400,9 +283,7 @@ namespace Barotrauma
                     Container = parentInventory.Owner as Item;
                     RemoveFromDroppedStack(allowClientExecute: false);
                 }
-#if SERVER
                 PreviousParentInventory = value;
-#endif
             }
         }
 
@@ -682,6 +563,8 @@ namespace Barotrauma
             get;
             set;
         } = float.PositiveInfinity;
+
+        public Sprite OverrideInventorySprite { get; set; }
 
         protected Color spriteColor;
         [Editable, Serialize("1.0,1.0,1.0,1.0", IsPropertySaveable.Yes)]
@@ -967,11 +850,11 @@ namespace Barotrauma
                 isDangerous = value; 
                 if (!value)
                 {
-                    RemoveFromImmutableSet(ref _dangerousItems, this);
+                    _dangerousItems.Remove(this);
                 }
                 else
                 {
-                    AddToImmutableSet(ref _dangerousItems, this);
+                    _dangerousItems.Add(this);
                 }
             }
         }
@@ -1225,7 +1108,7 @@ namespace Barotrauma
 
         public override string ToString()
         {
-            return Name + " (ID: " + ID + ")";
+            return (Name.IsNullOrEmpty() ? Prefab.Identifier : Name) + " (ID: " + ID + ")";
         }
 
         private readonly List<ISerializableEntity> allPropertyObjects = new List<ISerializableEntity>();
@@ -1520,21 +1403,18 @@ namespace Barotrauma
             }
 
             InsertToList();
-            _itemDictionary.TryAdd(ID, this);
-            InvalidateCachedItemList();
-            if (Prefab.IsDangerous) { AddToImmutableSet(ref _dangerousItems, this); }
-            if (Repairables.Any()) { AddToImmutableSet(ref _repairableItems, this); }
-            if (Prefab.SonarSize > 0.0f) { AddToImmutableSet(ref _sonarVisibleItems, this); }
-            if (Prefab.IsAITurretTarget) { AddToImmutableSet(ref _turretTargetItems, this); }
-            if (Prefab.Tags.Contains(Barotrauma.Tags.ChairItem)) { AddToImmutableSet(ref _chairItems, this); }
+            ItemList.Add(this);
+            if (Prefab.IsDangerous) { _dangerousItems.Add(this); }
+            if (Repairables.Any()) { _repairableItems.Add(this); }
+            if (Prefab.SonarSize > 0.0f) { _sonarVisibleItems.Add(this); }
+            if (Prefab.IsAITurretTarget) { _turretTargetItems.Add(this); }
+            if (Prefab.Tags.Contains(Barotrauma.Tags.ChairItem)) { _chairItems.Add(this); }
             CheckCleanable();
 
             DebugConsole.Log("Created " + Name + " (" + ID + ")");
 
             if (Components.Any(ic => ic is Wire) && Components.All(ic => ic is Wire || ic is Holdable)) { isWire = true; }
             if (HasTag(Barotrauma.Tags.LogicItem)) { isLogic = true; }
-
-            GameMain.LuaCs.Hook.Call("item.created", this);
 
             ApplyStatusEffects(ActionType.OnSpawn, 1.0f);
 
@@ -1822,13 +1702,7 @@ namespace Barotrauma
                 try
                 {
 #endif
-                    // Defer physics operation if in parallel context (Farseer is not thread-safe)
-                    var capturedBody = body;
-                    var capturedSimPos = simPosition;
-                    var capturedRotation = rotation;
-                    var capturedSetPrevTransform = setPrevTransform;
-                    PhysicsBodyQueue.ExecuteOrDefer(() => 
-                        capturedBody.SetTransformIgnoreContacts(capturedSimPos, capturedRotation, capturedSetPrevTransform));
+                    body.SetTransformIgnoreContacts(simPosition, rotation, setPrevTransform);
 #if DEBUG
                 }
                 catch (Exception e)
@@ -1885,11 +1759,14 @@ namespace Barotrauma
                 Prefab.PreferredContainers.Any() &&
                 (container == null || container.HasTag(Barotrauma.Tags.AllowCleanup)))
             {
-                AddToImmutableSet(ref _cleanableItems, this);
+                if (!_cleanableItems.Contains(this))
+                {
+                    _cleanableItems.Add(this);
+                }
             }
             else
             {
-                RemoveFromImmutableSet(ref _cleanableItems, this);
+                _cleanableItems.Remove(this);
             }
         }
 
@@ -1905,19 +1782,13 @@ namespace Barotrauma
 
             if (ItemList != null && body != null)
             {
-                // Defer physics operation if in parallel context (Farseer is not thread-safe)
-                var capturedBody = body;
-                var capturedNewPos = body.SimPosition + ConvertUnits.ToSimUnits(amount);
-                var capturedRotation = body.Rotation;
                 if (ignoreContacts)
                 {
-                    PhysicsBodyQueue.ExecuteOrDefer(() => 
-                        capturedBody.SetTransformIgnoreContacts(capturedNewPos, capturedRotation));
+                    body.SetTransformIgnoreContacts(body.SimPosition + ConvertUnits.ToSimUnits(amount), body.Rotation);
                 }
                 else
                 {
-                    PhysicsBodyQueue.ExecuteOrDefer(() => 
-                        capturedBody.SetTransform(capturedNewPos, capturedRotation));
+                    body.SetTransform(body.SimPosition + ConvertUnits.ToSimUnits(amount), body.Rotation);
                 }
             }
             foreach (ItemComponent ic in components)
@@ -1925,7 +1796,8 @@ namespace Barotrauma
                 ic.Move(amount, ignoreContacts);
             }
 
-            if (body != null && (Submarine == null || !Submarine.Loading) || Screen.Selected is { IsEditor: true }) { FindHull(); }
+            // Refresh items without a body in editors so vents (or other static items that do something with hulls) know which hull they are in after being moved
+            if ((body != null || Screen.Selected is { IsEditor: true }) && Submarine is not { Loading: true }) { FindHull(); }
         }
 
         public Rectangle TransformTrigger(Rectangle trigger, bool world = false)
@@ -2205,6 +2077,12 @@ namespace Barotrauma
             }
         }
 
+        public IEnumerable<StatusEffect> GetStatusEffectsOfType(ActionType type)
+        {
+            if (!hasStatusEffectsOfType[(int)type]) { return Enumerable.Empty<StatusEffect>(); }
+            return statusEffectLists[type];
+        }
+
         /// <summary>
         /// Executes all StatusEffects of the specified type. Note that condition checks are ignored here: that should be handled by the code calling the method.
         /// </summary>
@@ -2426,10 +2304,9 @@ namespace Barotrauma
                 {
                     needsConditionUpdate = true;
                 }
-                if (needsConditionUpdate && !_hasPendingConditionUpdate)
+                if (needsConditionUpdate && !itemsWithPendingConditionUpdates.Contains(this))
                 {
-                    _hasPendingConditionUpdate = true;
-                    _pendingConditionUpdates.Enqueue(this);
+                    itemsWithPendingConditionUpdates.Add(this);
                 }
             }
 
@@ -2453,11 +2330,10 @@ namespace Barotrauma
                 {
                     if (c.IsPower)
                     {
-                        Powered.MarkConnectionChanged(c);
-                        // Use ToList() snapshot for thread-safe iteration
-                        foreach (Connection conn in c.Recipients.ToList())
+                        Powered.ChangedConnections.Add(c);
+                        foreach (Connection conn in c.Recipients)
                         {
-                            Powered.MarkConnectionChanged(conn);
+                            Powered.ChangedConnections.Add(conn);
                         }
                     }
                 }
@@ -2486,9 +2362,9 @@ namespace Barotrauma
         public void SendPendingNetworkUpdates()
         {
             if (!(GameMain.NetworkMember is { IsServer: true })) { return; }
-            if (!_hasPendingConditionUpdate) { return; }
+            if (!itemsWithPendingConditionUpdates.Contains(this)) { return; }
             SendPendingNetworkUpdatesInternal();
-            _hasPendingConditionUpdate = false;
+            itemsWithPendingConditionUpdates.Remove(this);
         }
 
         private void SendPendingNetworkUpdatesInternal()
@@ -2517,35 +2393,21 @@ namespace Barotrauma
         public static void UpdatePendingConditionUpdates(float deltaTime)
         {
             if (GameMain.NetworkMember is not { IsServer: true }) { return; }
-            
-            int count = _pendingConditionUpdates.Count;
-            for (int i = 0; i < count; i++)
+            for (int i = 0; i < itemsWithPendingConditionUpdates.Count; i++)
             {
-                if (!_pendingConditionUpdates.TryDequeue(out var item)) { break; }
-                
+                var item = itemsWithPendingConditionUpdates[i];
                 if (item == null || item.Removed)
                 {
-                    item._hasPendingConditionUpdate = false;
+                    itemsWithPendingConditionUpdates.RemoveAt(i--);
                     continue;
                 }
-                
-                if (item.Submarine is { Loading: true })
-                {
-                    // Re-enqueue, still loading
-                    _pendingConditionUpdates.Enqueue(item);
-                    continue;
-                }
+                if (item.Submarine is { Loading: true }) { continue; }
 
                 item.sendConditionUpdateTimer -= deltaTime;
                 if (item.sendConditionUpdateTimer <= 0.0f)
                 {
                     item.SendPendingNetworkUpdatesInternal();
-                    item._hasPendingConditionUpdate = false;
-                }
-                else
-                {
-                    // Not ready yet, re-enqueue
-                    _pendingConditionUpdates.Enqueue(item);
+                    itemsWithPendingConditionUpdates.RemoveAt(i--);
                 }
             }
         }
@@ -2579,12 +2441,7 @@ namespace Barotrauma
                     if (item != this) 
                     {
                         item.body.Enabled = false;
-                        // Defer physics operation if in parallel context (Farseer is not thread-safe)
-                        var capturedItemBody = item.body;
-                        var capturedSimPos = this.SimPosition;
-                        var capturedRotation = body.Rotation;
-                        PhysicsBodyQueue.ExecuteOrDefer(() => 
-                            capturedItemBody.SetTransformIgnoreContacts(capturedSimPos, capturedRotation));
+                        item.body.SetTransformIgnoreContacts(this.SimPosition, body.Rotation); 
                     }
                 }
             }
@@ -2776,25 +2633,17 @@ namespace Barotrauma
                 FindHull();
             }
 
-            // Defer physics transform operations if in parallel context.
-            // Farseer's DynamicTree is not thread-safe.
             if (Submarine == null && prevSub != null)
             {
-                Vector2 newPos = body.SimPosition + prevSub.SimPosition;
-                float rotation = body.Rotation;
-                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
+                body.SetTransformIgnoreContacts(body.SimPosition + prevSub.SimPosition, body.Rotation);
             }
             else if (Submarine != null && prevSub == null)
             {
-                Vector2 newPos = body.SimPosition - Submarine.SimPosition;
-                float rotation = body.Rotation;
-                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
+                body.SetTransformIgnoreContacts(body.SimPosition - Submarine.SimPosition, body.Rotation);
             }
             else if (Submarine != null && prevSub != null && Submarine != prevSub)
             {
-                Vector2 newPos = body.SimPosition + prevSub.SimPosition - Submarine.SimPosition;
-                float rotation = body.Rotation;
-                PhysicsBodyQueue.ExecuteOrDefer(() => body.SetTransformIgnoreContacts(newPos, rotation));
+                body.SetTransformIgnoreContacts(body.SimPosition + prevSub.SimPosition - Submarine.SimPosition, body.Rotation);
             }
 
             if (Submarine != prevSub)
@@ -3010,8 +2859,7 @@ namespace Barotrauma
             foreach (Connection c in connectionPanel.Connections)
             {
                 if (connectionFilter != null && !connectionFilter(c)) { continue; }
-                // Use ToList() snapshot for thread-safe iteration
-                foreach (Connection recipient in c.Recipients.ToList())
+                foreach (Connection recipient in c.Recipients)
                 {
                     var component = recipient.Item.GetComponent<T>();
                     if (component != null)
@@ -3044,8 +2892,7 @@ namespace Barotrauma
             foreach (Connection c in connectionPanel.Connections)
             {
                 if (connectionFilter != null && !connectionFilter(c)) { continue; }
-                // Use ToList() snapshot for thread-safe iteration
-                foreach (Connection recipient in c.Recipients.ToList())
+                foreach (Connection recipient in c.Recipients)
                 {
                     var component = recipient.Item.GetComponent<T>();
                     if (component != null && !connectedComponents.Contains(component))
@@ -3099,13 +2946,12 @@ namespace Barotrauma
             alreadySearched.Add(c);
             static IEnumerable<Connection> GetRecipients(Connection c)
             {
-                // Use ToList() snapshot for thread-safe iteration
-                foreach (Connection recipient in c.Recipients.ToList())
+                foreach (Connection recipient in c.Recipients)
                 {
                     yield return recipient;
                 }
                 //check circuit box inputs/outputs this connection is connected to
-                foreach (var circuitBoxConnection in c.CircuitBoxConnections.ToArray())
+                foreach (var circuitBoxConnection in c.CircuitBoxConnections)
                 {
                     yield return circuitBoxConnection.Connection;
                 }
@@ -3245,8 +3091,7 @@ namespace Barotrauma
             if (signal.stepsTaken > 5 && signal.source != null)
             {
                 int duplicateRecipients = 0;
-                // Use ToList() snapshot for thread-safe iteration
-                foreach (var recipient in signal.source.LastSentSignalRecipients.ToList())
+                foreach (var recipient in signal.source.LastSentSignalRecipients)
                 {
                     if (recipient == connection)
                     {
@@ -3427,7 +3272,9 @@ namespace Barotrauma
                 bool showUiMsg = false;
 #if CLIENT
                 if (!ic.HasRequiredSkills(user, out Skill tempRequiredSkill)) { hasRequiredSkills = false; skillMultiplier = ic.GetSkillMultiplier(); }
-                showUiMsg = user == Character.Controlled && Screen.Selected != GameMain.SubEditorScreen;
+                showUiMsg = user == Character.Controlled && Screen.Selected != GameMain.SubEditorScreen &&
+                    // Only show the UI message of the component that we actually want to interact with
+                    (pickHit && ic.CanBePicked || selectHit && ic.CanBeSelected);
 #endif
                 if (!ignoreRequiredItems && !ic.HasRequiredItems(user, showUiMsg)) { continue; }
                 if ((ic.CanBePicked && pickHit && ic.Pick(user)) ||
@@ -3533,10 +3380,6 @@ namespace Barotrauma
             }
 
             if (condition <= 0.0f) { return; }
-
-            var should = GameMain.LuaCs.Hook.Call<bool?>("item.use", new object[] { this, user, targetLimb, useTarget });
-
-            if (should != null && should.Value) { return; }
         
             bool remove = false;
 
@@ -3568,11 +3411,6 @@ namespace Barotrauma
         public void SecondaryUse(float deltaTime, Character character = null)
         {
             if (condition <= 0.0f) { return; }
-
-            var should = GameMain.LuaCs.Hook.Call<bool?>("item.secondaryUse", this, character);
-
-            if (should != null && should.Value)
-                return;
 
             bool remove = false;
 
@@ -3698,45 +3536,20 @@ namespace Barotrauma
             if (body != null)
             {
                 IsActive = true;
-                
-                // Physics body operations must be deferred if we're in a parallel update context,
-                // because Farseer Physics is not thread-safe.
-                if (PhysicsBodyQueue.IsInParallelContext)
+                body.Enabled = true;
+                body.PhysEnabled = true;
+                body.ResetDynamics();
+                if (dropper != null)
                 {
-                    // Capture the values we need for the deferred operation
-                    var capturedBody = body;
-                    var capturedDropperSimPos = dropper?.SimPosition ?? Microsoft.Xna.Framework.Vector2.Zero;
-                    var capturedSetTransform = setTransform && dropper != null;
-                    
-                    PhysicsBodyQueue.Enqueue(() =>
+                    if (body.Removed)
                     {
-                        if (capturedBody.Removed || Removed) { return; }
-                        capturedBody.Enabled = true;
-                        capturedBody.PhysEnabled = true;
-                        capturedBody.ResetDynamics();
-                        if (capturedSetTransform)
-                        {
-                            capturedBody.SetTransformIgnoreContacts(capturedDropperSimPos, 0.0f);
-                        }
-                    });
-                }
-                else
-                {
-                    body.Enabled = true;
-                    body.PhysEnabled = true;
-                    body.ResetDynamics();
-                    if (dropper != null)
+                        DebugConsole.ThrowError(
+                            "Failed to drop the item \"" + Name + "\" (body has been removed"
+                            + (Removed ? ", item has been removed)" : ")"));
+                    }
+                    else if (setTransform)
                     {
-                        if (body.Removed)
-                        {
-                            DebugConsole.ThrowError(
-                                "Failed to drop the item \"" + Name + "\" (body has been removed"
-                                + (Removed ? ", item has been removed)" : ")"));
-                        }
-                        else if (setTransform)
-                        {
-                            body.SetTransformIgnoreContacts(dropper.SimPosition, 0.0f);
-                        }
+                        body.SetTransformIgnoreContacts(dropper.SimPosition, 0.0f);
                     }
                 }
             }
@@ -3747,22 +3560,7 @@ namespace Barotrauma
             {
                 if (setTransform)
                 {
-                    // Defer SetTransform if in parallel context
-                    if (PhysicsBodyQueue.IsInParallelContext)
-                    {
-                        var capturedContainerSimPos = Container.SimPosition;
-                        PhysicsBodyQueue.Enqueue(() =>
-                        {
-                            if (!Removed)
-                            {
-                                SetTransform(capturedContainerSimPos, 0.0f);
-                            }
-                        });
-                    }
-                    else
-                    {
-                        SetTransform(Container.SimPosition, 0.0f);
-                    }
+                    SetTransform(Container.SimPosition, 0.0f);
                 }
                 Container.RemoveContained(this);
                 Container = null;
@@ -4111,9 +3909,9 @@ namespace Barotrauma
                 }
             }
 
-            var result = GameMain.LuaCs.Hook.Call<bool?>("item.readPropertyChange", this, property, parentObject, allowEditing, sender);
-            if (result != null && result.Value)
-                return;
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventItemReadPropertyChange>(x => should = x.OnItemReadPropertyChange(this, property, parentObject, allowEditing, sender) ?? should);
+            if (should != null && should.Value) { return; }
 
             Type type = property.PropertyType;
             string logValue = "";
@@ -4426,7 +4224,7 @@ namespace Barotrauma
                 }
             }
 
-            if (element.GetAttributeBool("markedfordeconstruction", false)) { _deconstructItems.TryAdd(item, 0); }
+            if (element.GetAttributeBool("markedfordeconstruction", false)) { _deconstructItems.Add(item); }
 
             float prevRotation = item.Rotation;
             if (element.GetAttributeBool("flippedx", false)) { item.FlipX(relativeToSub: false, force: true); }
@@ -4579,6 +4377,9 @@ namespace Barotrauma
                 Rotation = Rotation
             };
 
+            if (FlippedX) { newItem.FlipX(relativeToSub: false); }
+            if (FlippedY) { newItem.FlipY(relativeToSub: false); }
+
             float scaleRelativeToPrefab = Scale / Prefab.Scale;
             newItem.Scale *= scaleRelativeToPrefab;
 
@@ -4719,7 +4520,7 @@ namespace Barotrauma
                 new XAttribute("name", Prefab.OriginalName),
                 new XAttribute("identifier", Prefab.Identifier),
                 new XAttribute("ID", ID),
-                new XAttribute("markedfordeconstruction", _deconstructItems.ContainsKey(this)));
+                new XAttribute("markedfordeconstruction", _deconstructItems.Contains(this)));
 
             if (PendingItemSwap != null)
             {
@@ -4830,8 +4631,6 @@ namespace Barotrauma
                 body.Remove();
                 body = null;
             }
-
-            GameMain.LuaCs.Hook.Call("item.removed", this);
         }
 
         public override void Remove()
@@ -4915,22 +4714,18 @@ namespace Barotrauma
             }
 
             RemoveProjSpecific();
-
-            GameMain.LuaCs.Hook.Call("item.removed", this);
         }
 
         private void RemoveFromLists()
         {
-            _itemDictionary.TryRemove(ID, out _);
-            InvalidateCachedItemList();
-            RemoveFromImmutableSet(ref _dangerousItems, this);
-            RemoveFromImmutableSet(ref _repairableItems, this);
-            RemoveFromImmutableSet(ref _sonarVisibleItems, this);
-            RemoveFromImmutableSet(ref _cleanableItems, this);
-            _deconstructItems.TryRemove(this, out _);
-            RemoveFromImmutableSet(ref _turretTargetItems, this);
-            RemoveFromImmutableSet(ref _chairItems, this);
-            _hasPendingConditionUpdate = false;
+            ItemList.Remove(this);
+            _dangerousItems.Remove(this);
+            _repairableItems.Remove(this);
+            _sonarVisibleItems.Remove(this);
+            _cleanableItems.Remove(this);
+            _deconstructItems.Remove(this);
+            _turretTargetItems.Remove(this);
+            _chairItems.Remove(this);
             RemoveFromDroppedStack(allowClientExecute: true);
         }
 

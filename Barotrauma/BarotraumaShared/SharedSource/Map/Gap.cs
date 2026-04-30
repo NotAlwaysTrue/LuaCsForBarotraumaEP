@@ -1,5 +1,7 @@
 ﻿using Barotrauma.Extensions;
 using Barotrauma.Items.Components;
+using Barotrauma.LuaCs.Events;
+using Barotrauma.Networking;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
@@ -8,71 +10,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Xml.Linq;
 
 namespace Barotrauma
 {
-    /// <summary>
-    /// Thread-safe wrapper for Gap list operations.
-    /// Uses copy-on-write pattern for lock-free reads.
-    /// </summary>
-    internal class ThreadSafeGapList : IEnumerable<Gap>
-    {
-        private volatile List<Gap> _list = new List<Gap>();
-        private readonly object _writeLock = new object();
-
-        public int Count => _list.Count;
-
-        public void Add(Gap gap)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<Gap>(_list) { gap };
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-
-        public bool Remove(Gap gap)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<Gap>(_list);
-                bool removed = newList.Remove(gap);
-                if (removed)
-                {
-                    Interlocked.Exchange(ref _list, newList);
-                }
-                return removed;
-            }
-        }
-
-        public void Clear()
-        {
-            Interlocked.Exchange(ref _list, new List<Gap>());
-        }
-
-        public bool Contains(Gap gap) => _list.Contains(gap);
-
-        public Gap this[int index] => _list[index];
-
-        public IEnumerator<Gap> GetEnumerator() => _list.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
-        // LINQ-friendly methods
-        public List<Gap> ToList() => new List<Gap>(_list);
-        public Gap FirstOrDefault(Func<Gap, bool> predicate) => _list.FirstOrDefault(predicate);
-        public Gap Find(Predicate<Gap> predicate) => _list.Find(predicate);
-        public List<Gap> FindAll(Predicate<Gap> predicate) => _list.FindAll(predicate);
-        public IEnumerable<Gap> Where(Func<Gap, bool> predicate) => _list.Where(predicate);
-        public bool Any() => _list.Any();
-        public bool Any(Func<Gap, bool> predicate) => _list.Any(predicate);
-        public IOrderedEnumerable<Gap> OrderBy<TKey>(Func<Gap, TKey> keySelector) => _list.OrderBy(keySelector);
-    }
-
     partial class Gap : MapEntity, ISerializableEntity
     {
-        public static ThreadSafeGapList GapList = new ThreadSafeGapList();
+        public static List<Gap> GapList = new List<Gap>();
 
         const float MaxFlowForce = 500.0f;
 
@@ -804,7 +748,6 @@ namespace Barotrauma
             waterFlowThisFrame = 0.0f;
         }
 
-        private static readonly ConcurrentBag<Hull> checkedHulls = new ConcurrentBag<Hull>();
 
         /// <summary>
         /// Simulates water flow from the source to all the hulls it's connected to across the sub, as if the water was coming directly from outside.
@@ -812,7 +755,7 @@ namespace Barotrauma
         /// </summary>
         void SimulateWaterFlowFromOutsideToConnectedHulls(Hull hull, float maxFlow, float deltaTime)
         {
-            checkedHulls.Clear();
+            List<Hull> checkedHulls = new List<Hull>();
             checkedHulls.Add(hull);
             foreach (var connectedGap in hull.ConnectedGaps)
             {
@@ -823,7 +766,7 @@ namespace Barotrauma
             }
         }
 
-        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, ConcurrentBag<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
+        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, List<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
         {
             const float decay = 0.95f;
 
@@ -871,7 +814,12 @@ namespace Barotrauma
             if (outsideCollisionBlocker == null) { return false; }
             if (IsRoomToRoom || Submarine == null || open <= 0.0f || linkedTo.Count == 0 || linkedTo[0] is not Hull) 
             {
-                outsideCollisionBlocker.Enabled = false;
+                SingleThreadWorker.Instance.AddAction(() =>
+                {
+                    if (outsideCollisionBlocker == null) { return; }
+                    outsideCollisionBlocker.Enabled = false; 
+                });
+                
                 return false; 
             }
 
@@ -945,8 +893,8 @@ namespace Barotrauma
                 if (Math.Max(hull1.WorldSurface + hull1.WaveY[hull1.WaveY.Length - 1], hull2.WorldSurface + hull2.WaveY[0]) > WorldRect.Y) { return; }
             }
 
-            var should = GameMain.LuaCs.Hook.Call<bool?>("gapOxygenUpdate", this, hull1, hull2);
-
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventGapOxygenUpdate>(x => should = x.OnGapOxygenUpdate(this, hull1, hull2) ?? should);
             if (should != null && should.Value) return;
 
             float totalOxygen = hull1.Oxygen + hull2.Oxygen;
@@ -1056,8 +1004,6 @@ namespace Barotrauma
         {
             base.Remove();
             GapList.Remove(this);
-
-            checkedHulls.Clear();
 
             foreach (Hull hull in Hull.HullList)
             {

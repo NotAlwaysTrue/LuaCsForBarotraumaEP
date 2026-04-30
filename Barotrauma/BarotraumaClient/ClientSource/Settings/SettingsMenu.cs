@@ -33,10 +33,10 @@ namespace Barotrauma
 
         private GameSettings.Config unsavedConfig;
 
-        private readonly GUIFrame mainFrame;
+        public readonly GUIFrame mainFrame;
         
-        private readonly GUILayoutGroup tabber;
-        private readonly GUIFrame contentFrame;
+        public readonly GUILayoutGroup tabber;
+        public readonly GUIFrame contentFrame;
         private readonly GUILayoutGroup bottom;
 
         public readonly WorkshopMenu WorkshopMenu;
@@ -103,7 +103,7 @@ namespace Barotrauma
             newContent.Visible = true;
         }
 
-        private readonly Dictionary<Tab, (GUIButton Button, GUIFrame Content)> tabContents;
+        public readonly Dictionary<Tab, (GUIButton Button, GUIFrame Content)> tabContents;
         
         public void SelectTab(Tab tab)
         {
@@ -149,7 +149,7 @@ namespace Barotrauma
             return content;
         }
 
-        private static (GUILayoutGroup Left, GUILayoutGroup Right) CreateSidebars(GUIFrame parent, bool split = false)
+        public static (GUILayoutGroup Left, GUILayoutGroup Right) CreateSidebars(GUIFrame parent, bool split = false)
         {
             GUILayoutGroup layout = new GUILayoutGroup(new RectTransform(Vector2.One, parent.RectTransform), isHorizontal: true);
             GUILayoutGroup left = new GUILayoutGroup(new RectTransform((0.4875f, 1.0f), layout.RectTransform), isHorizontal: false);
@@ -166,29 +166,29 @@ namespace Barotrauma
             return (left, right);
         }
 
-        private static GUILayoutGroup CreateCenterLayout(GUIFrame parent)
+        public static GUILayoutGroup CreateCenterLayout(GUIFrame parent)
         {
             return new GUILayoutGroup(new RectTransform((0.5f, 1.0f), parent.RectTransform, Anchor.TopCenter, Pivot.TopCenter)) { ChildAnchor = Anchor.TopCenter };
         }
 
-        private static RectTransform NewItemRectT(GUILayoutGroup parent)
+        public static RectTransform NewItemRectT(GUILayoutGroup parent)
             => new RectTransform((1.0f, 0.06f), parent.RectTransform, Anchor.CenterLeft);
 
-        private static void Spacer(GUILayoutGroup parent)
+        public static void Spacer(GUILayoutGroup parent, float height = 0.03f)
         {
-            new GUIFrame(new RectTransform((1.0f, 0.03f), parent.RectTransform, Anchor.CenterLeft), style: null);
+            new GUIFrame(new RectTransform((1.0f, height), parent.RectTransform, Anchor.CenterLeft), style: null);
         }
         
-        private static GUITextBlock Label(GUILayoutGroup parent, LocalizedString str, GUIFont font)
+        public static GUITextBlock Label(GUILayoutGroup parent, LocalizedString str, GUIFont font)
         {
             return new GUITextBlock(NewItemRectT(parent), str, font: font);
         }
 
-        private static void DropdownEnum<T>(GUILayoutGroup parent, Func<T, LocalizedString> textFunc, Func<T, LocalizedString>? tooltipFunc, T currentValue,
+        public static void DropdownEnum<T>(GUILayoutGroup parent, Func<T, LocalizedString> textFunc, Func<T, LocalizedString>? tooltipFunc, T currentValue,
             Action<T> setter) where T : Enum
             => Dropdown(parent, textFunc, tooltipFunc, (T[])Enum.GetValues(typeof(T)), currentValue, setter);
         
-        private static GUIDropDown Dropdown<T>(GUILayoutGroup parent, Func<T, LocalizedString> textFunc, Func<T, LocalizedString>? tooltipFunc, IReadOnlyList<T> values, T currentValue, Action<T> setter)
+        public static GUIDropDown Dropdown<T>(GUILayoutGroup parent, Func<T, LocalizedString> textFunc, Func<T, LocalizedString>? tooltipFunc, IReadOnlyList<T> values, T currentValue, Action<T> setter)
         {
             var dropdown = new GUIDropDown(NewItemRectT(parent), elementCount: values.Count);
             values.ForEach(v => dropdown.AddItem(text: textFunc(v), userData: v, toolTip: tooltipFunc?.Invoke(v) ?? null));
@@ -204,7 +204,7 @@ namespace Barotrauma
             return dropdown;
         }
 
-        private static (GUIScrollBar slider, GUITextBlock label) Slider(GUILayoutGroup parent, Vector2 range, int steps, Func<float, string> labelFunc, float currentValue, Action<float> setter, LocalizedString? tooltip = null)
+        public static (GUIScrollBar slider, GUITextBlock label) Slider(GUILayoutGroup parent, Vector2 range, int steps, Func<float, string> labelFunc, float currentValue, Action<float> setter, LocalizedString? tooltip = null)
         {
             var layout = new GUILayoutGroup(NewItemRectT(parent), isHorizontal: true);
             var slider = new GUIScrollBar(new RectTransform((0.72f, 1.0f), layout.RectTransform), style: "GUISlider")
@@ -229,7 +229,7 @@ namespace Barotrauma
             return (slider, label);
         }
 
-        private static GUITickBox Tickbox(GUILayoutGroup parent, LocalizedString label, LocalizedString tooltip, bool currentValue, Action<bool> setter)
+        public static GUITickBox Tickbox(GUILayoutGroup parent, LocalizedString label, LocalizedString tooltip, bool currentValue, Action<bool> setter)
         {
             return new GUITickBox(NewItemRectT(parent), label)
             {
@@ -243,9 +243,9 @@ namespace Barotrauma
             };
         }
 
-        private string Percentage(float v) => ToolBox.GetFormattedPercentage(v);
+        public string Percentage(float v) => ToolBox.GetFormattedPercentage(v);
 
-        private static int Round(float v) => MathUtils.RoundToInt(v);
+        public static int Round(float v) => MathUtils.RoundToInt(v);
         
         private void CreateGraphicsTab()
         {
@@ -507,6 +507,47 @@ namespace Barotrauma
                     return true;
                 }
             };
+#if OSX
+            Spacer(voiceChat, 0.003f);
+            
+            // On macOS, microphone permission can apparently sometimes end up in a broken state when the app binary changes (eg. after a Steam update).
+            // The device seems to be there, but won't receive anything, even if the mic permission is fine.
+            // This button lets the user reset it and reboot the game, so the mic permission check will be retriggered on next run.
+            new GUIButton(new RectTransform(new Vector2(1.0f, 1.0f), voiceChat.RectTransform),
+                text: TextManager.Get("MacResetMicPermissions"),
+                style: "GUIButtonSmall")
+            {
+                ToolTip = TextManager.Get("MacResetMicPermissionsToolTip"),
+                OnClicked = (btn, obj) =>
+                {
+                    var confirmBox = new GUIMessageBox(
+                        TextManager.Get("MacResetMicPermissions"),
+                        TextManager.Get("MacResetMicPermissionsConfirm"),
+                        [TextManager.Get("OK"), TextManager.Get("Cancel")]);
+                    confirmBox.Buttons[0].OnClicked = (_, _) =>
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = "tccutil",
+                                Arguments = "reset Microphone com.FakeFish.Barotrauma",
+                                UseShellExecute = false
+                            });
+                        }
+                        catch (Exception e)
+                        {
+                            DebugConsole.NewMessage($"Failed to reset microphone permission: {e.Message}", Color.Orange);
+                        }
+                        GameMain.Instance.Exit();
+                        confirmBox.Close();
+                        return true;
+                    };
+                    confirmBox.Buttons[1].OnClicked = confirmBox.Close;
+                    return true;
+                }
+            };
+#endif
             Spacer(voiceChat);
             
             Label(voiceChat, TextManager.Get("VCInputMode"), GUIStyle.SubHeadingFont);

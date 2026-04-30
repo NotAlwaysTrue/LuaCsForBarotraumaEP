@@ -637,7 +637,7 @@ namespace Barotrauma.Items.Components
 
             if (pathFinder == null)
             {
-                pathFinder = new PathFinder(WayPoint.WayPointList.ToList(), false)
+                pathFinder = new PathFinder(WayPoint.WayPointList, false)
                 {
                     GetNodePenalty = GetNodePenalty
                 };

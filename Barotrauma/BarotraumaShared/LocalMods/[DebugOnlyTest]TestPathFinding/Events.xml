@@ -1,0 +1,159 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<RandomEvents>
+  <EventPrefabs>
+
+    <ScriptedEvent identifier="testpathfinding1" tags="testpathfinding_colony">
+
+      <SpawnAction NPCSetIdentifier="customnpcs1" NPCIdentifier="artiedolittle" TargetTag="npc1" SpawnPointTag="spawnpoint1" />
+      <SpawnAction NPCSetIdentifier="customnpcs1" NPCIdentifier="clownmessenger" TargetTag="npc2" SpawnPointTag="spawnpoint2" />
+      <SpawnAction NPCSetIdentifier="customnpcs1" NPCIdentifier="jacovsubra" TargetTag="npc3" SpawnPointTag="spawnpoint3" />
+      <SpawnAction NPCSetIdentifier="customnpcs1" NPCIdentifier="coalitionspy" TargetTag="npc4" SpawnPointTag="spawnpoint4" />
+      <SpawnAction NPCSetIdentifier="customnpcs1" NPCIdentifier="raptorowner" TargetTag="npc5" SpawnPointTag="spawnpoint5" />
+      <SpawnAction NPCSetIdentifier="customnpcs1" NPCIdentifier="hognose" TargetTag="npc6" SpawnPointTag="spawnpoint6" />
+      <SpawnAction NPCSetIdentifier="customnpcs1" NPCIdentifier="drugdealer" TargetTag="npc7" SpawnPointTag="spawnpoint7" />
+
+      <TagAction criteria="hullname:goalroom" tag="goal" />
+
+      <NPCFollowAction NPCTag="npc1" TargetTag="goal" />
+      <NPCFollowAction NPCTag="npc2" TargetTag="goal" />
+      <NPCFollowAction NPCTag="npc3" TargetTag="goal" />
+      <NPCFollowAction NPCTag="npc4" TargetTag="goal" />
+      <NPCFollowAction NPCTag="npc5" TargetTag="goal" forcewalk="true" />
+      <NPCFollowAction NPCTag="npc6" TargetTag="goal" forcewalk="true" />
+      <NPCFollowAction NPCTag="npc7" TargetTag="goal" forcewalk="true" />
+
+      <ConversationAction Text="Spawned 7 test NPCs. They should now navigate to the furthest module at the right side of the outpost. You may fast-forward by 60 seconds to skip to the end of the test." />
+
+      <WaitAction time="60" />
+
+      <CheckVisibilityAction EntityTag="npc1" TargetTag="goal" MaxDistance="500">
+        <Failure>
+          <ConversationAction Text="Test failed. NPC 1 (Artie Dolittle) did not make it to the target module in time." />          
+        </Failure>
+        <Success>
+          <CheckVisibilityAction EntityTag="npc2" TargetTag="goal" MaxDistance="500">
+            <Failure>
+              <ConversationAction Text="Test failed. NPC 2 (Clown Messenger) did not make it to the target module in time." />
+            </Failure>
+            <Success>
+              <CheckVisibilityAction EntityTag="npc3" TargetTag="goal" MaxDistance="500">
+                <Failure>
+                  <ConversationAction Text="Test failed. NPC 3 (Jacov Subra) did not make it to the target module in time." />
+                </Failure>
+                <Success>
+                  <CheckVisibilityAction EntityTag="npc4" TargetTag="goal" MaxDistance="500">
+                    <Failure>
+                      <ConversationAction Text="Test failed. NPC 4 (Coalition Operative) did not make it to the target module in time." />
+                    </Failure>
+                    <Success>
+                      <CheckVisibilityAction EntityTag="npc5" TargetTag="goal" MaxDistance="500">
+                        <Failure>
+                          <ConversationAction Text="Test failed. NPC 5 (Severo Ruiz) did not make it to the target module in time." />
+                        </Failure>
+                        <Success>
+                          <CheckVisibilityAction EntityTag="npc6" TargetTag="goal" MaxDistance="500">
+                            <Failure>
+                              <ConversationAction Text="Test failed. NPC 6 (Captain Hognose) did not make it to the target module in time." />
+                            </Failure>
+                            <Success>
+                              <CheckVisibilityAction EntityTag="npc7" TargetTag="goal" MaxDistance="500">
+                                <Failure>
+                                  <ConversationAction Text="Test failed. NPC 7 (Drug Dealer) did not make it to the target module in time." />
+                                </Failure>
+                                <Success>
+                                  <!-- ALL SUCCEEDED ******************************* -->
+                                  <ConversationAction Text="NPC test successful! All NPCs made it to the target module in time." />
+                                </Success>
+                              </CheckVisibilityAction>
+                            </Success>
+                          </CheckVisibilityAction>
+                        </Success>
+                      </CheckVisibilityAction>
+                    </Success>
+                  </CheckVisibilityAction>
+                </Success>
+              </CheckVisibilityAction>              
+            </Success>
+          </CheckVisibilityAction>          
+        </Success>
+      </CheckVisibilityAction>
+
+      <ConversationAction Text="Starting second test: making the NPCs navigate back to the left side of the outpost." />
+
+      <TagAction criteria="hullname:goalroom2" tag="goal2" />
+
+      <NPCFollowAction NPCTag="npc1" TargetTag="goal2" forcewalk="true" />
+      <WaitAction time="2" />     
+      
+      <NPCFollowAction NPCTag="npc2" TargetTag="goal2" forcewalk="true" />
+      <WaitAction time="2" />
+      <!-- follow another NPC instead of going directly for the goal! -->
+      <NPCFollowAction NPCTag="npc3" TargetTag="npc2" forcewalk="true" />
+      <WaitAction time="2" />
+      <NPCFollowAction NPCTag="npc4" TargetTag="goal2" />
+      <WaitAction time="2" />
+      <NPCFollowAction NPCTag="npc5" TargetTag="goal2" />
+      <WaitAction time="2" />
+      <NPCFollowAction NPCTag="npc6" TargetTag="goal2" />
+      <WaitAction time="2" />
+      <!-- follow another NPC instead of going directly for the goal! -->
+      <NPCFollowAction NPCTag="npc7" TargetTag="npc4" />
+
+      <WaitAction time="100" />
+
+      <CheckVisibilityAction EntityTag="npc1" TargetTag="goal2" MaxDistance="500">
+        <Failure>
+          <ConversationAction Text="Test failed. NPC 1 (Artie Dolittle) did not make it to the target module in time." />
+        </Failure>
+        <Success>
+          <CheckVisibilityAction EntityTag="npc2" TargetTag="goal2" MaxDistance="500">
+            <Failure>
+              <ConversationAction Text="Test failed. NPC 2 (Clown Messenger) did not make it to the target module in time." />
+            </Failure>
+            <Success>
+              <CheckVisibilityAction EntityTag="npc3" TargetTag="goal2" MaxDistance="500">
+                <Failure>
+                  <ConversationAction Text="Test failed. NPC 3 (Jacov Subra) did not make it to the target module in time." />
+                </Failure>
+                <Success>
+                  <CheckVisibilityAction EntityTag="npc4" TargetTag="goal2" MaxDistance="500">
+                    <Failure>
+                      <ConversationAction Text="Test failed. NPC 4 (Coalition Operative) did not make it to the target module in time." />
+                    </Failure>
+                    <Success>
+                      <CheckVisibilityAction EntityTag="npc5" TargetTag="goal2" MaxDistance="500">
+                        <Failure>
+                          <ConversationAction Text="Test failed. NPC 5 (Severo Ruiz) did not make it to the target module in time." />
+                        </Failure>
+                        <Success>
+                          <CheckVisibilityAction EntityTag="npc6" TargetTag="goal2" MaxDistance="500">
+                            <Failure>
+                              <ConversationAction Text="Test failed. NPC 6 (Captain Hognose) did not make it to the target module in time." />
+                            </Failure>
+                            <Success>
+                              <CheckVisibilityAction EntityTag="npc7" TargetTag="goal2" MaxDistance="500">
+                                <Failure>
+                                  <ConversationAction Text="Test failed. NPC 7 (Drug Dealer) did not make it to the target module in time." />
+                                </Failure>
+                                <Success>
+                                  <!-- ALL SUCCEEDED ******************************* -->
+                                  <ConversationAction Text="NPC test successful! All NPCs made it to the target module in time." />
+                                </Success>
+                              </CheckVisibilityAction>
+                            </Success>
+                          </CheckVisibilityAction>
+                        </Success>
+                      </CheckVisibilityAction>
+                    </Success>
+                  </CheckVisibilityAction>
+                </Success>
+              </CheckVisibilityAction>
+            </Success>
+          </CheckVisibilityAction>
+        </Success>
+      </CheckVisibilityAction>
+
+    </ScriptedEvent>
+  </EventPrefabs>
+
+</RandomEvents>

@@ -104,7 +104,7 @@ namespace Barotrauma
 
             return authTicket.TryUnwrap(out var ticketUnwrapped) && ticketUnwrapped.Data is { Length: > 0 }
                 ? new AuthTicket(ToolBoxCore.ByteArrayToHexString(ticketUnwrapped.Data), Platform.Steam) //convert byte array to hex
-                : throw new Exception("Could not retrieve Steamworks authentication ticket for GameAnalytics");
+                : throw new Exception("Could not retrieve Steam authentication ticket, possibly due to connection issues. GameAnalytics logging will be disabled.");
         }
 
         private static async Task<AuthTicket> GetEOSAuthTicket()
@@ -215,9 +215,8 @@ namespace Barotrauma
             IRestResponse response;
             try
             {
-                var client = new RestClient(consentServerUrl);
-
-                var request = new RestRequest(consentServerFile, Method.GET);
+                var client = RestFactory.CreateClient(consentServerUrl);
+                var request = RestFactory.CreateRequest(consentServerFile);
                 request.AddParameter("authticket", authTicket.Token);
                 if (consent == Consent.Ask)
                 {
@@ -321,7 +320,7 @@ namespace Barotrauma
             RestClient client;
             try
             {
-                client = new RestClient(consentServerUrl);
+                client = RestFactory.CreateClient(consentServerUrl);
             }
             catch (Exception e)
             {
@@ -329,7 +328,7 @@ namespace Barotrauma
                 return Consent.Error;
             }
 
-            var request = new RestRequest(consentServerFile, Method.GET);
+            var request = RestFactory.CreateRequest(consentServerFile);
             request.AddParameter("authticket", authTicket.Token);
             request.AddParameter("action", "getconsent");
             request.AddParameter("request_version", RemoteRequestVersion);

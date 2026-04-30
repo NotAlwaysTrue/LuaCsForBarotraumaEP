@@ -12,7 +12,11 @@ namespace Barotrauma
         public readonly int RandomSeed;
 
         protected readonly EventPrefab prefab;
-        
+
+#nullable enable
+        public Mission? TriggeringMission;
+#nullable restore
+
         public EventPrefab Prefab => prefab;
 
         public EventSet ParentSet { get; private set; }

@@ -1,6 +1,5 @@
 ﻿#nullable enable
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -147,10 +146,10 @@ namespace Barotrauma
             }
         }
 
-        private static readonly ConcurrentDictionary<Type, ImmutableArray<CachedReflectedVariable>> CachedVariables = new ConcurrentDictionary<Type, ImmutableArray<CachedReflectedVariable>>();
+        private static readonly Dictionary<Type, ImmutableArray<CachedReflectedVariable>> CachedVariables = new Dictionary<Type, ImmutableArray<CachedReflectedVariable>>();
 
-        private static readonly ConcurrentDictionary<Type, IReadWriteBehavior> TypeBehaviors
-            = new ConcurrentDictionary<Type, IReadWriteBehavior>(new Dictionary<Type, IReadWriteBehavior>
+        private static readonly Dictionary<Type, IReadWriteBehavior> TypeBehaviors
+            = new Dictionary<Type, IReadWriteBehavior>
             {
                 { typeof(Boolean), new ReadWriteBehavior<Boolean>(ReadBoolean, WriteBoolean) },
                 { typeof(Byte), new ReadWriteBehavior<Byte>(ReadByte, WriteByte) },
@@ -169,7 +168,7 @@ namespace Barotrauma
                 { typeof(Vector2), new ReadWriteBehavior<Vector2>(ReadVector2, WriteVector2) },
                 { typeof(SerializableDateTime), new ReadWriteBehavior<SerializableDateTime>(ReadSerializableDateTime, WriteSerializableDateTime) },
                 { typeof(NetLimitedString), new ReadWriteBehavior<NetLimitedString>(ReadNetLString, WriteNetLString) }
-            });
+            };
 
         private static readonly ImmutableDictionary<Predicate<Type>, Func<Type, IReadWriteBehavior>> BehaviorFactories = new Dictionary<Predicate<Type>, Func<Type, IReadWriteBehavior>>
         {
@@ -585,11 +584,7 @@ namespace Barotrauma
                 if (!predicate(type)) { continue; }
 
                 behavior = factory(type);
-                // Use TryAdd for thread-safety; if another thread already added, use that value
-                if (!TypeBehaviors.TryAdd(type, behavior))
-                {
-                    behavior = TypeBehaviors[type];
-                }
+                TypeBehaviors.Add(type, behavior);
                 return true;
             }
 
@@ -599,11 +594,8 @@ namespace Barotrauma
 
         public static ImmutableArray<CachedReflectedVariable> GetPropertiesAndFields(Type type)
         {
-            return CachedVariables.GetOrAdd(type, static t => CreateCachedVariables(t));
-        }
+            if (CachedVariables.TryGetValue(type, out var cached)) { return cached; }
 
-        private static ImmutableArray<CachedReflectedVariable> CreateCachedVariables(Type type)
-        {
             List<CachedReflectedVariable> variables = new List<CachedReflectedVariable>();
 
             IEnumerable<PropertyInfo> propertyInfos = type.GetProperties().Where(HasAttribute).Where(NotStatic);
@@ -641,6 +633,7 @@ namespace Barotrauma
             }
 
             ImmutableArray<CachedReflectedVariable> array = variables.All(v => v.HasOwnAttribute) ? variables.OrderBy(v => v.Attribute.OrderKey).ToImmutableArray() : variables.ToImmutableArray();
+            CachedVariables.Add(type, array);
             return array;
 
             bool HasAttribute(MemberInfo info) => (info.GetCustomAttribute<NetworkSerialize>() ?? type.GetCustomAttribute<NetworkSerialize>()) != null;

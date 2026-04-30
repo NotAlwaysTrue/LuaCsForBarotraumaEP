@@ -380,7 +380,7 @@ namespace Barotrauma.Items.Components
                         break;
                     case "requireditem":
                     case "requireditems":
-                        SetRequiredItems(subElement);
+                        SetRequiredItems(subElement, allowEmpty: true);
                         break;
                     case "requiredskill":
                     case "requiredskills":
@@ -949,8 +949,7 @@ namespace Barotrauma.Items.Components
             //if any of the effects reduce the item's condition, set the user for OnBroken effects as well
             if (reducesCondition && user != null && type != ActionType.OnBroken)
             {
-                // Use ToArray() snapshot for thread-safe iteration
-                foreach (ItemComponent ic in item.Components.ToArray())
+                foreach (ItemComponent ic in item.Components)
                 {
                     if (ic.statusEffectLists == null || !ic.statusEffectLists.TryGetValue(ActionType.OnBroken, out List<StatusEffect> brokenEffects)) { continue; }
                     foreach (var brokenEffect in brokenEffects)
@@ -1103,6 +1102,9 @@ namespace Barotrauma.Items.Components
             foreach (RelatedItem ri in DisabledRequiredItems)
             {
                 XElement newElement = new XElement("requireditem");
+                //if we have some actual requirements, no need to keep the empty requirement
+                //as a "placeholder" for the user to add requirements in the sub editor
+                if (ri.Identifiers.IsEmpty && RequiredItems.Any()) { continue; }
                 ri.Save(newElement);
                 componentElement.Add(newElement);
             }

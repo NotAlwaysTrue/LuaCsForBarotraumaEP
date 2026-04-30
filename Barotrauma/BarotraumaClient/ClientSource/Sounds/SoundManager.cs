@@ -417,15 +417,6 @@ namespace Barotrauma.Sounds
             return sourcePools[(int)poolIndex].ALSources[srcInd];
         }
 
-        /// <summary>
-        /// Gets the lock object for the playing channels array for a specific pool.
-        /// Used to protect OpenAL operations that need to be atomic with channel assignment.
-        /// </summary>
-        public object GetPlayingChannelsLock(SourcePoolIndex poolIndex)
-        {
-            return playingChannels[(int)poolIndex];
-        }
-
         public int AssignFreeSourceToChannel(SoundChannel newChannel)
         {
             if (Disabled) { return -1; }
@@ -436,25 +427,14 @@ namespace Barotrauma.Sounds
 
             lock (playingChannels[poolIndex])
             {
-                return AssignFreeSourceToChannelUnsafe(newChannel, poolIndex);
-            }
-        }
-
-        /// <summary>
-        /// Assigns a free source to a channel without locking. 
-        /// Caller MUST hold the playingChannels[poolIndex] lock before calling this method.
-        /// </summary>
-        public int AssignFreeSourceToChannelUnsafe(SoundChannel newChannel, int poolIndex)
-        {
-            if (Disabled) { return -1; }
-
-            for (int i = 0; i < playingChannels[poolIndex].Length; i++)
-            {
-                if (playingChannels[poolIndex][i] == null || !playingChannels[poolIndex][i].IsPlaying)
+                for (int i = 0; i < playingChannels[poolIndex].Length; i++)
                 {
-                    if (playingChannels[poolIndex][i] != null) { playingChannels[poolIndex][i].Dispose(); }
-                    playingChannels[poolIndex][i] = newChannel;
-                    return i;
+                    if (playingChannels[poolIndex][i] == null || !playingChannels[poolIndex][i].IsPlaying)
+                    {
+                        if (playingChannels[poolIndex][i] != null) { playingChannels[poolIndex][i].Dispose(); }
+                        playingChannels[poolIndex][i] = newChannel;
+                        return i;
+                    }
                 }
             }
 
@@ -496,25 +476,13 @@ namespace Barotrauma.Sounds
             int count = 0;
             lock (playingChannels[(int)sound.SourcePoolIndex])
             {
-                count = CountPlayingInstancesUnsafe(sound, (int)sound.SourcePoolIndex);
-            }
-            return count;
-        }
-
-        /// <summary>
-        /// Counts playing instances without locking.
-        /// Caller MUST hold the playingChannels[poolIndex] lock before calling this method.
-        /// </summary>
-        public int CountPlayingInstancesUnsafe(Sound sound, int poolIndex)
-        {
-            if (Disabled) { return 0; }
-            int count = 0;
-            for (int i = 0; i < playingChannels[poolIndex].Length; i++)
-            {
-                if (playingChannels[poolIndex][i] != null && 
-                    playingChannels[poolIndex][i].Sound.Filename == sound.Filename)
+                for (int i = 0; i < playingChannels[(int)sound.SourcePoolIndex].Length; i++)
                 {
-                    if (playingChannels[poolIndex][i].IsPlaying) { count++; };
+                    if (playingChannels[(int)sound.SourcePoolIndex][i] != null && 
+                        playingChannels[(int)sound.SourcePoolIndex][i].Sound.Filename == sound.Filename)
+                    {
+                        if (playingChannels[(int)sound.SourcePoolIndex][i].IsPlaying) { count++; };
+                    }
                 }
             }
             return count;

@@ -5,7 +5,6 @@ using FarseerPhysics.Dynamics.Contacts;
 using FarseerPhysics.Dynamics.Joints;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -73,7 +72,7 @@ namespace Barotrauma.Items.Components
 
         public const float WaterDragCoefficient = 0.1f;
 
-        private readonly ConcurrentQueue<Impact> impactQueue = new ConcurrentQueue<Impact>();
+        private readonly Queue<Impact> impactQueue = new Queue<Impact>();
 
         private bool removePending;
 
@@ -389,6 +388,13 @@ namespace Barotrauma.Items.Components
             {
                 Attack.DamageMultiplier = damageMultiplier;
             }
+            foreach (var statusEffect in Item.GetStatusEffectsOfType(ActionType.OnImpact))
+            {
+                foreach (var explosion in statusEffect.Explosions)
+                {
+                    explosion.Attack.DamageMultiplier = damageMultiplier;
+                }
+            }
             // Set user for hitscan projectiles to work properly.
             User = user;
             // Need to set null for non-characterusable items.
@@ -461,6 +467,7 @@ namespace Barotrauma.Items.Components
             {
                 initialRotation -= MathHelper.Pi;
             }
+            Submarine initialSubmarine = item.Submarine;
             for (int i = 0; i < HitScanCount; i++)
             {
                 float launchAngle;
@@ -477,6 +484,8 @@ namespace Barotrauma.Items.Components
                 Vector2 launchDir = new Vector2((float)Math.Cos(launchAngle), (float)Math.Sin(launchAngle));
                 Vector2 prevSimpos = item.SimPosition;
                 item.body.SetTransformIgnoreContacts(item.body.SimPosition, launchAngle);
+                //when launching multiple projectiles, ensure each raycast starts from the same sub
+                item.Submarine = initialSubmarine;
                 if (Hitscan)
                 {
                     DoHitscan(launchDir);
@@ -841,8 +850,9 @@ namespace Barotrauma.Items.Components
                     DisableProjectileCollisions();
                 }
             }
-            while (impactQueue.TryDequeue(out var impact))
+            while (impactQueue.Count > 0)
             {
+                var impact = impactQueue.Dequeue();
                 HandleProjectileCollision(impact.Fixture, impact.Normal, impact.LinearVelocity);
             }
 

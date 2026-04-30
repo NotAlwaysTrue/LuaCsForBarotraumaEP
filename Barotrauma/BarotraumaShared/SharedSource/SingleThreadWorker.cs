@@ -1,76 +1,105 @@
-﻿using System;
+using Barotrauma.Networking;
+using System;
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using static Barotrauma.EosInterface.Ownership;
 
 namespace Barotrauma
 {
     public class SingleThreadWorker
     {
-        private ConcurrentQueue<Action> actionQueue;
-        private readonly Task workerTask;
+        private ConcurrentQueue<Action> ActionQueue;
 
+        public static SingleThreadWorker Instance = new SingleThreadWorker();
+
+        private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+        private readonly SemaphoreSlim actionSignal = new SemaphoreSlim(0);
+        private static Task WorkerTask;
+
+        public static readonly SemaphoreSlim SingleThreadActionStandbySignal = new SemaphoreSlim(1);
 
         /// <summary>
-        /// Enqueue an action
+        /// Initilize a SingleThreadWorker
+        /// SingleThreadWorker or STW for short is a FIFO queue ensure single-thread execution of a series of actions.
         /// </summary>
-        /// <param name="action"></param>
-        /// <returns>A boolean indicates whether the operation was successfully completed. True if successful, False otherwise</returns>
-        public bool AddToQueue(Action action)
+        public SingleThreadWorker()
         {
-            try
-            {
-                actionQueue.Enqueue(action);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
+            ActionQueue = new ConcurrentQueue<Action>();
+            WorkerTask = CreateProcessTask(cancellationTokenSource.Token);
         }
 
-        private async Task CreatActionProcessorLoop(CancellationToken token)
+        public void Dispose()
+        {
+            cancellationTokenSource.Cancel();
+            WorkerTask.Wait();
+            WorkerTask.Dispose();
+            Instance = null;
+            cancellationTokenSource.Dispose();
+            actionSignal.Dispose();
+            SingleThreadActionStandbySignal.Dispose();
+        }
+
+        private async Task CreateProcessTask(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    await ActionSignal.WaitAsync(100, token);
-                    ProcessPendingCreateEvents();
+                    await actionSignal.WaitAsync(100, token);
+                    SingleThreadActionStandbySignal.Wait(CancellationToken.None);
+                    RunActions();
                 }
                 catch (OperationCanceledException)
                 {
                     break;
                 }
+                finally
+                {
+                    SingleThreadActionStandbySignal.Release();
+                }
             }
         }
 
-        private void ProcessPendingCreateEvents()
+        /// <summary>
+        /// Add a pending action in a STW queue.
+        /// DO NOT ABUSE IT OR IT WILL SLOW DOWN MAIN THREAD!!!!
+        /// </summary>
+        /// <param name="action"></param>
+        public void AddAction(Action action)
         {
-            // Dequeue and process all pending events currently in the queue.
-            // Use a lock to synchronize modifications to shared lists / ID.
-            while (actionQueue.TryDequeue(out Action PendingAction))
+            // enqueue and let background task handle the rest
+            ActionQueue.Enqueue(action);
+
+            if (actionSignal.CurrentCount == 0)
+            {
+                actionSignal.Release();
+            }
+        }
+
+        /// <summary>
+        /// Run all pending actions in the STW queue
+        /// </summary>
+        [STAThread]
+        private void RunActions()
+        {
+            while (ActionQueue.TryDequeue(out Action action))
             {
                 try
                 {
-                    PendingAction?.Invoke();
+                    action.Invoke();
                 }
-                catch(Exception e)
+                catch (Exception e)
                 {
-                    DebugConsole.ThrowError($"Error while processing action in SingleThreadWorker: {e.Message}\n{e.StackTrace}");
+                    // Just try-catch and do nothing but print errorlogs. We cannot afford crashing the game.
+                    ConsoleColor originalForeground = Console.ForegroundColor;
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"WARNING: Error occurred when running Single Thread Actions." +
+                        $"If the server didn't crash or stop responding then this should be fine \n{e}");
+                    Console.ForegroundColor = Console.ForegroundColor;
                 }
             }
         }
 
-
-        /// <summary>
-        /// Initilize a SingleThreadWorker instance and start the worker thread
-        /// </summary>
-        public SingleThreadWorker()
-        {
-            actionQueue = new ConcurrentQueue<Action>();
-            workerTask = Task.Run(() => CreatActionProcessorLoop(CancellationToken.None));
-        }
     }
 }

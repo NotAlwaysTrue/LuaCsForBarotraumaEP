@@ -58,7 +58,7 @@ namespace Barotrauma.Items.Components
             get { return Vector2.Zero; }
         }
 
-        public override bool ShouldDrawHUD(Character character)
+        protected override bool ShouldDrawHUDComponentSpecific(Character character)
         {
             if (item.IsHidden) { return false; }
             if (!HasRequiredItems(character, false) || character.SelectedItem != item) { return false; }

@@ -296,6 +296,7 @@ namespace Barotrauma.Items.Components
             }
 #endif
             CheckIfNeedsUpdate();
+            SetLightSourceTransformProjSpecific();
         }
 
         public void CheckIfNeedsUpdate()

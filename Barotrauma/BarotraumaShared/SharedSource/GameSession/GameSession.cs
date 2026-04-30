@@ -1,16 +1,17 @@
 ﻿#nullable enable
 
+using Barotrauma.Extensions;
 using Barotrauma.IO;
 using Barotrauma.Items.Components;
+using Barotrauma.Networking;
+using Barotrauma.PerkBehaviors;
+using FarseerPhysics;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Xml.Linq;
-using Barotrauma.Networking;
-using Barotrauma.Extensions;
-using Barotrauma.PerkBehaviors;
 
 namespace Barotrauma
 {
@@ -408,7 +409,6 @@ namespace Barotrauma
 
         public void LoadPreviousSave()
         {
-            GameMain.LuaCs.Hook.Call("roundEnd");
             AchievementManager.OnRoundEnded(this, roundInterrupted: true);
             Submarine.Unload();
             SaveUtil.LoadGame(DataPath);
@@ -761,7 +761,6 @@ namespace Barotrauma
             GUI.PreventPauseMenuToggle = false;
             HintManager.OnRoundStarted();
 
-            GameMain.LuaCs.Hook.Call("roundStart");
             EnableEventLogNotificationIcon(enabled: false);
 
             LogStartRoundStats();
@@ -955,14 +954,6 @@ namespace Barotrauma
                         sub.SetPosition(spawnPos);
                         myPort.Dock(outPostPort);
                         myPort.Lock(isNetworkMessage: true, applyEffects: false);
-                        foreach (var item in sub.GetItems(alsoFromConnectedSubs: true))
-                        {
-                            //need to refresh position to maintain since the sub was moved to the docking port
-                            if (item.GetComponent<Steering>() is { MaintainPos: true } steering)
-                            {
-                                steering.RefreshPosToMaintain();
-                            }
-                        }
                     }
                     else
                     {
@@ -983,6 +974,16 @@ namespace Barotrauma
                 sub.SetPosition(sub.FindSpawnPos(placeAtStart ? level.StartPosition : level.EndPosition));
                 sub.NeutralizeBallast();
                 sub.EnableMaintainPosition();
+            }
+
+            foreach (var item in sub.GetItems(alsoFromConnectedSubs: true))
+            {
+                // Refresh pos to maintain in all steering components maintaining
+                // position, including ones in shuttles, since the submarines moved
+                if (item.GetComponent<Steering>() is { MaintainPos: true } steering)
+                {
+                    steering.RefreshPosToMaintain();
+                }
             }
 
             // Make sure that linked subs which are NOT docked to the main sub
@@ -1048,9 +1049,6 @@ namespace Barotrauma
         /// </remarks>
         public static ImmutableHashSet<Character> GetSessionCrewCharacters(CharacterType type)
         {
-            var result = GameMain.LuaCs.Hook.Call<Character[]?>("getSessionCrewCharacters", type);
-            if (result != null) return ImmutableHashSet.Create(result);
-
             if (GameMain.GameSession?.CrewManager is not { } crewManager) { return ImmutableHashSet<Character>.Empty; }
 
             IEnumerable<Character> players;
@@ -1089,12 +1087,9 @@ namespace Barotrauma
         {
             RoundEnding = true;
 
-#if CLIENT
-            GameMain.LuaCs.Hook.Call("roundEnd");
-#endif
             //Clear the grids to allow for garbage collection
             Powered.Grids.Clear();
-            Powered.ClearChangedConnections();
+            Powered.ChangedConnections.Clear();
 
             try
             {
@@ -1103,14 +1098,12 @@ namespace Barotrauma
                 ImmutableHashSet<Character> crewCharacters = GetSessionCrewCharacters(CharacterType.Both);
                 int prevMoney = GetAmountOfMoney(crewCharacters);
 
-                EndMissions();
+                EndMissions(transitionType);
 
                 foreach (Character character in crewCharacters)
                 {
                     character.CheckTalents(AbilityEffectType.OnRoundEnd);
                 }
-
-                GameMain.LuaCs.Hook.Call("missionsEnded", missions);
 
 #if CLIENT
                 if (GUI.PauseMenuOpen)
@@ -1153,7 +1146,6 @@ namespace Barotrauma
                 EventManager?.EndRound();
                 StatusEffect.StopAll();
                 AfflictionPrefab.ClearAllEffects();
-                PhysicsBodyQueue.Clear();
                 IsRunning = false;
 
 #if CLIENT
@@ -1209,12 +1201,12 @@ namespace Barotrauma
             }
         }
 
-        public void EndMissions()
+        public void EndMissions(CampaignMode.TransitionType transitionType)
         {
             ImmutableHashSet<Character> crewCharacters = GetSessionCrewCharacters(CharacterType.Both);
             foreach (Mission mission in missions)
             {
-                mission.End();
+                mission.End(transitionType);
             }
 
             if (missions.Any())

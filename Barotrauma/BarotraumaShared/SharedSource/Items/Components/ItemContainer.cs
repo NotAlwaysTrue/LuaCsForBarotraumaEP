@@ -425,7 +425,7 @@ namespace Barotrauma.Items.Components
 
         partial void InitProjSpecific(ContentXElement element);
 
-        public void OnItemContained(Item containedItem)
+        public void OnItemContained(Item containedItem, bool triggerOnInsertedEffects = true)
         {
             int index = Inventory.FindIndex(containedItem);
             RelatedItem relatedItem = null;
@@ -444,14 +444,20 @@ namespace Barotrauma.Items.Components
                             ActiveContainedItem activeContainedItem = new(containedItem, effect, containableItem.ExcludeBroken, containableItem.ExcludeFullCondition, containableItem.BlameEquipperForDeath);
                             activeContainedItems.Add(activeContainedItem);
 
-                            if (!ShouldApplyEffects(activeContainedItem) || item.Submarine is { Loading: true} || initializingLoadedItems || 
-                                containedItem.OnInsertedEffectsApplied) 
-                            { 
-                                continue; 
+                            if (triggerOnInsertedEffects)
+                            {
+                                if (!ShouldApplyEffects(activeContainedItem) || item.Submarine is { Loading: true} || initializingLoadedItems || 
+                                    containedItem.OnInsertedEffectsApplied) 
+                                { 
+                                    continue; 
+                                }
+                                activeContainedItem.StatusEffect.Apply(ActionType.OnInserted, deltaTime: 1, item, targets);
                             }
-                            activeContainedItem.StatusEffect.Apply(ActionType.OnInserted, deltaTime: 1, item, targets);
                         }
-                        containedItem.OnInsertedEffectsApplied = true;
+                        if (triggerOnInsertedEffects)
+                        {
+                            containedItem.OnInsertedEffectsApplied = true;
+                        }
                     }
                 }
             }
@@ -884,8 +890,7 @@ namespace Barotrauma.Items.Components
                 RelatedItem containableItem = FindContainableItem(containedItem);
                 if (containableItem != null && containableItem.SetActive)
                 {
-                    // Use ToArray() snapshot for thread-safe iteration
-                    foreach (var ic in containedItem.Components.ToArray())
+                    foreach (var ic in containedItem.Components)
                     {
                         ic.IsActive = active;
                     }
@@ -1011,11 +1016,7 @@ namespace Barotrauma.Items.Components
                             if (flippedX ^ flippedY) { rotation = -rotation; }
                             rotation += -item.RotationRad;
                         }
-                        // Defer physics operation if in parallel context (Farseer is not thread-safe)
-                        var capturedBody = contained.Item.body.FarseerBody;
-                        var capturedSimPos = simPos;
-                        var capturedRotation = rotation;
-                        PhysicsBodyQueue.ExecuteOrDefer(() => capturedBody.SetTransformIgnoreContacts(ref capturedSimPos, capturedRotation));
+                        contained.Item.body.FarseerBody.SetTransformIgnoreContacts(ref simPos, rotation);
                         contained.Item.body.UpdateDrawPosition(interpolate: false);
                     }
                     catch (Exception e)
@@ -1124,6 +1125,16 @@ namespace Barotrauma.Items.Components
                 }
                 else
                 {
+                    if (item.GetComponent<Holdable>() is { Attachable: true })
+                    {
+                        //if the item is attachable to walls, we need a bit of special logic because the item can either
+                        //have or not have a body depending on whether it's attached.
+
+                        //since it seems previously the contained item positions have always been configured as if the item had no body (using the top-left corner as the origin),
+                        //let's modify the position here to position the items correctly even when the body is active (moving the origin from the center of the body to the top-left corner)
+                        transformedItemPos -= item.Rect.Size.FlipY().ToVector2() / 2;
+                    }
+
                     Matrix transform = Matrix.CreateRotationZ(drawPosition ? item.body.DrawRotation : item.body.Rotation);
                     if (bodyFlipped)
                     {

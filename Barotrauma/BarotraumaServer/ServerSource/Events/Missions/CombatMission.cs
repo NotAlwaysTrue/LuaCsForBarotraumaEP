@@ -133,7 +133,7 @@ namespace Barotrauma
             switch (winCondition)
             {
                 case WinCondition.LastManStanding:
-                    if (crews[0].Count == 0 || crews[1].Count == 0)
+                    if (crews[0].Count == 0 && crews[1].Count == 0)
                     {
                         //if there are no characters in either crew, end the round
                         teamDead[0] = teamDead[1] = true;

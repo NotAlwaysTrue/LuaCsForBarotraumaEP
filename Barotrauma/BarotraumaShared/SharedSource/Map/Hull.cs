@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Threading;
 using System.Xml.Linq;
 using Barotrauma.MapCreatures.Behavior;
 using Barotrauma.Items.Components;
@@ -14,116 +13,6 @@ using Barotrauma.Extensions;
 
 namespace Barotrauma
 {
-    /// <summary>
-    /// Thread-safe wrapper for Hull list operations.
-    /// Uses copy-on-write pattern for lock-free reads.
-    /// </summary>
-    internal class ThreadSafeHullList : IEnumerable<Hull>
-    {
-        private volatile List<Hull> _list = new List<Hull>();
-        private readonly object _writeLock = new object();
-
-        public int Count => _list.Count;
-
-        public void Add(Hull hull)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<Hull>(_list) { hull };
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-
-        public bool Remove(Hull hull)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<Hull>(_list);
-                bool removed = newList.Remove(hull);
-                if (removed)
-                {
-                    Interlocked.Exchange(ref _list, newList);
-                }
-                return removed;
-            }
-        }
-
-        public void Clear()
-        {
-            Interlocked.Exchange(ref _list, new List<Hull>());
-        }
-
-        public bool Contains(Hull hull) => _list.Contains(hull);
-
-        public Hull this[int index] => _list[index];
-
-        public IEnumerator<Hull> GetEnumerator() => _list.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
-        // LINQ-friendly methods
-        public List<Hull> ToList() => new List<Hull>(_list);
-        public Hull FirstOrDefault(Func<Hull, bool> predicate) => _list.FirstOrDefault(predicate);
-        public Hull Find(Predicate<Hull> predicate) => _list.Find(predicate);
-        public List<Hull> FindAll(Predicate<Hull> predicate) => _list.FindAll(predicate);
-        public IEnumerable<Hull> Where(Func<Hull, bool> predicate) => _list.Where(predicate);
-        public bool Any() => _list.Any();
-        public bool Any(Func<Hull, bool> predicate) => _list.Any(predicate);
-        public bool Exists(Predicate<Hull> predicate) => _list.Exists(predicate);
-        public void ForEach(Action<Hull> action) => _list.ForEach(action);
-    }
-
-    /// <summary>
-    /// Thread-safe wrapper for EntityGrid list operations.
-    /// Uses copy-on-write pattern for lock-free reads.
-    /// </summary>
-    internal class ThreadSafeEntityGridList : IEnumerable<EntityGrid>
-    {
-        private volatile List<EntityGrid> _list = new List<EntityGrid>();
-        private readonly object _writeLock = new object();
-
-        public int Count => _list.Count;
-
-        public void Add(EntityGrid grid)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<EntityGrid>(_list) { grid };
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-
-        public bool Remove(EntityGrid grid)
-        {
-            lock (_writeLock)
-            {
-                var newList = new List<EntityGrid>(_list);
-                bool removed = newList.Remove(grid);
-                if (removed)
-                {
-                    Interlocked.Exchange(ref _list, newList);
-                }
-                return removed;
-            }
-        }
-
-        public void Clear()
-        {
-            Interlocked.Exchange(ref _list, new List<EntityGrid>());
-        }
-
-        public EntityGrid this[int index] => _list[index];
-
-        public IEnumerator<EntityGrid> GetEnumerator() => _list.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
-        // LINQ-friendly methods
-        public List<EntityGrid> ToList() => new List<EntityGrid>(_list);
-        public EntityGrid FirstOrDefault(Func<EntityGrid, bool> predicate) => _list.FirstOrDefault(predicate);
-        public EntityGrid Find(Predicate<EntityGrid> predicate) => _list.Find(predicate);
-        public IEnumerable<EntityGrid> Where(Func<EntityGrid, bool> predicate) => _list.Where(predicate);
-        public bool Any() => _list.Any();
-    }
-
     partial class BackgroundSection
     {
         public Rectangle Rect;
@@ -224,8 +113,8 @@ namespace Barotrauma
 
     partial class Hull : MapEntity, ISerializableEntity, IServerSerializable
     {
-        public readonly static ThreadSafeHullList HullList = new ThreadSafeHullList();
-        public readonly static ThreadSafeEntityGridList EntityGrids = new ThreadSafeEntityGridList();
+        public readonly static List<Hull> HullList = new List<Hull>();
+        public readonly static List<EntityGrid> EntityGrids = new List<EntityGrid>();
 
         public static bool ShowHulls = true;
 
@@ -233,6 +122,8 @@ namespace Barotrauma
         public const float OxygenDistributionSpeed = 30000.0f;
         public const float OxygenDeteriorationSpeed = 0.3f;
         public const float OxygenConsumptionSpeed = 700.0f;
+
+        private const float DecalAlphaRemoveThreshold = 0.001f;
 
         public const int WaveWidth = 32;
         public static float WaveStiffness = 0.01f;
@@ -997,22 +888,24 @@ namespace Barotrauma
 
             Oxygen -= OxygenDeteriorationSpeed * deltaTime;
 
-            if (FakeFireSources.Count > 0)
+            SingleThreadWorker.Instance.AddAction(() =>
             {
-                if ((Character.Controlled?.CharacterHealth?.GetAffliction("psychosis")?.Strength ?? 0.0f) <= 0.0f)
+                if (FakeFireSources.Count > 0)
                 {
-                    for (int i = FakeFireSources.Count - 1; i >= 0; i--)
+                    if ((Character.Controlled?.CharacterHealth?.GetAffliction("psychosis")?.Strength ?? 0.0f) <= 0.0f)
                     {
-                        if (FakeFireSources[i].CausedByPsychosis)
+                        for (int i = FakeFireSources.Count - 1; i >= 0; i--)
                         {
-                            FakeFireSources[i].Remove();
+                            if (FakeFireSources[i].CausedByPsychosis)
+                            {
+                                FakeFireSources[i].Remove();
+                            }
                         }
                     }
+                    FireSource.UpdateAll(FakeFireSources, deltaTime);
                 }
-                FireSource.UpdateAll(FakeFireSources, deltaTime);
-            }
-
-            FireSource.UpdateAll(FireSources, deltaTime);
+                FireSource.UpdateAll(FireSources, deltaTime);
+            });
 
             foreach (Decal decal in decals)
             {
@@ -1024,7 +917,7 @@ namespace Barotrauma
                 for (int i = decals.Count - 1; i >= 0; i--)
                 {
                     var decal = decals[i];
-                    if (decal.FadeTimer >= decal.LifeTime || decal.BaseAlpha <= 0.001f)
+                    if (decal.FadeTimer >= decal.LifeTime || decal.BaseAlpha <= DecalAlphaRemoveThreshold)
                     {
                         decals.RemoveAt(i);
     #if SERVER
@@ -1251,18 +1144,13 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// Used in <see cref="GetApproximateDistance"/> - ThreadLocal for thread safety
+        /// Used in <see cref="GetApproximateDistance"/>
         /// </summary>
-        private static readonly ThreadLocal<Dictionary<Hull, float>> cachedDistancesLocal = 
-            new ThreadLocal<Dictionary<Hull, float>>(() => new Dictionary<Hull, float>());
+        private static readonly Dictionary<Hull, float> cachedDistances = [];
         /// <summary>
-        /// Used in <see cref="GetApproximateDistance"/> - ThreadLocal for thread safety
+        /// Used in <see cref="GetApproximateDistance"/>
         /// </summary>
-        private static readonly ThreadLocal<PriorityQueue<(Hull hull, Vector2 pos), float>> priorityQueueLocal = 
-            new ThreadLocal<PriorityQueue<(Hull hull, Vector2 pos), float>>(() => new PriorityQueue<(Hull hull, Vector2 pos), float>());
-        
-        private static Dictionary<Hull, float> cachedDistances => cachedDistancesLocal.Value;
-        private static PriorityQueue<(Hull hull, Vector2 pos), float> priorityQueue => priorityQueueLocal.Value;
+        private static readonly PriorityQueue<(Hull hull, Vector2 pos), float> priorityQueue = new PriorityQueue<(Hull hull, Vector2 pos), float>();
 
         /// <summary>
         /// Approximate distance from this hull to the target hull, moving through open gaps without passing through walls.
@@ -1282,7 +1170,10 @@ namespace Barotrauma
                 Hull currentHull = current.hull;
                 Vector2 currentPos = current.pos;
 
-                if (currentDist > maxDistance) { return float.MaxValue; }
+                if (currentDist > maxDistance) 
+                { 
+                    return float.MaxValue; 
+                }
 
                 // If we've reached the target, add the final segment from hull to endPos
                 if (currentHull == targetHull)
@@ -1290,7 +1181,7 @@ namespace Barotrauma
                     return currentDist + Vector2.Distance(currentPos, endPos);
                 }
 
-                foreach (Gap g in ConnectedGaps)
+                foreach (Gap g in currentHull.ConnectedGaps)
                 {
                     float distanceMultiplier = 1;
                     if (g.ConnectedDoor != null && !g.ConnectedDoor.IsBroken)
@@ -1766,9 +1657,18 @@ namespace Barotrauma
             bool decalsCleaned = false;
             foreach (Decal decal in decals)
             {
+                // Don't attempt to clean the decal if it's already below the remove threshold, since the server
+                // is already gonna remove the decal for us, sending another decal update event would result in
+                // us potentially modifying a different decal since the indices can briefly desync.
+                if (decal.BaseAlpha <= DecalAlphaRemoveThreshold)
+                {
+                    continue;
+                }
+
                 if (decal.AffectsSection(section))
                 {
                     decal.Clean(cleanVal);
+
                     decalsCleaned = true;
 #if SERVER
                     decalUpdatePending = true;

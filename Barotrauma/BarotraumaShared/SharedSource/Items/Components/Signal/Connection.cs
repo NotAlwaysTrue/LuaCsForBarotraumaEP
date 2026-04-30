@@ -27,6 +27,11 @@ namespace Barotrauma.Items.Components
             private init => _displayName = value;
         }
 
+        /// <summary>
+        /// Display name ignoring <see cref="DisplayNameOverride"/>
+        /// </summary>
+        public LocalizedString DefaultDisplayName => _displayName;
+
         public LocalizedString DisplayNameOverride;
 
         private readonly HashSet<Wire> wires;
@@ -222,14 +227,13 @@ namespace Barotrauma.Items.Components
         public void SetRecipientsDirty()
         {
             recipientsDirty = true;
-            if (IsPower) { Powered.MarkConnectionChanged(this); }
+            if (IsPower) { Powered.ChangedConnections.Add(this); }
         }
 
         private void RefreshRecipients()
         {
             recipients.Clear();
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (var wire in wires.ToArray())
+            foreach (var wire in wires)
             {
                 Connection recipient = wire.OtherConnection(this);
                 if (recipient != null) { recipients.Add(recipient); }
@@ -268,8 +272,8 @@ namespace Barotrauma.Items.Components
                     //Check if both connections belong to a larger grid
                     if (prevOtherConnection.recipients.Count > 1 && recipients.Count > 1)
                     {
-                        Powered.MarkConnectionChanged(prevOtherConnection);
-                        Powered.MarkConnectionChanged(this);
+                        Powered.ChangedConnections.Add(prevOtherConnection);
+                        Powered.ChangedConnections.Add(this);
                     }
                     else if (recipients.Count > 1)
                     {
@@ -285,7 +289,7 @@ namespace Barotrauma.Items.Components
                     else if (Grid.Connections.Count == 2)
                     {
                         //Delete the grid as these were the only 2 devices
-                        Powered.Grids.TryRemove(Grid.ID, out _);
+                        Powered.Grids.Remove(Grid.ID);
                         Grid = null;
                         prevOtherConnection.Grid = null;
                     }
@@ -326,8 +330,8 @@ namespace Barotrauma.Items.Components
                     else
                     {
                         //Flag change so that proper grids can be formed
-                        Powered.MarkConnectionChanged(this);
-                        Powered.MarkConnectionChanged(otherConnection);
+                        Powered.ChangedConnections.Add(this);
+                        Powered.ChangedConnections.Add(otherConnection);
                     }
                 }
 
@@ -340,8 +344,7 @@ namespace Barotrauma.Items.Components
         {
             LastSentSignal = signal;
             enumeratingWires = true;
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (var wire in wires.ToArray())
+            foreach (var wire in wires)
             {
                 Connection recipient = wire.OtherConnection(this);
                 if (recipient == null) { continue; }
@@ -353,18 +356,14 @@ namespace Barotrauma.Items.Components
                 wire.RegisterSignal(signal, source: this);
 #endif
                 SendSignalIntoConnection(signal, recipient);
-                GameMain.LuaCs.Hook.Call("signalReceived", signal, recipient);
-                GameMain.LuaCs.Hook.Call("signalReceived." + recipient.item.Prefab.Identifier, signal, recipient);
             }
 
-            foreach (CircuitBoxConnection connection in CircuitBoxConnections.ToArray())
+            foreach (CircuitBoxConnection connection in CircuitBoxConnections)
             {
                 connection.ReceiveSignal(signal);
-                GameMain.LuaCs.Hook.Call("signalReceived", signal, connection.Connection);
-                GameMain.LuaCs.Hook.Call("signalReceived." + connection.Connection.Item.Prefab.Identifier, signal, connection);
             }
             enumeratingWires = false;
-            foreach (var removedWire in removedWires.ToArray())
+            foreach (var removedWire in removedWires)
             {
                 wires.Remove(removedWire);
             }
@@ -375,16 +374,14 @@ namespace Barotrauma.Items.Components
         {
             conn.LastReceivedSignal = signal;
 
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (ItemComponent ic in conn.item.Components.ToArray())
+            foreach (ItemComponent ic in conn.item.Components)
             {
                 ic.ReceiveSignal(signal, conn);
             }
 
             if (conn.Effects == null || signal.value == "0") { return; }
 
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (StatusEffect effect in conn.Effects.ToArray())
+            foreach (StatusEffect effect in conn.Effects)
             {
                 conn.Item.ApplyStatusEffect(effect, ActionType.OnUse, (float)Timing.Step);
             }
@@ -394,15 +391,13 @@ namespace Barotrauma.Items.Components
         {
             if (IsPower && Grid != null)
             {
-                Powered.MarkConnectionChanged(this);
-                // Use ToArray() snapshot for thread-safe iteration
-                foreach (Connection c in recipients.ToArray())
+                Powered.ChangedConnections.Add(this);
+                foreach (Connection c in recipients)
                 {
-                    Powered.MarkConnectionChanged(c);
+                    Powered.ChangedConnections.Add(c);
                 }
             }
-            // Use ToArray() snapshot for thread-safe iteration
-            foreach (var wire in wires.ToArray())
+            foreach (var wire in wires)
             {
                 wire.RemoveConnection(this);
                 recipientsDirty = true;
@@ -410,7 +405,7 @@ namespace Barotrauma.Items.Components
 
             if (enumeratingWires)
             {
-                foreach (var wire in wires.ToArray())
+                foreach (var wire in wires)
                 {
                     removedWires.Add(wire);
                 }
@@ -453,8 +448,7 @@ namespace Barotrauma.Items.Components
         {
             XElement newElement = new XElement(IsOutput ? "output" : "input", new XAttribute("name", Name));
 
-            // Use ToArray() snapshot before OrderBy for thread-safe iteration
-            foreach (var wire in wires.ToArray().OrderBy(w => w.Item.ID))
+            foreach (var wire in wires.OrderBy(w => w.Item.ID))
             {
                 newElement.Add(new XElement("link",
                     new XAttribute("w", wire.Item.ID.ToString()),

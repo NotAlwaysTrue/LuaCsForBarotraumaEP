@@ -250,8 +250,7 @@ namespace Barotrauma.Items.Components
             {
                 if (connections[0] != null && connections[1] != null)
                 {
-                    // Use ToArray() snapshot for thread-safe iteration
-                    foreach (ItemComponent ic in item.Components.ToArray())
+                    foreach (ItemComponent ic in item.Components)
                     {
                         if (ic == this) { continue; }
 
@@ -724,11 +723,11 @@ namespace Barotrauma.Items.Components
 
             if (item0 == null && item1 != null)
             {
-                item0 = Item.ItemList.FirstOrDefault(it => it.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(this) ?? false);
+                item0 = Item.ItemList.Find(it => it.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(this) ?? false);
             }
             else if (item0 != null && item1 == null)
             {
-                item1 = Item.ItemList.FirstOrDefault(it => it.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(this) ?? false);
+                item1 = Item.ItemList.Find(it => it.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(this) ?? false);
             }
 
             if (item0 == null || item1 == null || nodes.Count == 0) { return; }

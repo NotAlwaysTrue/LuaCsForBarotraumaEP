@@ -1,0 +1,95 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Globalization;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Xml.Linq;
+using System.Xml.Serialization;
+using Barotrauma.LuaCs;
+using Barotrauma.Steam;
+using OneOf;
+
+namespace Barotrauma.LuaCs.Data;
+
+#region ModConfigurationInfo
+
+public partial record ModConfigInfo : IModConfigInfo
+{
+    public ContentPackage Package { get; init; }
+    public ImmutableArray<IAssemblyResourceInfo> Assemblies { get; init; }
+    public ImmutableArray<ILuaScriptResourceInfo> LuaScripts { get; init; }
+    public ImmutableArray<IConfigResourceInfo> Configs { get; init; }
+}
+
+#endregion
+
+#region DataContracts_Resources
+
+public record BaseResourceInfo : IBaseResourceInfo
+{
+    public Platform SupportedPlatforms { get; init; }
+    public Target SupportedTargets { get; init; }
+    public int LoadPriority { get; init; }
+    public ImmutableArray<ContentPath> FilePaths { get; init; }
+    public bool Optional { get; init; }
+    public string InternalName { get; init; }
+    public ContentPackage OwnerPackage { get; init; }
+    public ImmutableArray<Identifier> RequiredPackages { get; init; }
+    public ImmutableArray<Identifier> IncompatiblePackages { get; init; }
+}
+
+public record AssemblyResourceInfo : BaseResourceInfo, IAssemblyResourceInfo 
+{
+    public string FriendlyName { get; init; }
+    public bool IsScript { get; init; }
+    public bool UseInternalAccessName { get; init; }
+    public bool IsReferenceModeOnly { get; init; }
+}
+
+/// <summary>
+/// Note: Config settings and settings-profiles are stored in the same files.
+/// </summary>
+public record ConfigResourceInfo : BaseResourceInfo, IConfigResourceInfo {}
+
+public record LuaScriptsResourceInfo : BaseResourceInfo, ILuaScriptResourceInfo
+{
+    public bool IsAutorun { get; init; }
+    public bool RunUnrestricted { get; init; }
+}
+
+#endregion
+
+#region DataContracts_ParsedInfo
+
+public record ConfigInfo : IConfigInfo
+{
+    public string InternalName { get; init; }
+    public ContentPackage OwnerPackage { get; init; }
+    public string DataType { get; init; }
+    public XElement Element { get; init; }
+    public RunState EditableStates { get; init; }
+    public NetSync NetSync { get; init; }
+    
+#if CLIENT // IConfigDisplayInfo
+    public string DisplayName { get; init; }
+    public string Description { get; init; }
+    public string DisplayCategory { get; init; }
+    public bool ShowInMenus { get; init; }
+    public string Tooltip { get; init; }
+    public ContentPath ImageIconPath { get; init; }
+#endif
+}
+
+public record ConfigProfileInfo : IConfigProfileInfo
+{
+    /// <summary>
+    /// Profile name.
+    /// </summary>
+    public string InternalName { get; init; }
+    public ContentPackage OwnerPackage { get; init; }
+    public IReadOnlyList<(string SettingName, XElement Element)> ProfileValues { get; init; }
+}
+
+#endregion

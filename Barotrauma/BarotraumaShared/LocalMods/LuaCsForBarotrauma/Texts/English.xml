@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<infotexts language="English" nowhitespace="false" translatedname="English">
+  <LuaCsForBarotrauma.SettingsMenu.ModControlsButton>Mod Controls Settings</LuaCsForBarotrauma.SettingsMenu.ModControlsButton>
+  <LuaCsForBarotrauma.SettingsMenu.ModGameplayButton>Mod Gameplay Settings</LuaCsForBarotrauma.SettingsMenu.ModGameplayButton>
+  <LuaCsForBarotrauma.SettingsMenu.ResetVisibleSettings>Reset Displayed Settings</LuaCsForBarotrauma.SettingsMenu.ResetVisibleSettings>
+  <LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Title>Reset Visible Settings</LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Title>
+  <LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Message>Are you sure you want to reset the values for currently displayed settings?</LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Message>
+  <LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Yes>Yes</LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Yes>
+  <LuaCsForBarotrauma.SettingsMenu.ResetPrompt.No>No</LuaCsForBarotrauma.SettingsMenu.ResetPrompt.No>
+  <!-- Settings -->
+  <!-- Is Cs Enabled-->
+  <LuaCsForBarotrauma.CsRunPolicy.DisplayName>Are C# Mods Allowed</LuaCsForBarotrauma.CsRunPolicy.DisplayName>
+  <LuaCsForBarotrauma.CsRunPolicy.Tooltip>Should unsandboxed scripts and dlls be allowed to run.</LuaCsForBarotrauma.CsRunPolicy.Tooltip>
+  <LuaCsForBarotrauma.CsRunPolicy.DisplayCategory>General</LuaCsForBarotrauma.CsRunPolicy.DisplayCategory>
+  <!-- Use Caching -->
+  <LuaCsForBarotrauma.UseCaching.DisplayName>Use Pre-Caching</LuaCsForBarotrauma.UseCaching.DisplayName>
+  <LuaCsForBarotrauma.UseCaching.Tooltip>Should mod files be preloaded to speed up loading. Should only be turned off if you have mods that have issues with this.</LuaCsForBarotrauma.UseCaching.Tooltip>
+  <LuaCsForBarotrauma.UseCaching.DisplayCategory>General</LuaCsForBarotrauma.UseCaching.DisplayCategory>
+  <!-- Hide Usernames In Logs-->
+  <LuaCsForBarotrauma.HideUserNamesInLogs.DisplayName>Hide Local OS Account Name In Logs</LuaCsForBarotrauma.HideUserNamesInLogs.DisplayName>
+  <LuaCsForBarotrauma.HideUserNamesInLogs.Tooltip>If true, will replace your OS account name with 'USERNAME' in log files' paths.</LuaCsForBarotrauma.HideUserNamesInLogs.Tooltip>
+  <LuaCsForBarotrauma.HideUserNamesInLogs.DisplayCategory>General</LuaCsForBarotrauma.HideUserNamesInLogs.DisplayCategory>
+</infotexts>

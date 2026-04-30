@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<style>
+  <SettingsMenuTab.LuaCsSettings color="169,212,187,255" hovercolor="220,220,220,255" selectedcolor="255,255,255,255" pressedcolor="100,100,100,255" disabledcolor="125,125,125,125">
+    <Sprite name="LuaCsSettings" texture="%ModDir%/LuaCsSettingsIcon.png" sourcerect="0,0,64,64" tile="false" maintainaspectratio="true" origin="0.5,0.5"/>
+  </SettingsMenuTab.LuaCsSettings>
+</style>

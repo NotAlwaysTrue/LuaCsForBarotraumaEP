@@ -242,16 +242,44 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// The monster won't try to damage these submarines
+        /// The monster won't try to damage these submarines. Applies to hulls, structures and static items (items without a physics body) belonging to these submarines. Does not apply to non-static items, e.g. flares or other provocative items.
         /// </summary>
-        public HashSet<Submarine> UnattackableSubmarines
+        private readonly HashSet<Submarine> unattackableSubmarines = [];
+
+        /// <summary>
+        /// Set the submarine(s) the monster won't attack. Applies to hulls, structures and static items (items without a physics body) belonging to these submarines. Does not apply to non-static items, e.g. flares or other provocative items.
+        /// </summary>
+        public void SetUnattackableSubmarines(Submarine submarine, bool includeOwnSub = true, bool includeConnectedSubs = true, bool clearExisting = true)
         {
-            get;
-            private set;
-        } = new HashSet<Submarine>();
+            if (clearExisting)
+            {
+                unattackableSubmarines.Clear();
+            }
+            if (submarine != null)
+            {
+                AddSubs(submarine);
+            }
+            if (includeOwnSub && Character.Submarine is Submarine ownSub && ownSub != submarine)
+            {
+                AddSubs(ownSub);
+            }
+            
+            void AddSubs(Submarine sub)
+            {
+                unattackableSubmarines.Add(sub);
+                if (includeConnectedSubs)
+                {
+                    foreach (Submarine connectedSub in sub.DockedTo)
+                    {
+                        unattackableSubmarines.Add(connectedSub);
+                    }   
+                }
+            }
+        }
 
         public static bool IsTargetBeingChasedBy(Character target, Character character)
             => character?.AIController is EnemyAIController enemyAI && enemyAI.SelectedAiTarget?.Entity == target && enemyAI.State is AIState.Attack or AIState.Aggressive;
+        
         public bool IsBeingChasedBy(Character c) => IsTargetBeingChasedBy(Character, c);
         private bool IsBeingChased => IsBeingChasedBy(SelectedAiTarget?.Entity as Character);
 
@@ -539,26 +567,7 @@ namespace Barotrauma
             //doesn't do anything usually, but events may sometimes change monsters' (or pets' that use enemy AI) teams
             Character.UpdateTeam();
 
-            bool ignorePlatforms = Character.AnimController.TargetMovement.Y < -0.5f && (-Character.AnimController.TargetMovement.Y > Math.Abs(Character.AnimController.TargetMovement.X));
-            if (steeringManager == insideSteering)
-            {
-                var currPath = PathSteering.CurrentPath;
-                if (currPath != null && currPath.CurrentNode != null)
-                {
-                    if (currPath.CurrentNode.SimPosition.Y < Character.AnimController.GetColliderBottom().Y)
-                    {
-                        // Don't allow to jump from too high.
-                        float allowedJumpHeight = Character.AnimController.ImpactTolerance / 2;
-                        float height = Math.Abs(currPath.CurrentNode.SimPosition.Y - Character.SimPosition.Y);
-                        ignorePlatforms = height < allowedJumpHeight;
-                    }
-                }
-                if (Character.IsClimbing && PathSteering.IsNextLadderSameAsCurrent)
-                {
-                    Character.AnimController.TargetMovement = new Vector2(0.0f, Math.Sign(Character.AnimController.TargetMovement.Y));
-                }
-            }
-            Character.AnimController.IgnorePlatforms = ignorePlatforms;
+            HandleLaddersAndPlatforms(deltaTime);
 
             if (Math.Abs(Character.AnimController.movement.X) > 0.1f && !Character.AnimController.InWater &&
                 (GameMain.NetworkMember == null || GameMain.NetworkMember.IsServer || Character.Controlled == Character))
@@ -986,6 +995,69 @@ namespace Barotrauma
             }
         }
 
+        //how often the character can try ragdolling to drop down
+        private const float MaxDroppingInterval = 5.0f;
+
+        //last time the character tried ragdolling to drop down
+        private double lastDroppingTime;
+
+        //how long the character can stay ragdolled to drop down
+        private const float MaxDroppingTime = 1.0f;
+
+        //timer for the duration of the ragdolling
+        private float droppingTimer;
+
+        private void HandleLaddersAndPlatforms(float deltaTime)
+        {
+            bool ignorePlatforms = Character.AnimController.TargetMovement.Y < -0.5f && (-Character.AnimController.TargetMovement.Y > Math.Abs(Character.AnimController.TargetMovement.X));
+            if (steeringManager == insideSteering)
+            {
+                var currPath = PathSteering.CurrentPath;
+                if (currPath is { CurrentNode: WayPoint currentNode })
+                {
+                    Vector2 colliderBottom = Character.AnimController.GetColliderBottom();
+                    if (Character.Submarine != currentNode.Submarine)
+                    { 
+                        colliderBottom = Submarine.GetRelativeSimPosition(colliderBottom, currentNode.Submarine, Character.Submarine);
+                    }
+                    if (currentNode.SimPosition.Y < colliderBottom.Y)
+                    {
+                        // Don't allow to jump from too high.
+                        float allowedJumpHeight = Character.AnimController.ImpactTolerance / 2;
+                        Vector2 diff = currentNode.WorldPosition - Character.WorldPosition;
+                        float height = ConvertUnits.ToSimUnits(Math.Abs(diff.Y));
+                        ignorePlatforms = height < allowedJumpHeight;
+
+                        //trying to head down ladders, but can't climb -> periodically try ragdolling to get down
+                        //(may be required by large monsters like mudraptors to fit through hatches)
+                        if (ignorePlatforms && !Character.CanClimb && PathSteering.IsCurrentNodeLadder && 
+                            ConvertUnits.ToSimUnits(Math.Abs(diff.X)) < Character.AnimController.Collider.GetMaxExtent())
+                        {                           
+                            if (lastDroppingTime < Timing.TotalTime - MaxDroppingInterval)
+                            {
+                                Character.IsRagdolled = true;
+                                Character.SetInput(InputType.Ragdoll, hit: false, held: true);
+                                droppingTimer += deltaTime;
+                                if (droppingTimer > MaxDroppingTime)
+                                {
+                                    lastDroppingTime = Timing.TotalTime;
+                                }
+                            }
+                            else
+                            {
+                                droppingTimer = 0.0f;
+                            }
+                        }
+                    }
+                }
+                if (Character.IsClimbing && PathSteering.IsNextLadderSameAsCurrent)
+                {
+                    Character.AnimController.TargetMovement = new Vector2(0.0f, Math.Sign(Character.AnimController.TargetMovement.Y));
+                }
+            }
+            Character.AnimController.IgnorePlatforms = ignorePlatforms;
+        }
+
         #region Idle
 
         private void UpdateIdle(float deltaTime, bool followLastTarget = true)
@@ -1228,6 +1300,8 @@ namespace Barotrauma
                 State = AIState.Idle;
                 return;
             }
+
+            if (Character.IsAttachedToController()) { return; }
 
             attackWorldPos = SelectedAiTarget.WorldPosition;
             attackSimPos = SelectedAiTarget.SimPosition;
@@ -1751,6 +1825,7 @@ namespace Barotrauma
                                 {
                                     SelectTarget(door.Item.AiTarget, currentTargetMemory.Priority);
                                     State = AIState.Attack;
+                                    AttackLimb = null;
                                     return;
                                 }
                             }
@@ -1761,12 +1836,20 @@ namespace Barotrauma
                     float margin = AttackLimb != null ? Math.Min(AttackLimb.attack.Range * 0.9f, max) : max;
                     if ((!canAttack || distance > margin) && !IsTryingToSteerThroughGap)
                     {
+                        bool useManualSteering = false;
                         // Steer towards the target if in the same room and swimming
                         // Ruins have walls/pillars inside hulls and therefore we should navigate around them using the path steering.
                         if (Character.CurrentHull != null && 
                             Character.Submarine != null && !Character.Submarine.Info.IsRuin &&
                             (Character.AnimController.InWater || pursue || !Character.AnimController.CanWalk) &&
                             targetCharacter != null && VisibleHulls.Contains(targetCharacter.CurrentHull))
+                        {
+                            if (CanSeeTarget(targetCharacter))
+                            {
+                                useManualSteering = true;
+                            }
+                        }
+                        if (useManualSteering)
                         {
                             Vector2 myPos = Character.AnimController.SimplePhysicsEnabled ? Character.SimPosition : steeringLimb.SimPosition;
                             SteeringManager.SteeringManual(deltaTime, Vector2.Normalize(attackSimPos - myPos));
@@ -2311,18 +2394,49 @@ namespace Barotrauma
             {
                 float prio = 1 + limb.attack.Priority;
                 if (Character.AnimController.SimplePhysicsEnabled) { return prio; }
-                float dist = Vector2.Distance(limb.WorldPosition, attackPos);
-                float distanceFactor = 1;
+                float distance = Vector2.Distance(limb.WorldPosition, attackPos);
+                float maxDistance = Math.Max(limb.attack.Range * 3, 1000);
+                if (distance > maxDistance)
+                {
+                    // Far enough to ignore the attack.
+                    return 0;
+                }
+                // Not in range, but relatively close. Let's use the distance factor as a multiplier.
+                float distanceFactor;
                 if (limb.attack.Ranged)
                 {
                     float min = 100;
-                    distanceFactor = MathHelper.Lerp(1, 0, MathUtils.InverseLerp(min, Math.Max(limb.attack.Range / 2, min), dist));
+                    if (distance < min)
+                    {
+                        // Too close -> smoothly but steeply reduce the preference (and prefer other attacks, like melee instead)
+                        float t = MathUtils.InverseLerp(0, min, distance);
+                        distanceFactor = MathHelper.Lerp(0.01f, 1, t * t);
+                    }
+                    else
+                    {
+                        distanceFactor = MathHelper.Lerp(1, 0, MathUtils.InverseLerp(min, maxDistance, distance));   
+                    }
                 }
                 else
                 {
-                    // The limb is ignored if the target is not close. Prevents character going in reverse if very far away from it.
-                    // We also need a max value that is more than the actual range.
-                    distanceFactor = MathHelper.Lerp(1, 0, MathUtils.InverseLerp(0, limb.attack.Range * 3, dist));
+                    if (distance <= limb.attack.Range)
+                    {
+                        // In range.
+                        if (!Character.InWater)
+                        {
+                            // On dry land vertical distance works a bit differently, as we can't necessarily reach the target above/below us.
+                            float verticalDistance = Math.Abs(limb.WorldPosition.Y - attackPos.Y);
+                            if (verticalDistance > limb.attack.DamageRange)
+                            {
+                                // Most likely can't reach.
+                                return 0;
+                            }
+                        }
+                        // Highly prefer attacks which we can use to hit immediately.
+                        return prio * 10;
+                    }
+                    float min = limb.attack.Range;
+                    distanceFactor = MathHelper.Lerp(1, 0, MathUtils.InverseLerp(min, maxDistance, distance));
                 }
                 return prio * distanceFactor;
             }
@@ -2521,6 +2635,7 @@ namespace Barotrauma
                 {
                     SelectTarget(aiTarget, GetTargetMemory(SelectedAiTarget, addIfNotFound: true).Priority);
                     State = AIState.Attack;
+                    AttackLimb = null;
                     return true;
                 }
             }
@@ -2555,14 +2670,10 @@ namespace Barotrauma
                             return true;
                         }
                     }
-                    if (damageTarget != null)
-                    {
-                        Character.SetInput(item.IsShootable ? InputType.Shoot : InputType.Use, false, true);
-                        item.Use(deltaTime, user: Character);
-                    }
+                    Character.SetInput(item.IsShootable ? InputType.Shoot : InputType.Use, false, true);
+                    item.Use(deltaTime, user: Character);
                 }
             }
-            if (damageTarget == null) { return true; }
             //simulate attack input to get the character to attack client-side
             Character.SetInput(InputType.Attack, true, true);
             if (!ActiveAttack.IsRunning)
@@ -2609,10 +2720,24 @@ namespace Barotrauma
             }
             return true;
         }
+        
+        private const float VisibilityCheckStep = 0.2f;
+        private double lastVisibilityCheckTime;
+        private bool canSeeTarget;
+        /// <summary>
+        /// This method uses <see cref="Character.CanSeeTarget"/> and caches the results.
+        /// </summary>
+        private bool CanSeeTarget(ISpatialEntity target)
+        {
+            if (Timing.TotalTime > lastVisibilityCheckTime + VisibilityCheckStep)
+            {
+                canSeeTarget = Character.CanSeeTarget(target);
+                lastVisibilityCheckTime = Timing.TotalTime;
+            }
+            return canSeeTarget;
+        }
 
         private float aimTimer;
-        private float visibilityCheckTimer;
-        private bool canSeeTarget;
         private float sinTime;
         private bool Aim(float deltaTime, ISpatialEntity target, Item weapon)
         {
@@ -2630,13 +2755,7 @@ namespace Barotrauma
             {
                 Character.CursorPosition -= Character.Submarine.Position;
             }
-            visibilityCheckTimer -= deltaTime;
-            if (visibilityCheckTimer <= 0.0f)
-            {
-                canSeeTarget = Character.CanSeeTarget(target);
-                visibilityCheckTimer = 0.2f;
-            }
-            if (!canSeeTarget)
+            if (!CanSeeTarget(target))
             {
                 SetAimTimer();
                 return false;
@@ -2817,7 +2936,10 @@ namespace Barotrauma
                         }
                     }
                     steeringManager.SteeringManual(deltaTime, Vector2.Normalize(limbDiff) * 3);
-                    Character.AnimController.Collider.ApplyForce(limbDiff * mouthLimb.Mass * 50.0f, mouthPos);
+                    if (Character.AnimController.OnGround || Character.InWater)
+                    {
+                        Character.AnimController.Collider.ApplyForce(limbDiff * mouthLimb.Mass * 50.0f, maxVelocity: 10.0f);
+                    }
                 }
             }
             else
@@ -2956,12 +3078,18 @@ namespace Barotrauma
                 }
                 else
                 {
-                    // Ignore all structures, items, and hulls inside these subs.
-                    if (aiTarget.Entity.Submarine != null) 
+                    if (aiTarget.Entity.Submarine != null)
                     {
+                        //ignore all items, structures and hulls in wrecks and beacon stations
+                        //(we don't want monsters to be distracted by them during missions,
+                        //nor have monsters inside them attack "their home" rather than the player)
                         if (aiTarget.Entity.Submarine.Info.IsWreck ||
-                            aiTarget.Entity.Submarine.Info.IsBeacon ||
-                            UnattackableSubmarines.Contains(aiTarget.Entity.Submarine))
+                            aiTarget.Entity.Submarine.Info.IsBeacon)
+                        {
+                            continue;
+                        }
+                        if (aiTarget.Entity is Structure or Hull or Item { body: null } &&
+                            unattackableSubmarines.Contains(aiTarget.Entity.Submarine))
                         {
                             continue;
                         }
@@ -3509,12 +3637,15 @@ namespace Barotrauma
                         {
                             if (targetCharacter.Submarine != null)
                             {
-                                // Target is inside -> reduce the priority
-                                valueModifier *= 0.5f;
-                                if (Character.Submarine != null)
+                                if (Character.Submarine != null && !targetCharacter.Submarine.IsConnectedTo(Character.Submarine))
                                 {
-                                    // Both inside different submarines -> can ignore safely
+                                    // Both inside different, unconnected submarines -> can ignore safely
                                     continue;
+                                }
+                                else
+                                {
+                                    // Target is inside a submarine that we are not -> reduce the priority
+                                    valueModifier *= 0.5f;
                                 }
                             }
                             else if (Character.CurrentHull != null)
@@ -4402,6 +4533,7 @@ namespace Barotrauma
                         {
                             SelectTarget(doorAiTarget, CurrentTargetMemory.Priority);
                             State = AIState.Attack;
+                            AttackLimb = null;
                             return false;
                         }
                     }

@@ -296,13 +296,9 @@ namespace Barotrauma.Lights
 
                 light.Priority = lightPriority(range, light);
 
-                int i = 0;
-                while (i < activeLights.Count && light.Priority < activeLights[i].Priority)
-                {
-                    i++;
-                }
-                activeLights.Insert(i, light);
+                activeLights.Add(light);
             }
+            activeLights.Sort(static (a, b) => b.Priority.CompareTo(a.Priority));
             ActiveLightCount = activeLights.Count;
 
             float lightPriority(float range, LightSource light)
@@ -332,7 +328,7 @@ namespace Barotrauma.Lights
                     activeLights.Remove(activeShadowCastingLights[i]);
                 }
             }
-            activeLights.Sort((l1, l2) => l1.LastRecalculationTime.CompareTo(l2.LastRecalculationTime));
+            activeLights.Sort(static (l1, l2) => l1.LastRecalculationTime.CompareTo(l2.LastRecalculationTime));
 
             //draw light sprites attached to characters
             //render into a separate rendertarget using alpha blending (instead of on top of everything else with alpha blending)

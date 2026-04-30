@@ -11,6 +11,8 @@ namespace Barotrauma
         public override Identifier Identifier { get; set; } = "extinguish fires".ToIdentifier();
         public override bool ForceRun => true;
         protected override bool AllowInAnySub => true;
+        // Periodically clear the ignore list so that fires abandoned when fumbling with finding an extinguisher, navigating etc get reconsidered
+        protected override float IgnoreListClearInterval => 30;
 
         public AIObjectiveExtinguishFires(Character character, AIObjectiveManager objectiveManager, float priorityModifier = 1) : base(character, objectiveManager, priorityModifier) { }
 

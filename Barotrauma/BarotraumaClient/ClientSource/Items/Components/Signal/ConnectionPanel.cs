@@ -97,7 +97,7 @@ namespace Barotrauma.Items.Components
             MoveConnectedWires(amount);
         }
         
-        public override bool ShouldDrawHUD(Character character)
+        protected override bool ShouldDrawHUDComponentSpecific(Character character)
         {
             return character == Character.Controlled && character == user && (character.SelectedItem == item || character.SelectedSecondaryItem == item);
         }

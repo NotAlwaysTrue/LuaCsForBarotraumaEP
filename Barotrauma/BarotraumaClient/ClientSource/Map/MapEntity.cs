@@ -471,11 +471,11 @@ namespace Barotrauma
 
                         if (item0 == null && item1 != null)
                         {
-                            item0 = Item.ItemList.FirstOrDefault(it => it.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(wire) ?? false);
+                            item0 = Item.ItemList.Find(it => it.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(wire) ?? false);
                         }
                         else if (item0 != null && item1 == null)
                         {
-                            item1 = Item.ItemList.FirstOrDefault(it => it.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(wire) ?? false);
+                            item1 = Item.ItemList.Find(it => it.GetComponent<ConnectionPanel>()?.DisconnectedWires.Contains(wire) ?? false);
                         }
                         if (item0 != null && item1 != null && SelectedList.Contains(item0) && SelectedList.Contains(item1))
                         {

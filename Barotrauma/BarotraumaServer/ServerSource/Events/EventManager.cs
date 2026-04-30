@@ -79,6 +79,15 @@ namespace Barotrauma
                             convAction.SelectedOption = selectedOption;
                             if (convAction.Options.Any() && !convAction.GetEndingOptions().Contains(selectedOption))
                             {
+                                var option = convAction.Options[selectedOption];
+                                if (option.ForceSay && sender.Character != null)
+                                {
+                                    sender.Character.ForceSay(
+                                        option.ForceSayText.IsNullOrEmpty() ? TextManager.Get(option.Text).Fallback(option.Text) : TextManager.Get(option.ForceSayText).Fallback(option.ForceSayText),
+                                        option.ForceSayInRadio,
+                                        option.ForceSayRemoveQuotes);
+                                }
+
                                 foreach (Client c in convAction.TargetClients)
                                 {
                                     if (c == sender) { continue; }                                    

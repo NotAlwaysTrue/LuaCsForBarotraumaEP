@@ -1,6 +1,7 @@
 ﻿using Barotrauma.Extensions;
 using Barotrauma.IO;
 using Barotrauma.Items.Components;
+using Barotrauma.LuaCs.Events;
 using Barotrauma.Steam;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -602,8 +603,6 @@ namespace Barotrauma.Networking
         private void ReadDataMessage(IReadMessage inc)
         {
             ServerPacketHeader header = (ServerPacketHeader)inc.ReadByte();
-
-            GameMain.LuaCs.Networking.NetMessageReceived(inc, header);
 
             if (roundInitStatus == RoundInitStatus.WaitingForStartGameFinalize
                 && header is not (
@@ -2905,8 +2904,6 @@ namespace Barotrauma.Networking
 
         public void Quit()
         {
-            GameMain.LuaCs.Stop();
-            
             ClientPeer?.Close(PeerDisconnectPacket.WithReason(DisconnectReason.Disconnected));
             
             GUIMessageBox.MessageBoxes.RemoveAll(c => c?.UserData is RoundSummary);
@@ -3006,7 +3003,8 @@ namespace Barotrauma.Networking
 
         public override void AddChatMessage(ChatMessage message)
         {
-            var should = GameMain.LuaCs.Hook.Call<bool?>("chatMessage", message.Text, message.SenderClient, message.Type, message);
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventChatMessage>(x => should = x.OnChatMessage(message.Text, message.SenderClient, message.Type, message) ?? should);
             if (should != null && should.Value) { return; }
 
             if (string.IsNullOrEmpty(message.Text)) { return; }

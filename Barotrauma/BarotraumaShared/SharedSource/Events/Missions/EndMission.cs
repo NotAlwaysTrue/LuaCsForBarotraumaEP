@@ -1,4 +1,4 @@
-using Barotrauma.Extensions;
+﻿using Barotrauma.Extensions;
 using Barotrauma.Items.Components;
 using Microsoft.Xna.Framework;
 using System;
@@ -181,7 +181,7 @@ namespace Barotrauma
                 return;
             }
             destructibleItems.Clear();
-            destructibleItems.AddRange(Item.ItemList.Where(it => it.HasTag(destructibleItemTag)));
+            destructibleItems.AddRange(Item.ItemList.FindAll(it => it.HasTag(destructibleItemTag)));
             if (destructibleItems.None())
             {
                 DebugConsole.ThrowError($"Error in end mission \"{Prefab.Identifier}\". Could not find any destructible items with the tag \"{spawnPointTag}\".",
@@ -301,7 +301,7 @@ namespace Barotrauma
 
         partial void OnStateChangedProjSpecific();
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             return Phase == MissionPhase.BossKilled;
         }

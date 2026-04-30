@@ -18,7 +18,7 @@ namespace Barotrauma.Networking
             MultiPlayerCampaign campaign = GameMain.GameSession.GameMode as MultiPlayerCampaign;
             foreach (Client c in networkMember.ConnectedClients)
             {
-                if (GameMain.LuaCs.Game.overrideRespawnSub)
+                if (LuaCsSetup.Instance.Game.overrideRespawnSub)
                     continue;
 
                 if (!c.InGame) { continue; }
@@ -169,7 +169,7 @@ namespace Barotrauma.Networking
 
         private bool ShouldStartRespawnCountdown(int characterToRespawnCount)
         {
-            if (GameMain.LuaCs.Game.overrideRespawnSub)
+            if (LuaCsSetup.Instance.Game.overrideRespawnSub)
             {
                 characterToRespawnCount = 0;
             }
@@ -187,7 +187,7 @@ namespace Barotrauma.Networking
 
             var teamId = teamSpecificState.TeamID;
             var respawnShuttle = GetShuttle(teamId);
-            if (respawnShuttle != null && !GameMain.LuaCs.Game.overrideRespawnSub)
+            if (respawnShuttle != null && !LuaCsSetup.Instance.Game.overrideRespawnSub)
             {
                 respawnShuttle.Velocity = Vector2.Zero;
             }
@@ -240,7 +240,7 @@ namespace Barotrauma.Networking
             if (RespawnShuttles.Any())
             {
                 ResetShuttle(teamSpecificState);
-                if (GameMain.LuaCs.Game.overrideRespawnSub)
+                if (LuaCsSetup.Instance.Game.overrideRespawnSub)
 				{
                     teamSpecificState.CurrentState = State.Waiting;
                 }
@@ -279,7 +279,7 @@ namespace Barotrauma.Networking
             var shuttleGaps = Gap.GapList.FindAll(g => RespawnShuttles.Contains(g.Submarine) && g.ConnectedWall != null);
             shuttleGaps.ForEach(g => Spawner.AddEntityToRemoveQueue(g));
 
-            var dockingPorts = Item.ItemList.Where(i => RespawnShuttles.Contains(i.Submarine) && i.GetComponent<DockingPort>() != null).ToList();
+            var dockingPorts = Item.ItemList.FindAll(i => RespawnShuttles.Contains(i.Submarine) && i.GetComponent<DockingPort>() != null);
             dockingPorts.ForEach(d => d.GetComponent<DockingPort>().Undock());
 
             if (!IsShuttleInsideLevel || DateTime.Now > teamSpecificState.DespawnTime)
@@ -594,6 +594,23 @@ namespace Barotrauma.Networking
                     foreach (var respawnContainer in respawnContainers[teamID])
                     {
                         teamSpecificState.RespawnItems.AddRange(AutoItemPlacer.RegenerateLoot(respawnShuttle, respawnContainer));
+                    }
+                }
+                else if (character.InWater)
+                {
+                    if (divingSuitPrefab != null)
+                    {
+                        var divingSuit = new Item(divingSuitPrefab, character.Position, respawnSub);
+                        Spawner.CreateNetworkEvent(new EntitySpawner.SpawnEntity(divingSuit));
+                        character.Inventory.TryPutItem(divingSuit, user: null, allowedSlots: divingSuit.AllowedSlots);
+                        teamSpecificState.RespawnItems.Add(divingSuit);
+                        if (oxyPrefab != null && divingSuit.GetComponent<ItemContainer>() != null)
+                        {
+                            var oxyTank = new Item(oxyPrefab, character.Position, respawnSub);
+                            Spawner.CreateNetworkEvent(new EntitySpawner.SpawnEntity(oxyTank));
+                            divingSuit.Combine(oxyTank, user: null);
+                            teamSpecificState.RespawnItems.Add(oxyTank);
+                        }
                     }
                 }
 

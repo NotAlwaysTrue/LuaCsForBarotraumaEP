@@ -52,10 +52,12 @@ namespace Barotrauma.Items.Components
 
         partial void SetLightSourceTransformProjSpecific()
         {
-            Vector2 offset = Vector2.Zero;
-            if (LightOffset != Vector2.Zero)
+            Vector2 offset = LightOffset * item.Scale;
+            if (offset != Vector2.Zero)
             {
-                offset = Vector2.Transform(LightOffset, Matrix.CreateRotationZ(item.FlippedY ? -item.RotationRad - MathHelper.Pi : -item.RotationRad)) * item.Scale;
+                if (item.FlippedX) { offset.X *= -1; }
+                if (item.FlippedY) { offset.Y *= -1; }
+                offset = Vector2.Transform(offset, Matrix.CreateRotationZ(-item.RotationRad));
             }
 
             if (ParentBody != null)
@@ -101,7 +103,10 @@ namespace Barotrauma.Items.Components
             if (Light?.LightSprite == null) { return; }
             if ((item.body == null || item.body.Enabled) && lightBrightness > 0.0f && IsOn && Light.Enabled)
             {
-                Vector2 offset = Vector2.Transform(LightOffset, Matrix.CreateRotationZ(item.FlippedY ? -item.RotationRad - MathHelper.Pi : -item.RotationRad)) * item.Scale;
+                Vector2 offset = LightOffset * item.Scale;
+                if (item.FlippedX) { offset.X *= -1; }
+                if (item.FlippedY) { offset.Y *= -1; }
+                offset = Vector2.Transform(offset, Matrix.CreateRotationZ(-item.RotationRad));
 
                 Vector2 origin = Light.LightSprite.Origin;
                 if ((Light.LightSpriteEffect & SpriteEffects.FlipHorizontally) == SpriteEffects.FlipHorizontally) { origin.X = Light.LightSprite.SourceRect.Width - origin.X; }
@@ -114,6 +119,7 @@ namespace Barotrauma.Items.Components
                 {
                     color = new Color(lightColor, Light.OverrideLightSpriteAlpha.Value);
                 }
+
                 Light.LightSprite.Draw(spriteBatch, 
                     new Vector2(drawPos.X, -drawPos.Y), 
                     color * lightBrightness, 
@@ -128,8 +134,16 @@ namespace Barotrauma.Items.Components
         {
             if (Light?.LightSprite != null && item.Prefab.CanSpriteFlipX)
             {
-                Light.LightSpriteEffect = Light.LightSpriteEffect == SpriteEffects.None ?
-                    SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                Light.LightSpriteEffect ^= SpriteEffects.FlipHorizontally;
+            }
+            SetLightSourceTransformProjSpecific();
+        }
+
+        public override void FlipY(bool relativeToSub)
+        {
+            if (Light?.LightSprite != null && item.Prefab.CanSpriteFlipY)
+            {
+                Light.LightSpriteEffect ^= SpriteEffects.FlipVertically;
             }
             SetLightSourceTransformProjSpecific();
         }

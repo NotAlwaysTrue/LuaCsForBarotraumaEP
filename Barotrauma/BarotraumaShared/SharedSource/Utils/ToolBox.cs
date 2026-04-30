@@ -2,7 +2,6 @@
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -12,6 +11,7 @@ using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Collections.Concurrent;
 
 namespace Barotrauma
 {
@@ -356,26 +356,32 @@ namespace Barotrauma
             return text;
         }
 
-        private static readonly ConcurrentDictionary<string, List<string>> cachedLines = new ConcurrentDictionary<string, List<string>>();
+        private static Dictionary<string, List<string>> cachedLines = new Dictionary<string, List<string>>();
         public static string GetRandomLine(string filePath, Rand.RandSync randSync = Rand.RandSync.ServerAndClient)
         {
-            List<string> lines = cachedLines.GetOrAdd(filePath, path =>
+            List<string> lines;
+            if (cachedLines.ContainsKey(filePath))
+            {
+                lines = cachedLines[filePath];
+            }
+            else
             {
                 try
                 {
-                    var fileLines = File.ReadAllLines(path, catchUnauthorizedAccessExceptions: false).ToList();
-                    if (fileLines.Count == 0)
+                    lines = File.ReadAllLines(filePath, catchUnauthorizedAccessExceptions: false).ToList();
+                    cachedLines.Add(filePath, lines);
+                    if (lines.Count == 0)
                     {
-                        DebugConsole.ThrowError("File \"" + path + "\" is empty!");
+                        DebugConsole.ThrowError("File \"" + filePath + "\" is empty!");
+                        return "";
                     }
-                    return fileLines;
                 }
                 catch (Exception e)
                 {
-                    DebugConsole.ThrowError("Couldn't open file \"" + path + "\"!", e);
-                    return new List<string>();
+                    DebugConsole.ThrowError("Couldn't open file \"" + filePath + "\"!", e);
+                    return "";
                 }
-            });
+            }
 
             if (lines.Count == 0) return "";
             return lines[Rand.Range(0, lines.Count, randSync)];

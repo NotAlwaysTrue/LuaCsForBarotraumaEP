@@ -503,102 +503,86 @@ namespace Barotrauma.Sounds
                 mutex = new object();
             }
 
-            // Use the playingChannels lock to protect both channel assignment AND OpenAL operations.
-            // This prevents race conditions when multiple threads try to play sounds simultaneously
-            // (e.g., during Parallel.ForEach in MapEntity.UpdateAll).
-            int poolIndex = (int)sound.SourcePoolIndex;
-            object channelsLock = sound.Owner.GetPlayingChannelsLock(sound.SourcePoolIndex);
-
 #if !DEBUG
             try
             {
 #endif
-                lock (channelsLock)
+                if (mutex != null) { Monitor.Enter(mutex); }
+                if (sound.Owner.CountPlayingInstances(sound) < sound.MaxSimultaneousInstances)
                 {
-                    if (mutex != null) { Monitor.Enter(mutex); }
-                    try
+                    ALSourceIndex = sound.Owner.AssignFreeSourceToChannel(this);
+                }
+
+                if (ALSourceIndex >= 0)
+                {
+                    if (!IsStream)
                     {
-                        if (sound.Owner.CountPlayingInstancesUnsafe(sound, poolIndex) < sound.MaxSimultaneousInstances)
+                        Al.Sourcei(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex), Al.Buffer, 0);
+                        int alError = Al.GetError();
+                        if (alError != Al.NoError)
                         {
-                            ALSourceIndex = sound.Owner.AssignFreeSourceToChannelUnsafe(this, poolIndex);
+                            throw new Exception("Failed to reset source buffer: " + debugName + ", " + Al.GetErrorString(alError));
                         }
 
-                        if (ALSourceIndex >= 0)
+                        Sound.FillAlBuffers();
+                        if (Sound.Buffers is not { AlBuffer: not 0, AlMuffledBuffer: not 0 }) { return; }
+
+                        uint alBuffer = sound.Owner.GetCategoryMuffle(category) || muffled ? Sound.Buffers.AlMuffledBuffer : Sound.Buffers.AlBuffer;
+                        Al.Sourcei(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex), Al.Buffer, (int)alBuffer);
+                        alError = Al.GetError();
+                        if (alError != Al.NoError)
                         {
-                            if (!IsStream)
-                            {
-                                Al.Sourcei(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex), Al.Buffer, 0);
-                                int alError = Al.GetError();
-                                if (alError != Al.NoError)
-                                {
-                                    throw new Exception("Failed to reset source buffer: " + debugName + ", " + Al.GetErrorString(alError));
-                                }
+                            throw new Exception("Failed to bind buffer to source (" + ALSourceIndex.ToString() + ":" + sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex) + "," + alBuffer.ToString() + "): " + debugName + ", " + Al.GetErrorString(alError));
+                        }
 
-                                Sound.FillAlBuffers();
-                                if (Sound.Buffers is not { AlBuffer: not 0, AlMuffledBuffer: not 0 }) { return; }
+                        SetProperties();
 
-                                uint alBuffer = sound.Owner.GetCategoryMuffle(category) || muffled ? Sound.Buffers.AlMuffledBuffer : Sound.Buffers.AlBuffer;
-                                Al.Sourcei(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex), Al.Buffer, (int)alBuffer);
-                                alError = Al.GetError();
-                                if (alError != Al.NoError)
-                                {
-                                    throw new Exception("Failed to bind buffer to source (" + ALSourceIndex.ToString() + ":" + sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex) + "," + alBuffer.ToString() + "): " + debugName + ", " + Al.GetErrorString(alError));
-                                }
-
-                                SetProperties();
-
-                                Al.SourcePlay(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex));
-                                alError = Al.GetError();
-                                if (alError != Al.NoError)
-                                {
-                                    throw new Exception("Failed to play source: " + debugName + ", " + Al.GetErrorString(alError));
-                                }
-                            }
-                            else
-                            {
-                                uint alBuffer = 0;
-                                Al.Sourcei(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex), Al.Buffer, (int)alBuffer);
-                                int alError = Al.GetError();
-                                if (alError != Al.NoError)
-                                {
-                                    throw new Exception("Failed to reset source buffer: " + debugName + ", " + Al.GetErrorString(alError));
-                                }
-
-                                Al.Sourcei(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex), Al.Looping, Al.False);
-                                alError = Al.GetError();
-                                if (alError != Al.NoError)
-                                {
-                                    throw new Exception("Failed to set stream looping state: " + debugName + ", " + Al.GetErrorString(alError));
-                                }
-
-                                streamShortBuffer = new short[STREAM_BUFFER_SIZE];
-
-                                streamBuffers = new uint[4];
-                                unqueuedBuffers = new uint[4];
-                                streamBufferAmplitudes = new float[4];
-                                for (int i = 0; i < 4; i++)
-                                {
-                                    Al.GenBuffer(out streamBuffers[i]);
-
-                                    alError = Al.GetError();
-                                    if (alError != Al.NoError)
-                                    {
-                                        throw new Exception("Failed to generate stream buffers: " + debugName + ", " + Al.GetErrorString(alError));
-                                    }
-
-                                    if (!Al.IsBuffer(streamBuffers[i]))
-                                    {
-                                        throw new Exception("Generated streamBuffer[" + i.ToString() + "] is invalid! " + debugName);
-                                    }
-                                }
-                                Sound.Owner.InitUpdateChannelThread();
-                                SetProperties();
-                            }
+                        Al.SourcePlay(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex));
+                        alError = Al.GetError();
+                        if (alError != Al.NoError)
+                        {
+                            throw new Exception("Failed to play source: " + debugName + ", " + Al.GetErrorString(alError));
                         }
                     }
-                    finally
+                    else
                     {
-                        if (mutex != null) { Monitor.Exit(mutex); }
+                        uint alBuffer = 0;
+                        Al.Sourcei(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex), Al.Buffer, (int)alBuffer);
+                        int alError = Al.GetError();
+                        if (alError != Al.NoError)
+                        {
+                            throw new Exception("Failed to reset source buffer: " + debugName + ", " + Al.GetErrorString(alError));
+                        }
+
+                        Al.Sourcei(sound.Owner.GetSourceFromIndex(Sound.SourcePoolIndex, ALSourceIndex), Al.Looping, Al.False);
+                        alError = Al.GetError();
+                        if (alError != Al.NoError)
+                        {
+                            throw new Exception("Failed to set stream looping state: " + debugName + ", " + Al.GetErrorString(alError));
+                        }
+
+                        streamShortBuffer = new short[STREAM_BUFFER_SIZE];
+
+                        streamBuffers = new uint[4];
+                        unqueuedBuffers = new uint[4];
+                        streamBufferAmplitudes = new float[4];
+                        for (int i = 0; i < 4; i++)
+                        {
+                            Al.GenBuffer(out streamBuffers[i]);
+
+                            alError = Al.GetError();
+                            if (alError != Al.NoError)
+                            {
+                                throw new Exception("Failed to generate stream buffers: " + debugName + ", " + Al.GetErrorString(alError));
+                            }
+
+                            if (!Al.IsBuffer(streamBuffers[i]))
+                            {
+                                throw new Exception("Generated streamBuffer[" + i.ToString() + "] is invalid! " + debugName);
+                            }
+                        }
+                        Sound.Owner.InitUpdateChannelThread();
+                        SetProperties();
                     }
                 }
 #if !DEBUG
@@ -606,6 +590,12 @@ namespace Barotrauma.Sounds
             catch
             {
                 throw;
+            }
+            finally
+            {
+#endif
+                if (mutex != null) { Monitor.Exit(mutex); }
+#if !DEBUG
             }
 #endif
 

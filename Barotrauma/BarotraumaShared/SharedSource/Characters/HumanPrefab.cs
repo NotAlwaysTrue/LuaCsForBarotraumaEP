@@ -190,7 +190,7 @@ namespace Barotrauma
                         idleObjective.PreferredOutpostModuleTypes.Add(moduleType);
                     }
                 }
-                humanAI.ReportRange = Hearing;
+                humanAI.Hearing = Hearing;
                 humanAI.ReportRange = ReportRange;
                 humanAI.FindWeaponsRange = FindWeaponsRange;
                 humanAI.AimSpeed = AimSpeed;

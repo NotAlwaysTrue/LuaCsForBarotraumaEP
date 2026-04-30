@@ -1,19 +1,18 @@
-﻿using Barotrauma.Networking;
+﻿using Barotrauma.Extensions;
+using Barotrauma.LuaCs.Events;
+using Barotrauma.Networking;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using FarseerPhysics.Dynamics.Contacts;
 using FarseerPhysics.Dynamics.Joints;
 using Microsoft.Xna.Framework;
+using MoonSharp.Interpreter;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Xml.Linq;
-using Barotrauma.Extensions;
-using LimbParams = Barotrauma.RagdollParams.LimbParams;
 using JointParams = Barotrauma.RagdollParams.JointParams;
-using MoonSharp.Interpreter;
+using LimbParams = Barotrauma.RagdollParams.LimbParams;
 
 namespace Barotrauma
 {
@@ -27,38 +26,13 @@ namespace Barotrauma
         /// </summary>
         const float MaxImpactDamage = 0.1f;
 
-        // Thread-safe list using copy-on-write pattern (ConcurrentBag doesn't support indexer/Remove)
-        private static volatile List<Ragdoll> _list = new List<Ragdoll>();
-        private static readonly object _listLock = new object();
-        private static List<Ragdoll> list => _list;
-        
-        private static void ListAdd(Ragdoll ragdoll)
-        {
-            lock (_listLock)
-            {
-                var newList = new List<Ragdoll>(_list) { ragdoll };
-                Interlocked.Exchange(ref _list, newList);
-            }
-        }
-        
-        private static bool ListRemove(Ragdoll ragdoll)
-        {
-            lock (_listLock)
-            {
-                var newList = new List<Ragdoll>(_list);
-                bool removed = newList.Remove(ragdoll);
-                if (removed)
-                {
-                    Interlocked.Exchange(ref _list, newList);
-                }
-                return removed;
-            }
-        }
+        private static readonly List<Ragdoll> list = new List<Ragdoll>();
 
         struct Impact
         {
             public Fixture F1, F2;
             public Vector2 LocalNormal;
+            public Vector2 WorldNormal;
             public Vector2 Velocity;
             public Vector2 ImpactPos;
 
@@ -68,13 +42,12 @@ namespace Barotrauma
                 F2 = f2;
                 Velocity = velocity;
                 LocalNormal = contact.Manifold.LocalNormal;
-                contact.GetWorldManifold(out _, out FarseerPhysics.Common.FixedArray2<Vector2> points);
+                contact.GetWorldManifold(out WorldNormal, out FarseerPhysics.Common.FixedArray2<Vector2> points);
                 ImpactPos = points[0];
             }
         }
 
-        // Thread-safe queue for physics collision callbacks
-        private readonly ConcurrentQueue<Impact> impactQueue = new ConcurrentQueue<Impact>();
+        private readonly Queue<Impact> impactQueue = new Queue<Impact>();
 
         protected Hull currentHull;
 
@@ -496,7 +469,7 @@ namespace Barotrauma
 
         public Ragdoll(Character character, string seed, RagdollParams ragdollParams = null)
         {
-            ListAdd(this);
+            list.Add(this);
             this.character = character;
             Recreate(ragdollParams ?? RagdollParams);
         }
@@ -773,7 +746,10 @@ namespace Barotrauma
             {
                 if (!f2.IsSensor)
                 {
-                    impactQueue.Enqueue(new Impact(f1, f2, contact, velocity));
+                    lock (impactQueue)
+                    {
+                        impactQueue.Enqueue(new Impact(f1, f2, contact, velocity));
+                    }
                 }
                 return true;
             }
@@ -845,12 +821,15 @@ namespace Barotrauma
                 }
             }
 
-            impactQueue.Enqueue(new Impact(f1, f2, contact, velocity));
+            lock (impactQueue)
+            {
+                impactQueue.Enqueue(new Impact(f1, f2, contact, velocity));
+            }
 
             return true;
         }
 
-        private void ApplyImpact(Fixture f1, Fixture f2, Vector2 localNormal, Vector2 impactPos, Vector2 velocity)
+        private void ApplyImpact(Fixture f1, Fixture f2, Vector2 worldNormal, Vector2 impactPos, Vector2 velocity)
         {
             if (character.DisableImpactDamageTimer > 0.0f) { return; }
 
@@ -862,7 +841,7 @@ namespace Barotrauma
                 return; 
             }
 
-            Vector2 normal = localNormal;
+            Vector2 normal = worldNormal;
             float impact = Vector2.Dot(velocity, -normal);
             if (f1.Body == Collider.FarseerBody || !Collider.Enabled)
             {
@@ -880,7 +859,8 @@ namespace Barotrauma
 
                         float impactDamage = GetImpactDamage(impact, impactTolerance);
 
-                        var should = GameMain.LuaCs.Hook.Call<float?>("changeFallDamage", impactDamage, character, impactPos, velocity);
+                        float? should = null;
+                        LuaCsSetup.Instance.EventService.PublishEvent<IEventChangeFallDamage>(x => should = x.OnChangeFallDamage(impactDamage, character, impactPos, velocity) ?? should);
 
                         if (should != null)
 						{
@@ -1100,9 +1080,12 @@ namespace Barotrauma
             }
 
             Hull newHull = Hull.FindHull(findPos, currentHull);
-            if (setInWater && newHull == null)
+            if (setInWater)
             {
-                inWater = true;
+                if (newHull == null || findPos.Y < newHull.WorldSurface)
+                {
+                    inWater = true;
+                }
             }
 
             if (newHull == currentHull) { return; }
@@ -1145,7 +1128,10 @@ namespace Barotrauma
                 {
                     //don't teleport out yet if the character is going through a gap
                     if (Gap.FindAdjacent(Gap.GapList.Where(g => g.Submarine == currentHull.Submarine), findPos, 150.0f, allowRoomToRoom: true) != null) { return; }
-                    if (Limbs.Any(l => Gap.FindAdjacent(currentHull.ConnectedGaps, l.WorldPosition, ConvertUnits.ToDisplayUnits(l.body.GetSize().Combine()), allowRoomToRoom: true) != null)) { return; }
+                    if (Limbs.Any(l => !l.IsSevered && Gap.FindAdjacent(currentHull.ConnectedGaps, l.WorldPosition, ConvertUnits.ToDisplayUnits(l.body.GetSize().Combine()), allowRoomToRoom: true) != null)) 
+                    { 
+                        return; 
+                    }
                     character.MemLocalState?.Clear();
                     Teleport(ConvertUnits.ToSimUnits(currentHull.Submarine.Position), currentHull.Submarine.Velocity);
                 }
@@ -1207,6 +1193,10 @@ namespace Barotrauma
 
         public void Teleport(Vector2 moveAmount, Vector2 velocityChange, bool detachProjectiles = true)
         {
+            // Hopefully this will fix some crashes :(
+            // If Collider was null then no need to procced: nothing is there already
+            if (Collider == null) { return; }
+
             foreach (Limb limb in Limbs)
             {
                 if (limb.IsSevered) { continue; }
@@ -1228,6 +1218,7 @@ namespace Barotrauma
 
             character.DisableImpactDamageTimer = 0.25f;
 
+            // Why they did null check below but didn't do it here????
             SetPosition(Collider.SimPosition + moveAmount);
             character.CursorPosition += moveAmount;
 
@@ -1277,6 +1268,9 @@ namespace Barotrauma
 
         private float BodyInRestDelay = 1.0f;
 
+        /// <summary>
+        /// Controls the sleeping state of this character
+        /// </summary>
         public bool BodyInRest
         {
             get { return bodyInRestTimer > BodyInRestDelay; }
@@ -1297,9 +1291,10 @@ namespace Barotrauma
         {
             if (!character.Enabled || character.Removed || Frozen || Invalid || Collider == null || Collider.Removed) { return; }
 
-            while (impactQueue.TryDequeue(out var impact))
+            while (impactQueue.Count > 0)
             {
-                ApplyImpact(impact.F1, impact.F2, impact.LocalNormal, impact.ImpactPos, impact.Velocity);
+                var impact = impactQueue.Dequeue();
+                ApplyImpact(impact.F1, impact.F2, impact.WorldNormal, impact.ImpactPos, impact.Velocity);
             }
 
             CheckValidity();
@@ -1342,9 +1337,18 @@ namespace Barotrauma
             }
 
             float MaxVel = NetConfig.MaxPhysicsBodyVelocity;
-            Collider.LinearVelocity = new Vector2(
-                NetConfig.Quantize(Collider.LinearVelocity.X, -MaxVel, MaxVel, 12),
-                NetConfig.Quantize(Collider.LinearVelocity.Y, -MaxVel, MaxVel, 12));
+            if (GameMain.NetworkMember != null)
+            {
+                Collider.LinearVelocity = new Vector2(
+                    NetConfig.Quantize(Collider.LinearVelocity.X, -MaxVel, MaxVel, 12),
+                    NetConfig.Quantize(Collider.LinearVelocity.Y, -MaxVel, MaxVel, 12));
+            }
+            else
+            {
+                Collider.LinearVelocity = new Vector2(
+                    MathHelper.Clamp(Collider.LinearVelocity.X, -MaxVel, MaxVel),
+                    MathHelper.Clamp(Collider.LinearVelocity.Y, -MaxVel, MaxVel));
+            }
 
             if (forceStanding)
             {
@@ -1398,9 +1402,19 @@ namespace Barotrauma
 
             UpdateHullFlowForces(deltaTime);
 
-            if (currentHull == null ||
+            bool applyWaterForces = 
+                currentHull == null ||
                 currentHull.WaterVolume > currentHull.Volume * 0.95f ||
-                ConvertUnits.ToSimUnits(currentHull.Surface) > Collider.SimPosition.Y)
+                ConvertUnits.ToSimUnits(currentHull.Surface) > Collider.SimPosition.Y;
+#if CLIENT
+            if (Screen.Selected is CharacterEditor.CharacterEditorScreen &&
+                this is AnimController animController)
+            {
+                applyWaterForces = animController.CurrentAnimationParams is SwimParams;
+            }
+#endif
+
+            if (applyWaterForces)
             {
                 Collider.ApplyWaterForces();
             }
@@ -1490,10 +1504,10 @@ namespace Barotrauma
                 else
                 {
                     // Falling -> ragdoll briefly if we are not moving at all, because we are probably stuck.
-                    if (Collider.LinearVelocity == Vector2.Zero && !character.IsRemotePlayer)
+                    if (Collider.LinearVelocity == Vector2.Zero && GameMain.NetworkMember is not { IsClient: true })
                     {
                         character.IsRagdolled = true;
-                        if (character.IsBot)
+                        if (!character.IsPlayer)
                         {
                             // Seems to work without this on player controlled characters -> not sure if we should call it always or just for the bots.
                             character.SetInput(InputType.Ragdoll, hit: false, held: true);
@@ -1853,7 +1867,13 @@ namespace Barotrauma
             {
                 floorFixture = standOnFloorFixture;
                 standOnFloorY = rayStart.Y + (rayEnd.Y - rayStart.Y) * standOnFloorFraction;
-                if (rayStart.Y - standOnFloorY < Collider.Height * 0.5f + Collider.Radius + ColliderHeightFromFloor * 1.2f)
+
+                //allow the floor to be just a bit below the bottom of the collider for the character to be "on ground"
+                //there is some inaccuracy in the physics simulation (and floats), the collider isn't usually precisely ColliderHeightFromFloor above the floor
+                const float Tolerance = 0.1f;
+                float standHeight = Collider.Height * 0.5f + Collider.Radius + ColliderHeightFromFloor;
+
+                if (rayStart.Y - standOnFloorY <= standHeight + Tolerance)
                 {
                     onGround = true;
                     if (standOnFloorFixture.CollisionCategories == Physics.CollisionStairs)
@@ -2220,8 +2240,9 @@ namespace Barotrauma
             if (limb == null)
             {
                 // Didn't seek or find a (valid) limb of the matching type. If there's multiple limbs of the same type, check the other limbs.
-                foreach (var l in limbs)
+                foreach (var l in Limbs)
                 {
+                    if (l == null) { continue; }
                     if (l.Removed) { continue; }
                     if (useSecondaryType)
                     {
@@ -2347,7 +2368,7 @@ namespace Barotrauma
                 LimbJoints = null;
             }
 
-            ListRemove(this);
+            list.Remove(this);
         }
 
         public static void RemoveAll()

@@ -1,0 +1,962 @@
+﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Loader;
+using System.Text;
+using System.Threading;
+using System.Xml.Serialization;
+using Barotrauma.Extensions;
+using Barotrauma.IO;
+using Barotrauma.LuaCs.Data;
+using Barotrauma.LuaCs.Events;
+using FluentResults;
+using FluentResults.LuaCs;
+using LightInject;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging;
+using Microsoft.Toolkit.Diagnostics;
+using OneOf;
+
+namespace Barotrauma.LuaCs;
+
+public class PluginManagementService : IAssemblyManagementService
+{
+    #region CSHARP_COMPILATION_OPTIONS
+
+    private static readonly CSharpParseOptions ScriptParseOptions = CSharpParseOptions.Default
+        .WithPreprocessorSymbols(new[]
+        {
+#if SERVER
+            "SERVER"
+#elif CLIENT
+            "CLIENT"
+#else
+            "UNDEFINED"
+#endif
+#if DEBUG
+            ,"DEBUG"
+#endif
+        });
+
+#if WINDOWS
+    private const string PLATFORM_TARGET = "Windows";
+#elif OSX
+    private const string PLATFORM_TARGET = "OSX";
+#elif LINUX
+    private const string PLATFORM_TARGET = "Linux";
+#endif
+
+#if CLIENT
+    private const string ARCHITECTURE_TARGET = "Client";
+#elif SERVER
+    private const string ARCHITECTURE_TARGET = "Server";
+#endif
+
+    private static readonly CSharpCompilationOptions CompilationOptions = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary)
+        .WithMetadataImportOptions(MetadataImportOptions.All)
+#if DEBUG
+        .WithOptimizationLevel(OptimizationLevel.Debug)
+#else
+        .WithOptimizationLevel(OptimizationLevel.Release)
+#endif
+        .WithAllowUnsafe(true);
+    
+    private static readonly SyntaxTree BaseAssemblyImports = CSharpSyntaxTree.ParseText(
+        new StringBuilder()
+            .AppendLine("global using LuaCsHook = Barotrauma.LuaCs.Compatibility.ILuaCsHook;")
+            .AppendLine("global using System.Reflection;")
+            .AppendLine("global using Barotrauma;")
+            .AppendLine("global using Barotrauma.LuaCs;")
+            .AppendLine("global using Barotrauma.LuaCs.Compatibility;")
+            .AppendLine("using System.Runtime.CompilerServices;")
+            .AppendLine("[assembly: IgnoresAccessChecksTo(\"BarotraumaCore\")]")
+#if CLIENT
+            .AppendLine("[assembly: IgnoresAccessChecksTo(\"Barotrauma\")]")
+#elif SERVER
+            .AppendLine("[assembly: IgnoresAccessChecksTo(\"DedicatedServer\")]")
+#endif
+            .ToString(),
+        ScriptParseOptions);
+
+    private ImmutableArray<MetadataReference> _baseMetadataReferences = ImmutableArray<MetadataReference>.Empty;
+    private ImmutableArray<MetadataReference> _baseMetadataReferencesNonPublicized = ImmutableArray<MetadataReference>.Empty;
+    
+    
+    private IEnumerable<MetadataReference> BaseMetadataReferences
+    {
+        get
+        {
+            if (_baseMetadataReferences.IsDefaultOrEmpty)
+            {
+                _baseMetadataReferences = Basic.Reference.Assemblies.Net80.References.All
+                    .Union(AssemblyLoadContext.Default.Assemblies
+                        .Where(ass =>
+                            !ass.IsDynamic &&
+                            !ass.GetName().FullName.StartsWith("BarotraumaCore") &&
+                            !ass.GetName().FullName.StartsWith("Barotrauma") &&
+                            !ass.GetName().FullName.StartsWith("DedicatedServer"))
+                        .Where(ass => !ass.Location.IsNullOrWhiteSpace())
+                        .Select(MetadataReference (ass) => MetadataReference.CreateFromFile(ass.Location)))
+                    .Where(ar => ar is not null)
+                    .ToImmutableArray();
+            }
+
+            return _baseMetadataReferences;
+        }
+    }
+    
+    private IEnumerable<MetadataReference> BaseMetadataReferencesWithBarotrauma
+    {
+        get
+        {
+            if (_baseMetadataReferencesNonPublicized.IsDefaultOrEmpty)
+            {
+                _baseMetadataReferencesNonPublicized = Basic.Reference.Assemblies.Net80.References.All
+                    .Union(AssemblyLoadContext.Default.Assemblies
+                        .Where(ass => !ass.IsDynamic)
+                        .Where(ass => !ass.Location.IsNullOrWhiteSpace())
+                        .Select(MetadataReference (ass) => MetadataReference.CreateFromFile(ass.Location)))
+                    .Where(ar => ar is not null)
+                    .ToImmutableArray();
+            }
+
+            return _baseMetadataReferencesNonPublicized;
+        }
+    }
+    
+    #endregion
+    
+    #region Disposal
+
+    public void Dispose()
+    {
+        using var lck = _operationsLock.AcquireWriterLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        if (!ModUtils.Threading.CheckIfClearAndSetBool(ref _isDisposed))
+        {
+            return;
+        }
+
+        UnsafeDisposeResourcesInternal();
+        _assemblyLoaderFactory = null;
+        _storageService = null;
+        _eventService = null;
+        _logger = null;
+        _configService = null;
+        _luaScriptManagementService = null;
+        _luaCsInfoProvider = null;
+        
+        GC.SuppressFinalize(this);
+    }
+
+    private void UnsafeDisposeResourcesInternal()
+    {
+        foreach (var packPlugin in _pluginInstances.SelectMany(kvp => kvp.Value.Select(pluginInst => (kvp.Key, pluginInst))))
+        {
+            try
+            {
+                packPlugin.pluginInst.Dispose();
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Error while disposing plugin for ContentPackage {packPlugin.Key.Name}: \n{e.Message}");
+            }
+        }
+        _pluginInstances.Clear();
+        _pluginPackageLookup.Clear();
+        _pluginInjectorContainer?.Dispose();
+        _pluginInjectorContainer = null;
+        
+        foreach (var loader in _assemblyLoaders)
+        {
+            try
+            {
+                loader.Value.Dispose();
+                _unloadingAssemblyLoaders.Add(loader.Value, loader.Key);
+            }
+            catch (Exception e)
+            {
+                _logger?.LogError($"Failed to dispose of {nameof(IAssemblyLoaderService)} for ContentPackage {loader.Key.Name}: \n{e.Message}");
+                if (loader.Value.Assemblies.Any())
+                {
+                    foreach (var ass in loader.Value.Assemblies)
+                    {
+                        _logger?.LogWarning($"{nameof(PluginManagementService)}: Fallback manual unsubscription of assemblies: {ass.GetName()}");
+                        ReflectionUtils.RemoveAssemblyFromCache(ass);
+                    }
+                }
+            }
+        }
+        _assemblyLoaders.Clear();
+    }
+
+    private int _isDisposed = 0;
+    public bool IsDisposed
+    {
+        get => ModUtils.Threading.GetBool(ref _isDisposed);
+        private set => ModUtils.Threading.SetBool(ref _isDisposed, value);
+    }
+    public FluentResults.Result Reset()
+    {
+        using var lck = _operationsLock.AcquireWriterLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        IService.CheckDisposed(this);
+        UnsafeDisposeResourcesInternal();
+        return FluentResults.Result.Ok();
+    }
+
+    #endregion
+    
+    private IAssemblyLoaderService.IFactory _assemblyLoaderFactory;
+    private IStorageService _storageService;
+    private ILoggerService _logger;
+    private Lazy<IEventService> _eventService;
+    private Lazy<IConfigService> _configService;
+    private Lazy<ILuaScriptManagementService> _luaScriptManagementService;
+    private IEventService _pluginEventService;
+    private Lazy<ILuaPatcher> _pluginLuaPatcherService;
+    private Func<IConsoleCommandsService> _consoleCommandServiceFactory;
+    private ILuaCsInfoProvider _luaCsInfoProvider;
+    private readonly ConcurrentDictionary<ContentPackage, IAssemblyLoaderService> _assemblyLoaders = new();
+    private readonly ConcurrentDictionary<Type, ContentPackage> _pluginPackageLookup = new();
+    private readonly ConcurrentDictionary<ContentPackage, ImmutableArray<IAssemblyPlugin>> _pluginInstances = new();
+    private readonly ConditionalWeakTable<IAssemblyLoaderService, ContentPackage> _unloadingAssemblyLoaders = new();
+    private readonly ConcurrentBag<IntPtr> _loadedNativeLibraries = new();
+    private readonly AsyncReaderWriterLock _operationsLock = new();
+    private ServiceContainer _pluginInjectorContainer;
+    
+    public PluginManagementService(
+        IAssemblyLoaderService.IFactory assemblyLoaderFactory, 
+        IStorageService storageService, 
+        ILoggerService logger, 
+        Lazy<IEventService> eventService, 
+        Lazy<ILuaScriptManagementService> luaScriptManagementService, 
+        Lazy<IConfigService> configService, 
+        Lazy<ILuaPatcher> pluginLuaPatcherService, 
+        Func<IConsoleCommandsService> consoleCommandServiceFactory, 
+        ILuaCsInfoProvider luaCsInfoProvider)
+    {
+        _assemblyLoaderFactory = assemblyLoaderFactory;
+        _storageService = storageService;
+        _logger = logger;
+        _eventService = eventService;
+        _luaScriptManagementService = luaScriptManagementService;
+        _configService = configService;
+        _pluginLuaPatcherService = pluginLuaPatcherService;
+        _consoleCommandServiceFactory = consoleCommandServiceFactory;
+        _luaCsInfoProvider = luaCsInfoProvider;
+    }
+
+    private ServiceContainer CreatePluginServiceContainer()
+    {
+        var container = new ServiceContainer(new ContainerOptions()
+        {
+            EnablePropertyInjection = true
+        });
+
+        _pluginEventService ??= new EventService(_logger, _pluginLuaPatcherService.Value);
+        _eventService.Value.AddDispatcherEventService(_pluginEventService);
+        
+        container.Register<ILoggerService>(fac => _logger);
+        container.Register<IStorageService>(fac => _storageService);
+        container.Register<IEventService>(fac => _pluginEventService);
+        container.Register<IPluginManagementService>(fac => this);
+        container.Register<ILuaScriptManagementService>(fac => _luaScriptManagementService.Value);
+        container.Register<IConfigService>(fac => _configService.Value);
+        container.Register<IConsoleCommandsService>(fac => _consoleCommandServiceFactory?.Invoke());
+
+        return container;
+    }
+
+    public Result<ImmutableArray<Type>> GetImplementingTypes<T>(bool includeInterfaces = false, bool includeAbstractTypes = false,
+        bool includeDefaultContext = true)
+    {
+        if (includeInterfaces)
+        {
+            includeAbstractTypes = true;
+        }
+
+        using var lck = _operationsLock.AcquireReaderLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        IService.CheckDisposed(this);
+        
+        var builder = ImmutableArray.CreateBuilder<Type>();
+        
+        if (includeDefaultContext)
+        {
+            foreach (var ass in AssemblyLoadContext.Default.Assemblies)
+            {
+                AddTypesFromAssembly(ass);   
+            }
+        }
+
+        foreach (var ass in _assemblyLoaders.Values.Where(al => !al.IsReferenceOnlyMode).SelectMany(al => al.Assemblies))
+        {
+            AddTypesFromAssembly(ass);
+        }
+
+        return builder.ToImmutable();
+
+        
+        void AddTypesFromAssembly(Assembly assembly)
+        {
+            foreach (var type in assembly.GetSafeTypes())
+            {
+                if ((includeInterfaces || !type.IsInterface)
+                    && (includeAbstractTypes || !type.IsAbstract)
+                    && type.IsAssignableTo(typeof(T)))
+                {
+                    builder.Add(type);
+                }
+            }
+        }
+    }
+
+    public bool TryGetPackageForPlugin<TPlugin>(out ContentPackage ownerPackage)
+    {
+        return _pluginPackageLookup.TryGetValue(typeof(TPlugin), out ownerPackage);
+    }
+
+    public Type GetType(string typeName, bool isByRefType = false, bool includeInterfaces = false,
+        bool includeDefaultContext = true)
+    {
+        if (typeName.StartsWith("out ") || typeName.StartsWith("ref "))
+        {
+            typeName = typeName.Remove(0, 4);
+            isByRefType = true;
+        }
+
+        if (includeDefaultContext)
+        {
+            var type = Type.GetType(typeName, false, false);
+            if (type is not null && (includeInterfaces || !type.IsInterface))
+            {
+                if (isByRefType)
+                {
+                    return type.MakeByRefType();
+                }
+
+                return type;
+            }
+            
+            foreach (var ass in AssemblyLoadContext.Default.Assemblies)
+            {
+                if (ass.GetType(typeName, false, false) is not {} type2 || (!includeInterfaces && type2.IsInterface))
+                {
+                    continue;
+                }
+
+                return isByRefType ? type2.MakeByRefType() : type2;
+            }
+        }
+
+        foreach (var ass in AssemblyLoadContext.All
+                     .Where(alc => alc != AssemblyLoadContext.Default)
+                     .SelectMany(alc => alc.Assemblies))
+        {
+            if (ass.GetType(typeName, false, false) is not {} type || (!includeInterfaces && type.IsInterface))
+            {
+                continue;
+            }
+
+            return isByRefType ? type.MakeByRefType() : type;
+        }
+
+        return null;
+    }
+
+    public FluentResults.Result ActivatePluginInstances(ImmutableArray<ContentPackage> executionOrder, bool excludeAlreadyRunningPackages = true)
+    {
+        if (executionOrder.IsDefaultOrEmpty)
+        {
+            ThrowHelper.ThrowArgumentNullException($"{nameof(ActivatePluginInstances)}: The ececution list provided is empty.");
+        }
+        using var lck = _operationsLock.AcquireWriterLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        IService.CheckDisposed(this);
+
+        if (_assemblyLoaders.IsEmpty)
+        {
+            return FluentResults.Result.Ok();
+        }
+
+        var results = new FluentResults.Result();
+
+        var toLoad = _assemblyLoaders
+            .Where(al => executionOrder.Contains(al.Key))
+            .Where(al => !excludeAlreadyRunningPackages || !_pluginInstances.ContainsKey(al.Key))
+            .SelectMany(al => al.Value.Assemblies.Select(ass => (al.Key, ass)))
+            .SelectMany<(ContentPackage Key, Assembly ass), (ContentPackage Key, Type type)>(kvp =>
+            {
+                try
+                {
+                    return kvp.ass.GetTypes()
+                        .Where(type =>
+                            type is { IsInterface: false, IsAbstract: false, IsGenericType: false }
+                            && type.IsAssignableTo(typeof(IAssemblyPlugin)))
+                        .Select(type => (kvp.Key, type));
+                }
+                catch (ReflectionTypeLoadException re)
+                {
+                    results.WithError(new Error($"Failed to get types from Package '{kvp.Key.Name}'"));
+                    results.WithError(new ExceptionalError(re));
+                }
+                catch (Exception e)
+                {
+                    results.WithError(new Error($"Failed to get types from Package '{kvp.Key.Name}'"));
+                    results.WithError(new ExceptionalError(e));
+                }
+                return new List<(ContentPackage Key, Type type)>();
+            })
+            .GroupBy(kvp => kvp.Key, kvp => kvp.type)
+            .OrderBy(exeGrp => executionOrder.IndexOf(exeGrp.Key))
+            .ToImmutableArray();
+
+        if (toLoad.Length == 0)
+        {
+            return results;
+        }
+
+        _logger.LogMessage($"Activating {nameof(IAssemblyPlugin)} instances");
+        
+        var loadedPackagePlugins =
+            ImmutableArray.CreateBuilder<(ContentPackage Package, ImmutableArray<IAssemblyPlugin> Plugins)>();
+        _pluginInjectorContainer ??= CreatePluginServiceContainer();
+        
+        foreach (var packageTypes in toLoad)
+        {
+            var loadedTypes = ImmutableArray.CreateBuilder<IAssemblyPlugin>();
+            foreach (var pluginType in packageTypes)
+            {
+                try
+                {
+                    _logger.LogMessage($"- Instantiating {pluginType.Name}");
+                    var plugin = (IAssemblyPlugin)Activator.CreateInstance(pluginType);
+                    _pluginInjectorContainer.InjectProperties(plugin);
+                    _pluginInjectorContainer.Register(pluginType, fac => plugin);
+                    loadedTypes.Add(plugin);
+                    _pluginPackageLookup.TryAdd(pluginType, packageTypes.Key);
+                }
+                catch (Exception e)
+                {
+                    results.WithError(new ExceptionalError($"Failed to instantiate mod: {packageTypes.Key.Name}", e));
+                    continue;
+                }
+            }
+            loadedPackagePlugins.Add((packageTypes.Key, loadedTypes.ToImmutable()));
+        }
+
+        var packPluginGroups = loadedPackagePlugins.ToImmutable();
+        foreach (var packagePluginGrp in packPluginGroups)
+        {
+            if (_pluginInstances.TryGetValue(packagePluginGrp.Package, out var plugins))
+            {
+                _pluginInstances[packagePluginGrp.Package] = plugins.Concat(packagePluginGrp.Plugins).ToImmutableArray();
+                continue;
+            }
+
+            _pluginInstances[packagePluginGrp.Package] = packagePluginGrp.Plugins;
+        }
+
+        var pluginsToInit = packPluginGroups.SelectMany(ppg => ppg.Plugins).ToImmutableArray();
+
+        foreach (var plugin in pluginsToInit)
+        {
+            results.WithReasons(PluginInitRunner(plugin, p => p.PreInitPatching()).Reasons);
+        }
+
+        _eventService.Value.PublishEvent<IEventPluginPreInitialize>(sub => sub.PreInitPatching());
+        
+        foreach (var plugin in pluginsToInit)
+        {
+            results.WithReasons(PluginInitRunner(plugin, p => p.Initialize()).Reasons);
+        }
+        
+        _eventService.Value.PublishEvent<IEventPluginInitialize>(sub => sub.Initialize());
+        
+        foreach (var plugin in pluginsToInit)
+        {
+            results.WithReasons(PluginInitRunner(plugin, p => p.OnLoadCompleted()).Reasons);
+        }
+
+        _eventService.Value.PublishEvent<IEventPluginLoadCompleted>(sub => sub.OnLoadCompleted());
+
+        return results;
+
+        // helper
+        FluentResults.Result PluginInitRunner(IAssemblyPlugin plugin, Action<IAssemblyPlugin> action)
+        {
+            try
+            {
+                action(plugin);
+                return FluentResults.Result.Ok();
+            }
+            catch (Exception e)
+            {
+                return FluentResults.Result.Fail(new ExceptionalError(e));
+            }
+        }
+    }
+
+
+    public FluentResults.Result LoadAssemblyResources(ImmutableArray<IAssemblyResourceInfo> resources)
+    {
+        if (resources.IsDefaultOrEmpty)
+        {
+            ThrowHelper.ThrowArgumentNullException($"{nameof(LoadAssemblyResources)} The resource list is empty.)");
+        }
+        using var lck = _operationsLock.AcquireReaderLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        IService.CheckDisposed(this);
+
+        _storageService.UseCaching = _luaCsInfoProvider.UseCaching;
+        if (!_luaCsInfoProvider.UseCaching)
+        {
+            _storageService.PurgeCache();
+        }
+        
+        var orderedContentPacks = resources.GroupBy(res => res.OwnerPackage)
+            .OrderBy(res => resources.FindIndex(r2 => r2.OwnerPackage == res.Key))
+            .ToImmutableArray();
+
+        var result = new FluentResults.Result();
+        
+        foreach (var contentPack in orderedContentPacks)
+        {
+            LoadBinaries(contentPack);
+            LoadAndCompileScriptAssemblies(contentPack);
+            foreach (var ass in _assemblyLoaders[contentPack.Key].Assemblies)
+            {
+                ReflectionUtils.AddNonAbstractAssemblyTypes(ass);
+            }
+        }
+        
+        return result;
+        
+        // --- helper methods
+        void LoadBinaries(IGrouping<ContentPackage,IAssemblyResourceInfo> contentPackRes)
+        {
+            var binaries = contentPackRes.Where(cRes => !cRes.IsScript)
+                .OrderBy(bin => bin.LoadPriority)
+                .SelectMany(bin => bin.FilePaths)
+                .ToImmutableArray();
+
+            if (binaries.IsDefaultOrEmpty)
+            {
+                return;
+            }
+            
+            var assemblyLoader = _assemblyLoaders.GetOrAdd(contentPackRes.Key, (cp) => _assemblyLoaderFactory.CreateInstance(
+                new IAssemblyLoaderService.LoaderInitData(
+                    InstanceId: Guid.NewGuid(),
+                    contentPackRes.Key.Name,
+                    IsReferenceMode: contentPackRes.Any(r => r.IsReferenceModeOnly),
+                    OwnerPackage: contentPackRes.Key,
+                    OnUnload: OnAssemblyLoaderUnloading,
+                    OnResolvingManaged: OnAssemblyLoaderResolvingManaged, 
+                    OnResolvingUnmanagedDll: OnAssemblyLoaderResolvingUnmanaged
+                )));
+
+            var dependencyPaths = binaries
+                .Select(bin => System.IO.Path.GetDirectoryName(bin.FullPath))
+                .Distinct()
+                .ToImmutableArray();
+                
+            foreach (var binResource in binaries)
+            {
+                var res = assemblyLoader.LoadAssemblyFromFile(binResource.FullPath, dependencyPaths);
+                result.WithReasons(res.Reasons);
+                _logger.LogResults(res.ToResult());
+            }
+        }
+        
+        void LoadAndCompileScriptAssemblies(IGrouping<ContentPackage, IAssemblyResourceInfo> contentPackRes)
+        {
+            var scriptsGrp = contentPackRes.Where(cRes => cRes.IsScript)
+                .Select(scr => (scr.OwnerPackage, scr.FriendlyName, scr.FilePaths, scr.UseInternalAccessName, scr.LoadPriority))
+                .OrderBy(scr => scr.LoadPriority)
+                .GroupBy(scr => scr.FriendlyName)
+                .ToImmutableArray();
+
+            if (scriptsGrp.IsDefaultOrEmpty)
+            {
+                return;
+            }
+
+            var metadataReferences = GetMetadataReferences(false).ToImmutableArray();
+            var metadataReferencesNonPublicized = GetMetadataReferences(true).ToImmutableArray();
+            
+            var assemblyLoader = _assemblyLoaders.GetOrAdd(contentPackRes.Key, (cp) => _assemblyLoaderFactory.CreateInstance(
+                new IAssemblyLoaderService.LoaderInitData(
+                    InstanceId: Guid.NewGuid(),
+                    contentPackRes.Key.Name,
+                    IsReferenceMode: contentPackRes.Any(r => r.IsReferenceModeOnly),
+                    OwnerPackage: contentPackRes.Key,
+                    OnUnload: OnAssemblyLoaderUnloading,
+                    OnResolvingManaged: OnAssemblyLoaderResolvingManaged, 
+                    OnResolvingUnmanagedDll: OnAssemblyLoaderResolvingUnmanaged
+                )));
+            
+            // create syntax trees
+
+            foreach (var scripts in scriptsGrp)
+            {
+                var syntaxTreesBuilder = ImmutableArray.CreateBuilder<SyntaxTree>();
+
+                bool hasInternalsAwareBeenAdded = false;
+                bool compileWithInternalName = true; 
+                
+                foreach (var resourceInfo in scripts)
+                {
+                    // this should be the same for the entire collection of src files so we just grab it from the collection
+                    compileWithInternalName = resourceInfo.UseInternalAccessName;
+                    
+                    if (!hasInternalsAwareBeenAdded)
+                    {
+                        hasInternalsAwareBeenAdded = true;
+                        syntaxTreesBuilder.Add(BaseAssemblyImports);
+                    }
+                    
+                    if (resourceInfo.FilePaths.IsDefaultOrEmpty)
+                    {
+                        ThrowHelper.ThrowArgumentNullException($"{nameof(LoadAndCompileScriptAssemblies)} The resource list is empty for package {resourceInfo.OwnerPackage}.");
+                    }
+
+                    foreach (var resourcePath in resourceInfo.FilePaths)
+                    {
+                        var loadRes = GetSourceFilesText(resourcePath);
+                        if (loadRes.IsFailed)
+                        {
+                            _logger.LogResults(loadRes.ToResult());
+                            continue;
+                        }
+                
+                        CancellationToken token = CancellationToken.None;
+
+                        string sourceCode = loadRes.Value;
+                        sourceCode = DoSourceCodeTextCompatibilityPass(sourceCode);
+
+                        syntaxTreesBuilder.Add(SyntaxFactory.ParseSyntaxTree(
+                            text: sourceCode,
+                            options: ScriptParseOptions,
+                            path: resourcePath.FullPath,
+                            encoding: Encoding.Default,
+                            cancellationToken: token
+                        ));
+                    }
+                }
+
+                if (syntaxTreesBuilder.Count < 1)
+                {
+                    continue;
+                }
+                
+                _logger.LogMessage($"Compiling assembly for {scripts.Key}, in ContentPackage {contentPackRes.Key.Name}");
+
+                var res = assemblyLoader.CompileScriptAssembly(
+                    assemblyName: scripts.Key,
+                    compileWithInternalAccess: compileWithInternalName,
+                    syntaxTrees: syntaxTreesBuilder.ToImmutable(),
+                    metadataReferences: compileWithInternalName ? metadataReferencesNonPublicized : metadataReferences,
+                    compilationOptions: CompilationOptions);
+
+                // try with internal access instead for legacy mods
+                if (!compileWithInternalName && res.IsFailed)
+                {
+                    _logger.LogMessage($"Attempted compilation of {scripts.Key} for package {contentPackRes.Key.Name}. Trying fallback method.");
+                    var res2 = assemblyLoader.CompileScriptAssembly(
+                        assemblyName: scripts.Key,
+                        compileWithInternalAccess: true,
+                        syntaxTrees: syntaxTreesBuilder.ToImmutable(),
+                        metadataReferences: metadataReferencesNonPublicized,
+                        compilationOptions: CompilationOptions);
+
+                    // overwrite result with good compilation
+                    if (res2.IsSuccess)
+                    {
+                        var reasonsStr = res.Reasons.Aggregate("", (accum, reason) => accum + "\n" + reason.Message);
+                        _logger.LogWarning($"Attempted compilation of {scripts.Key} for package {contentPackRes.Key.Name} succeeded. Original errors were: \n {reasonsStr}");
+                        res = res2;
+                    }
+                }
+
+                result.WithReasons(res.Reasons);
+            }
+        }
+        
+        Result<string> GetSourceFilesText(ContentPath resourceInfoFilePath)
+        {
+            if (_storageService.LoadPackageText(resourceInfoFilePath) is not { IsFailed: false } res)
+            {
+                _logger.LogError($"{nameof(GetSourceFilesText)}: Failed to load source file for ContentPackage {resourceInfoFilePath.ContentPackage?.Name}.");
+                return FluentResults.Result.Fail($"{nameof(GetSourceFilesText)}: Failed to load source files for ContentPackage {resourceInfoFilePath.ContentPackage?.Name}.");
+            }
+
+            return res;
+        }
+        
+        IEnumerable<MetadataReference> GetMetadataReferences(bool useNonPublicizedAssemblies)
+        {
+            var builder = ImmutableArray.CreateBuilder<MetadataReference>();
+            if (useNonPublicizedAssemblies)
+            {
+                builder.AddRange(BaseMetadataReferencesWithBarotrauma);
+                foreach (var loaderService in _assemblyLoaders
+                             .Where(asl => !asl.Key.Name.Equals("LuaCsForBarotrauma", StringComparison.InvariantCultureIgnoreCase))
+                             .ToImmutableArray())
+                {
+                    builder.AddRange(loaderService.Value.AssemblyReferences.Where(ar => ar is not null));
+                }
+            }
+            else
+            {
+                builder.AddRange(BaseMetadataReferences);
+                foreach (var loaderService in _assemblyLoaders)
+                {
+                    builder.AddRange(loaderService.Value.AssemblyReferences.Where(ar => ar is not null));
+                }
+            }
+            
+            return builder.ToImmutable();
+        }
+    }
+
+    private string DoSourceCodeTextCompatibilityPass(string sourceCode)
+    {
+        return sourceCode
+            .Replace("GameMain.LuaCs", "LuaCsSetup.Instance")
+            .Replace(" Client.ClientList", " ModUtils.Client.ClientList")
+            .Replace(" Barotrauma.Networking.Client.ClientList", " ModUtils.Client.ClientList")
+            .Replace("ItemPrefab.GetItemPrefab", "ModUtils.ItemPrefab.GetItemPrefab");
+    }
+
+    private IntPtr OnAssemblyLoaderResolvingUnmanaged(Assembly callerAssembly, string targetAssemblyName)
+    {
+        Guard.IsNull(callerAssembly, nameof(callerAssembly));
+        Guard.IsNullOrWhiteSpace(targetAssemblyName, nameof(targetAssemblyName));
+        
+        if (AssemblyLoadContext.GetLoadContext(callerAssembly) is not IAssemblyLoaderService loaderService)
+        {
+            return IntPtr.Zero;
+        }
+
+        var targetDirectory = Path.GetFullPath(loaderService.OwnerPackage.Dir);
+        if (!targetAssemblyName.TrimEnd().EndsWith(".dll"))
+        {
+            targetAssemblyName += ".dll";
+        }
+
+        var res = _storageService.FindFilesInPackage(loaderService.OwnerPackage, string.Empty, targetAssemblyName, true);
+
+        if (res.IsFailed || !res.Value.Any())
+        {
+            return IntPtr.Zero;
+        }
+
+        foreach (var path in res.Value)
+        {
+            if (System.Runtime.InteropServices.NativeLibrary.TryLoad(path, out IntPtr asmPtr))
+            {
+                _loadedNativeLibraries.Add(asmPtr);
+                return asmPtr;
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private Assembly OnAssemblyLoaderResolvingManaged(IAssemblyLoaderService requestingLoader, AssemblyName searchName)
+    {
+        // This method is used during assembly instantiation, we cannot put a lock here.
+        //using var lck = _operationsLock.AcquireReaderLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        IService.CheckDisposed(this);
+        
+        foreach (var loader in _assemblyLoaders.Where(kvp => kvp.Value != requestingLoader)
+                     .Select(kvp => kvp.Value).ToImmutableArray())
+        {
+            if (loader.IsReferenceOnlyMode || !loader.Assemblies.Any())
+            {
+                continue;
+            }
+
+            foreach (var assembly in loader.Assemblies)
+            {
+                if (assembly.GetName().FullName == searchName.FullName)
+                {
+                    return assembly;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private void OnAssemblyLoaderUnloading(IAssemblyLoaderService loader)
+    {
+        if (!loader.Assemblies.Any())
+        {
+            return;
+        }
+
+        foreach (var assembly in loader.Assemblies)
+        {
+            _eventService?.Value?.PublishEvent<IEventAssemblyUnloading>(sub => sub.OnAssemblyUnloading(assembly));
+        }
+    }
+
+    public FluentResults.Result UnloadManagedAssemblies()
+    {
+        using var lck = _operationsLock.AcquireWriterLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        IService.CheckDisposed(this);
+
+        if (_assemblyLoaders.Count == 0)
+        {
+            return FluentResults.Result.Ok();
+        }
+        
+        var results = new FluentResults.Result();
+        
+        results.WithReasons(UnsafeDisposeManagedTypeInstances().Reasons);
+        
+        ReflectionUtils.ResetCache();
+        foreach (var loaderService in _assemblyLoaders)
+        {
+            try
+            {
+                loaderService.Value.Dispose();
+                _unloadingAssemblyLoaders.Add(loaderService.Value,  loaderService.Key);
+            }
+            catch (Exception e)
+            {
+                results.WithError(new ExceptionalError(e));
+            }
+        }
+
+        _assemblyLoaders.Clear();
+        _storageService.PurgeCache();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true);
+
+#if DEBUG
+        // Print still loaded assembly load ctx after giving some time
+        CoroutineManager.Invoke(() =>
+        {
+            if (!_unloadingAssemblyLoaders.Any())
+            {
+                return;
+            }
+            
+            StringBuilder sb = new StringBuilder();
+
+            sb.AppendLine("The following ContentPackages have not unloaded their assemblies:");
+            
+            foreach (var kvp in _unloadingAssemblyLoaders.ToImmutableArray())
+            {
+                sb.AppendLine($"- '{kvp.Value.Name}'");
+            }
+            
+            
+            // Use DebugConsole in case logger is null by the time this executes.
+            if (_logger is null)
+            {
+                DebugConsole.LogError(sb.ToString());
+            }
+            else
+            {
+                _logger.LogWarning(sb.ToString());
+            }
+        }, 3.0f);
+#endif
+        
+        // clear native libraries
+        if (_loadedNativeLibraries.Any())
+        {
+            foreach (var ptr in _loadedNativeLibraries)
+            {
+                try
+                {
+                    System.Runtime.InteropServices.NativeLibrary.Free(ptr);
+                }
+                catch 
+                {
+                    // ignored
+                    continue;
+                }
+            }
+            
+            _loadedNativeLibraries.Clear();
+        }
+        
+        return results;
+    }
+
+    private FluentResults.Result UnsafeDisposeManagedTypeInstances()
+    {
+        var results = new FluentResults.Result();
+        
+        if (!_pluginInstances.IsEmpty)
+        {
+            foreach (var instance in _pluginInstances.SelectMany(kvp => kvp.Value))
+            {
+                try
+                {
+                    instance.Dispose();
+                }
+                catch (Exception e)
+                {
+                    results.WithError(new ExceptionalError(e));
+                    continue;
+                }
+            }
+        }
+        
+        if (_pluginEventService is not null)
+        {
+            _eventService.Value.RemoveDispatcherEventService(_pluginEventService);
+            _pluginEventService = null;
+        }
+        _pluginInjectorContainer = null;
+        
+        _pluginInstances.Clear();
+        _pluginPackageLookup.Clear();
+        
+        return results;
+    }
+
+    public Result<Assembly> GetLoadedAssembly(OneOf<AssemblyName, string> assemblyName, in Guid[] excludedContexts)
+    {
+        using var _ = _operationsLock.AcquireReaderLock().ConfigureAwait(false).GetAwaiter().GetResult();
+        IService.CheckDisposed(this);
+
+        var guids = excludedContexts;
+        return assemblyName.Match<Assembly>((AssemblyName asm) =>
+            {
+                foreach (var ass in _assemblyLoaders.Values
+                             .Where(al => guids.Length == 0 || !guids.Contains(al.Id))
+                             .SelectMany(al => al.Assemblies)
+                             .ToImmutableArray())
+                {
+                    if (ass.GetName() == asm)
+                    {
+                        return ass;
+                    }
+                }
+
+                return null;
+            },
+            (string asmName) =>
+            {
+                foreach (var ass in _assemblyLoaders.Values.SelectMany(al => al.Assemblies))
+                {
+                    if (ass.GetName().Name?.Equals(asmName) ?? ass.GetName().FullName.Equals(asmName))
+                    {
+                        return ass;
+                    }
+                }
+
+                return null;
+            });
+    }
+}

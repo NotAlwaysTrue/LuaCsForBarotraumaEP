@@ -40,6 +40,12 @@ namespace Barotrauma.Networking
         public static int MaxEventPacketsPerUpdate = 4;
 
         /// <summary>
+        /// When enabled, uses more lenient Lidgren handshake timeouts (longer connection timeout, more retry attempts).
+        /// Useful for local testing when running multiple instances on the same machine under heavy load.
+        /// </summary>
+        public static bool UseLenientHandshake;
+
+        /// <summary>
         /// Interpolates the positional error of a physics body towards zero.
         /// </summary>
         public static Vector2 InterpolateSimPositionError(Vector2 simPositionError, float? smoothingFactor = null)

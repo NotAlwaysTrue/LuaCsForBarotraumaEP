@@ -1371,7 +1371,7 @@ namespace Barotrauma
         {
             foreach (TakenItem takenItem in takenItems)
             {
-                Item item = Item.ItemList.FirstOrDefault(it => takenItem.Matches(it));
+                Item item = Item.ItemList.Find(it => takenItem.Matches(it));
                 item?.Remove();
             }
         }

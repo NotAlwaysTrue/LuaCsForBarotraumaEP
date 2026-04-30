@@ -320,11 +320,7 @@ namespace Barotrauma
 
                         if (TalentTree.IsViableTalentForCharacter(this, prefab.Identifier, talentSelection))
                         {
-                            bool? should = GameMain.LuaCs.Hook.Call<bool?>("character.updateTalent", this, prefab, c);
-                            if (should == null)
-                            {
-                                GiveTalent(prefab.Identifier);
-                            }
+                            GiveTalent(prefab.Identifier);
                             talentSelection.Add(prefab.Identifier);
                         }
                     }
@@ -819,7 +815,7 @@ namespace Barotrauma
 
                 var tempBuffer = new ReadWriteMessage();
                 WriteStatus(tempBuffer, forceAfflictionData: true);
-                if (msgLengthBeforeStatus + tempBuffer.LengthBytes >= 255 && restrictMessageSize && GameMain.LuaCs.Networking.RestrictMessageSize)
+                if (msgLengthBeforeStatus + tempBuffer.LengthBytes >= 255 && restrictMessageSize)
                 { 
                     msg.WriteBoolean(false);
                     if (msgLengthBeforeStatus < 255)

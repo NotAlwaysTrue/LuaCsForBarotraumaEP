@@ -29,6 +29,7 @@
 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -348,6 +349,7 @@ namespace FarseerPhysics.Dynamics
                 }
             }
         }
+
 
         /// <summary>
         /// Create all proxies.

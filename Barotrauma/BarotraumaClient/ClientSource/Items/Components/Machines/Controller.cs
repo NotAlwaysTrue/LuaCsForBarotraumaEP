@@ -8,6 +8,30 @@ namespace Barotrauma.Items.Components
     {
         private bool isHUDsHidden;
 
+        public void UpdateMsg()
+        {
+            if (Character.Controlled == null) { return; }
+
+            if (!string.IsNullOrEmpty(KickOutCharacterMsg) && 
+                SelectingKicksCharacterOut && 
+                User != null && !User.Removed)
+            {
+                DisplayMsg = TextManager.ParseInputTypes(TextManager.Get(KickOutCharacterMsg));
+            }
+            else if (!string.IsNullOrEmpty(PutOtherCharacterMsg) && 
+                AllowPuttingInOtherCharacters && 
+                CanPutSelectedCharacter(Character.Controlled.SelectedCharacter))
+            {
+                DisplayMsg = TextManager.ParseInputTypes(TextManager.Get(PutOtherCharacterMsg));
+            }
+            else
+            {
+                DisplayMsg = TextManager.ParseInputTypes(TextManager.Get(Msg));
+            }
+
+            CharacterHUD.RecreateHudTextsIfControlling(Character.Controlled);
+        }
+
         public override void DrawHUD(SpriteBatch spriteBatch, Character character)
         {
             base.DrawHUD(spriteBatch, character);
@@ -69,21 +93,33 @@ namespace Barotrauma.Items.Components
             ushort userID = msg.ReadUInt16();
             if (userID == 0)
             {
-                if (user != null)
+                if (User != null)
                 {
                     IsActive = false;
-                    CancelUsing(user);
-                    user = null;
+                    CancelUsing(User);
+                    User = null;
                 }
             }
             else
             {
                 Character newUser = Entity.FindEntityByID(userID) as Character;
-                if (newUser != user)
+                if (newUser != User)
                 {
-                    CancelUsing(user);
+                    CancelUsing(User);
                 }
-                user = newUser;
+                User = newUser;
+
+                // If the server assigned a user to this controller but the character is not selecting the item
+                // on the client-side, force the selection to prevent desync. This is required for force attaching,
+                // since the character placed into the controller may be unconscious, and in that state
+                // the server no longer syncs the current SelectedItem to clients.
+                if (ForceUserToStayAttached && 
+                    user != null && 
+                    !user.IsAnySelectedItem(Item))
+                {
+                    user.SelectedItem = Item;
+                }
+
                 IsActive = true;
             }
         }

@@ -1,56 +1,26 @@
 ﻿using Barotrauma.Items.Components;
 using Microsoft.Xna.Framework;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 
 namespace Barotrauma
 {
     class DelayedListElement
     {
-        public readonly long Id;
         public readonly DelayedEffect Parent;
         public readonly Entity Entity;
-
-        private Vector2? _worldPosition;
-        private readonly object _worldPositionLock = new object();
-        public Vector2? WorldPosition
-        {
-            get
-            {
-                lock (_worldPositionLock)
-                {
-                    return _worldPosition;
-                }
-            }
-            set
-            {
-                lock (_worldPositionLock)
-                {
-                    _worldPosition = value;
-                }
-            }
-        }
-
+        public Vector2? WorldPosition;
         /// <summary>
         /// Should the delayed effect attempt to determine the position of the effect based on the targets, or just use the position that was passed to the constructor.
         /// </summary>
         public bool GetPositionBasedOnTargets;
         public readonly Vector2? StartPosition;
         public readonly List<ISerializableEntity> Targets;
-        
-        private volatile float _delay;
-        public float Delay
-        {
-            get => _delay;
-            set => _delay = value;
-        }
+        public float Delay;
 
         public DelayedListElement(DelayedEffect parentEffect, Entity parentEntity, IEnumerable<ISerializableEntity> targets, float delay, Vector2? worldPosition, Vector2? startPosition)
         {
-            Id = Interlocked.Increment(ref DelayedEffect._delayElementIdCounter);
             Parent = parentEffect;
             Entity = parentEntity;
             Targets = new List<ISerializableEntity>(targets);
@@ -59,19 +29,9 @@ namespace Barotrauma
             StartPosition = startPosition;
         }
     }
-    
     class DelayedEffect : StatusEffect
     {
-        // Thread-safe counter for generating unique IDs for DelayedListElement
-        internal static long _delayElementIdCounter;
-        
-        // Thread-safe dictionary for delayed effects
-        public static readonly ConcurrentDictionary<long, DelayedListElement> DelayListDict = new ConcurrentDictionary<long, DelayedListElement>();
-        
-        /// <summary>
-        /// Provides a thread-safe enumerable view of the delay list for iteration.
-        /// </summary>
-        public static IEnumerable<DelayedListElement> DelayList => DelayListDict.Values;
+        public static readonly List<DelayedListElement> DelayList = new List<DelayedListElement>();
 
         private enum DelayTypes 
         { 
@@ -102,10 +62,9 @@ namespace Barotrauma
             if (this.type != type || !HasRequiredItems(entity)) { return; }
             if (!Stackable)
             {
-                // Thread-safe iteration over ConcurrentDictionary
-                foreach (var kvp in DelayListDict)
+                foreach (var existingEffect in DelayList)
                 {
-                    if (kvp.Value.Parent == this && kvp.Value.Targets.FirstOrDefault() == target) 
+                    if (existingEffect.Parent == this && existingEffect.Targets.FirstOrDefault() == target) 
                     {
                         return; 
                     }
@@ -113,19 +72,18 @@ namespace Barotrauma
             }
             if (!IsValidTarget(target)) { return; }
 
-            var targets = CurrentTargets;
-            targets.Clear();
-            targets.Add(target);
-            if (!HasRequiredConditions(targets)) { return; }
+            currentTargets.Clear();
+            currentTargets.Add(target);
+            if (!HasRequiredConditions(currentTargets)) { return; }
 
             switch (delayType)
             {
                 case DelayTypes.Timer:
-                    var newDelayListElement = new DelayedListElement(this, entity, targets, delay, worldPosition ?? GetPosition(entity, targets, worldPosition), startPosition: null)
+                    var newDelayListElement = new DelayedListElement(this, entity, currentTargets, delay, worldPosition ?? GetPosition(entity, currentTargets, worldPosition), startPosition: null)
                     {
                         GetPositionBasedOnTargets = worldPosition == null
                     };
-                    DelayListDict.TryAdd(newDelayListElement.Id, newDelayListElement);
+                    DelayList.Add(newDelayListElement);
                     break;
                 case DelayTypes.ReachCursor:
                     Projectile projectile = (entity as Item)?.GetComponent<Projectile>();
@@ -147,8 +105,7 @@ namespace Barotrauma
                         return;
                     }
 
-                    var reachCursorElement = new DelayedListElement(this, entity, targets, Vector2.Distance(entity.WorldPosition, projectile.User.CursorWorldPosition), worldPosition, entity.WorldPosition);
-                    DelayListDict.TryAdd(reachCursorElement.Id, reachCursorElement);
+                    DelayList.Add(new DelayedListElement(this, entity, currentTargets, Vector2.Distance(entity.WorldPosition, projectile.User.CursorWorldPosition), worldPosition, entity.WorldPosition));
                     break;
             }
         }
@@ -162,28 +119,25 @@ namespace Barotrauma
             if (delayType == DelayTypes.ReachCursor && Character.Controlled == null) { return; }
             if (!Stackable) 
             { 
-                // Thread-safe iteration over ConcurrentDictionary
-                foreach (var kvp in DelayListDict)
+                foreach (var existingEffect in DelayList)
                 {
-                    if (kvp.Value.Parent == this && kvp.Value.Targets.SequenceEqual(targets)) { return; }
+                    if (existingEffect.Parent == this && existingEffect.Targets.SequenceEqual(targets)) { return; }
                 }
             }
 
-            var localTargets = CurrentTargets;
-            localTargets.Clear();
+            currentTargets.Clear();
             foreach (ISerializableEntity target in targets)
             {
                 if (!IsValidTarget(target)) { continue; }
-                localTargets.Add(target);
+                currentTargets.Add(target);
             }
 
-            if (!HasRequiredConditions(localTargets)) { return; }
+            if (!HasRequiredConditions(currentTargets)) { return; }
 
             switch (delayType)
             {
                 case DelayTypes.Timer:
-                    var timerElement = new DelayedListElement(this, entity, localTargets, delay, worldPosition, null);
-                    DelayListDict.TryAdd(timerElement.Id, timerElement);
+                    DelayList.Add(new DelayedListElement(this, entity, currentTargets, delay, worldPosition, null));
                     break;
                 case DelayTypes.ReachCursor:
                     Projectile projectile = (entity as Item)?.GetComponent<Projectile>();
@@ -207,21 +161,19 @@ namespace Barotrauma
                         return;
                     }
 
-                    var reachCursorElement = new DelayedListElement(this, entity, localTargets, Vector2.Distance(entity.WorldPosition, user.CursorWorldPosition), worldPosition, entity.WorldPosition);
-                    DelayListDict.TryAdd(reachCursorElement.Id, reachCursorElement);
+                    DelayList.Add(new DelayedListElement(this, entity, currentTargets, Vector2.Distance(entity.WorldPosition, user.CursorWorldPosition), worldPosition, entity.WorldPosition));
                     break;
             }
         }
 
         public static void Update(float deltaTime)
         {
-            // Thread-safe iteration over ConcurrentDictionary
-            foreach (var kvp in DelayListDict)
+            for (int i = DelayList.Count - 1; i >= 0; i--)
             {
-                DelayedListElement element = kvp.Value;
+                DelayedListElement element = DelayList[i];
                 if (element.Parent.CheckConditionalAlways && !element.Parent.HasRequiredConditions(element.Targets))
                 {
-                    DelayListDict.TryRemove(element.Id, out _);
+                    DelayList.Remove(element);
                     continue;
                 }
 
@@ -235,7 +187,7 @@ namespace Barotrauma
                             //keep refreshing the position until the effect runs (so e.g. a delayed effect runs at the last known position of a monster before it despawned)
                             if (element.GetPositionBasedOnTargets && element.Entity is { Removed: false })
                             {
-                                element.WorldPosition = element.Parent.GetPosition(element.Entity, element.Parent.CurrentTargets);
+                                element.WorldPosition = element.Parent.GetPosition(element.Entity, element.Parent.currentTargets);
                             }
                             continue; 
                         }
@@ -246,7 +198,7 @@ namespace Barotrauma
                 }
 
                 element.Parent.Apply(deltaTime, element.Entity, element.Targets, element.WorldPosition);
-                DelayListDict.TryRemove(element.Id, out _);
+                DelayList.Remove(element);
             }
         }
     }
