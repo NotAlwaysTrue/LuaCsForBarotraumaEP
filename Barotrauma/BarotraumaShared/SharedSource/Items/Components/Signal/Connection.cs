@@ -227,13 +227,14 @@ namespace Barotrauma.Items.Components
         public void SetRecipientsDirty()
         {
             recipientsDirty = true;
-            if (IsPower) { Powered.ChangedConnections.Add(this); }
+            if (IsPower) { Powered.MarkConnectionChanged(this); }
         }
 
         private void RefreshRecipients()
         {
             recipients.Clear();
-            foreach (var wire in wires)
+            // Use ToArray() snapshot for thread-safe iteration
+            foreach (var wire in wires.ToArray())
             {
                 Connection recipient = wire.OtherConnection(this);
                 if (recipient != null) { recipients.Add(recipient); }
@@ -272,8 +273,8 @@ namespace Barotrauma.Items.Components
                     //Check if both connections belong to a larger grid
                     if (prevOtherConnection.recipients.Count > 1 && recipients.Count > 1)
                     {
-                        Powered.ChangedConnections.Add(prevOtherConnection);
-                        Powered.ChangedConnections.Add(this);
+                        Powered.MarkConnectionChanged(prevOtherConnection);
+                        Powered.MarkConnectionChanged(this);
                     }
                     else if (recipients.Count > 1)
                     {
@@ -289,7 +290,7 @@ namespace Barotrauma.Items.Components
                     else if (Grid.Connections.Count == 2)
                     {
                         //Delete the grid as these were the only 2 devices
-                        Powered.Grids.Remove(Grid.ID);
+                        Powered.Grids.TryRemove(Grid.ID, out _);
                         Grid = null;
                         prevOtherConnection.Grid = null;
                     }
@@ -330,8 +331,8 @@ namespace Barotrauma.Items.Components
                     else
                     {
                         //Flag change so that proper grids can be formed
-                        Powered.ChangedConnections.Add(this);
-                        Powered.ChangedConnections.Add(otherConnection);
+                        Powered.MarkConnectionChanged(this);
+                        Powered.MarkConnectionChanged(otherConnection);
                     }
                 }
 
@@ -344,7 +345,8 @@ namespace Barotrauma.Items.Components
         {
             LastSentSignal = signal;
             enumeratingWires = true;
-            foreach (var wire in wires)
+            // Use ToArray() snapshot for thread-safe iteration
+            foreach (var wire in wires.ToArray())
             {
                 Connection recipient = wire.OtherConnection(this);
                 if (recipient == null) { continue; }
@@ -357,12 +359,12 @@ namespace Barotrauma.Items.Components
                 SendSignalIntoConnection(signal, recipient);
             }
 
-            foreach (CircuitBoxConnection connection in CircuitBoxConnections)
+            foreach (CircuitBoxConnection connection in CircuitBoxConnections.ToArray())
             {
                 connection.ReceiveSignal(signal);
             }
             enumeratingWires = false;
-            foreach (var removedWire in removedWires)
+            foreach (var removedWire in removedWires.ToArray())
             {
                 wires.Remove(removedWire);
             }
@@ -373,14 +375,16 @@ namespace Barotrauma.Items.Components
         {
             conn.LastReceivedSignal = signal;
 
-            foreach (ItemComponent ic in conn.item.Components)
+            // Use ToArray() snapshot for thread-safe iteration
+            foreach (ItemComponent ic in conn.item.Components.ToArray())
             {
                 ic.ReceiveSignal(signal, conn);
             }
 
             if (conn.Effects == null || signal.value == "0") { return; }
 
-            foreach (StatusEffect effect in conn.Effects)
+            // Use ToArray() snapshot for thread-safe iteration
+            foreach (StatusEffect effect in conn.Effects.ToArray())
             {
                 conn.Item.ApplyStatusEffect(effect, ActionType.OnUse, (float)Timing.Step);
             }
@@ -390,13 +394,15 @@ namespace Barotrauma.Items.Components
         {
             if (IsPower && Grid != null)
             {
-                Powered.ChangedConnections.Add(this);
-                foreach (Connection c in recipients)
+                Powered.MarkConnectionChanged(this);
+                // Use ToArray() snapshot for thread-safe iteration
+                foreach (Connection c in recipients.ToArray())
                 {
-                    Powered.ChangedConnections.Add(c);
+                    Powered.MarkConnectionChanged(c);
                 }
             }
-            foreach (var wire in wires)
+            // Use ToArray() snapshot for thread-safe iteration
+            foreach (var wire in wires.ToArray())
             {
                 wire.RemoveConnection(this);
                 recipientsDirty = true;
@@ -404,7 +410,7 @@ namespace Barotrauma.Items.Components
 
             if (enumeratingWires)
             {
-                foreach (var wire in wires)
+                foreach (var wire in wires.ToArray())
                 {
                     removedWires.Add(wire);
                 }
@@ -447,7 +453,8 @@ namespace Barotrauma.Items.Components
         {
             XElement newElement = new XElement(IsOutput ? "output" : "input", new XAttribute("name", Name));
 
-            foreach (var wire in wires.OrderBy(w => w.Item.ID))
+            // Use ToArray() snapshot before OrderBy for thread-safe iteration
+            foreach (var wire in wires.ToArray().OrderBy(w => w.Item.ID))
             {
                 newElement.Add(new XElement("link",
                     new XAttribute("w", wire.Item.ID.ToString()),

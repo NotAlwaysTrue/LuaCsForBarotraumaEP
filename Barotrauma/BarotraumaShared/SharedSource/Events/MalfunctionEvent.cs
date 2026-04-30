@@ -41,7 +41,7 @@ namespace Barotrauma
 
         protected override void InitEventSpecific(EventSet parentSet)
         {
-            var matchingItems = Item.ItemList.FindAll(i => i.Condition > 0.0f && targetItemIdentifiers.Contains(i.Prefab.Identifier));
+            var matchingItems = Item.ItemList.Where(i => i.Condition > 0.0f && targetItemIdentifiers.Contains(i.Prefab.Identifier)).ToList();
             int itemAmount = Rand.Range(minItemAmount, maxItemAmount, Rand.RandSync.ServerAndClient);
             for (int i = 0; i < itemAmount; i++)
             {

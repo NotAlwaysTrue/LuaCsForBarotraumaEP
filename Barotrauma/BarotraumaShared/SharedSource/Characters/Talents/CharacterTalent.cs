@@ -1,6 +1,8 @@
 ﻿using Barotrauma.Abilities;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Barotrauma
 {
@@ -72,7 +74,9 @@ namespace Barotrauma
             }
         }
 
-        private static readonly HashSet<Identifier> checkedNonStackableTalents = new();
+        // ThreadLocal for thread-safe talent checking
+        private static readonly ThreadLocal<HashSet<Identifier>> checkedNonStackableTalentsLocal = new ThreadLocal<HashSet<Identifier>>(() => new HashSet<Identifier>());
+        private static HashSet<Identifier> checkedNonStackableTalents => checkedNonStackableTalentsLocal.Value;
 
         /// <summary>
         /// Checks talents for a given AbilityObject taking into account non-stackable talents.

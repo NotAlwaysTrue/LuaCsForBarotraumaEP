@@ -797,16 +797,14 @@ namespace Barotrauma
             return AddDamage(simPosition, afflictions, playSound);
         }
 
-        private readonly List<DamageModifier> appliedDamageModifiers = new List<DamageModifier>();
-        private readonly List<DamageModifier> tempModifiers = new List<DamageModifier>();
-        private readonly List<Affliction> afflictionsCopy = new List<Affliction>();
+        // Thread-safe: using local variables instead of instance fields to avoid concurrent modification
         public AttackResult AddDamage(Vector2 simPosition, IEnumerable<Affliction> afflictions, bool playSound, float damageMultiplier = 1, float penetration = 0f, Character attacker = null)
         {
-            appliedDamageModifiers.Clear();
-            afflictionsCopy.Clear();
+            var appliedDamageModifiers = new List<DamageModifier>();
+            var afflictionsCopy = new List<Affliction>();
             foreach (var affliction in afflictions)
             {
-                tempModifiers.Clear();
+                var tempModifiers = new List<DamageModifier>();
                 var newAffliction = affliction;
                 float random = Rand.Value(Rand.RandSync.Unsynced);
                 bool foundMatchingModifier = false;
@@ -1022,13 +1020,18 @@ namespace Barotrauma
 
         partial void UpdateProjSpecific(float deltaTime);
 
-        private readonly List<Body> contactBodies = new List<Body>();
+        // Thread-static to avoid concurrent modification in parallel item updates
+        [ThreadStatic]
+        private static List<Body> t_contactBodies;
+        private static List<Body> ContactBodies => t_contactBodies ??= new List<Body>();
+
         /// <summary>
         /// Returns true if the attack successfully hit something. If the distance is not given, it will be calculated.
         /// </summary>
         public bool UpdateAttack(float deltaTime, Vector2 attackSimPos, IDamageable damageTarget, out AttackResult attackResult, float distance = -1, Limb targetLimb = null)
         {
             attackResult = default;
+            var contactBodies = ContactBodies;
             Vector2 simPos = ragdoll.SimplePhysicsEnabled ? character.SimPosition : SimPosition;
             float dist = distance > -1 ? distance : ConvertUnits.ToDisplayUnits(Vector2.Distance(simPos, attackSimPos));
             bool wasRunning = attack.IsRunning;
@@ -1287,7 +1290,11 @@ namespace Barotrauma
             }
         }
 
-        private readonly List<ISerializableEntity> targets = new List<ISerializableEntity>();
+        // Thread-static to avoid concurrent modification in parallel item updates
+        [ThreadStatic]
+        private static List<ISerializableEntity> t_statusEffectTargets;
+        private static List<ISerializableEntity> StatusEffectTargets => t_statusEffectTargets ??= new List<ISerializableEntity>();
+
         public void ApplyStatusEffects(ActionType actionType, float deltaTime)
         {
             if (!statusEffects.TryGetValue(actionType, out var statusEffectList)) { return; }
@@ -1310,6 +1317,7 @@ namespace Barotrauma
                 if (statusEffect.HasTargetType(StatusEffect.TargetType.NearbyItems) ||
                     statusEffect.HasTargetType(StatusEffect.TargetType.NearbyCharacters))
                 {
+                    var targets = StatusEffectTargets;
                     targets.Clear();
                     statusEffect.AddNearbyTargets(WorldPosition, targets);
                     statusEffect.Apply(actionType, deltaTime, character, targets);

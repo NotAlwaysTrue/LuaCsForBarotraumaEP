@@ -181,7 +181,7 @@ namespace Barotrauma
                 return;
             }
             destructibleItems.Clear();
-            destructibleItems.AddRange(Item.ItemList.FindAll(it => it.HasTag(destructibleItemTag)));
+            destructibleItems.AddRange(Item.ItemList.Where(it => it.HasTag(destructibleItemTag)));
             if (destructibleItems.None())
             {
                 DebugConsole.ThrowError($"Error in end mission \"{Prefab.Identifier}\". Could not find any destructible items with the tag \"{spawnPointTag}\".",

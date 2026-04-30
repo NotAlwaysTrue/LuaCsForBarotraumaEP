@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
+using System.Linq;
 
 namespace Barotrauma.Items.Components
 {
@@ -688,12 +689,14 @@ namespace Barotrauma.Items.Components
 
             item.SendSignal(new Signal(MathHelper.ToDegrees(targetRotation).ToString("G", CultureInfo.InvariantCulture), sender: User), positionOut);
 
-            for (int i = item.LastSentSignalRecipients.Count - 1; i >= 0; i--)
+            // Use ToList() snapshot for thread-safe iteration
+            var signalRecipients = item.LastSentSignalRecipients.ToList();
+            for (int i = signalRecipients.Count - 1; i >= 0; i--)
             {
-                if (item.LastSentSignalRecipients[i].Item.Condition <= 0.0f || item.LastSentSignalRecipients[i].IsPower) { continue; }
-                if (item.LastSentSignalRecipients[i].Item.Prefab.FocusOnSelected)
+                if (signalRecipients[i].Item.Condition <= 0.0f || signalRecipients[i].IsPower) { continue; }
+                if (signalRecipients[i].Item.Prefab.FocusOnSelected)
                 {
-                    return item.LastSentSignalRecipients[i].Item;
+                    return signalRecipients[i].Item;
                 }
             }
 

@@ -2143,7 +2143,7 @@ namespace Barotrauma
                 if (existingAffliction == null)
                 {
                     existingAffliction = afflictionPrefab.Instantiate(strength);
-                    afflictions.Add(existingAffliction, limb);
+                    afflictions.TryAdd(existingAffliction, limb);
                     newAdded = true;
                 }
                 existingAffliction.SetStrength(strength);

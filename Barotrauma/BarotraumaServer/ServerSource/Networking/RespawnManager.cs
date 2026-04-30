@@ -279,7 +279,7 @@ namespace Barotrauma.Networking
             var shuttleGaps = Gap.GapList.FindAll(g => RespawnShuttles.Contains(g.Submarine) && g.ConnectedWall != null);
             shuttleGaps.ForEach(g => Spawner.AddEntityToRemoveQueue(g));
 
-            var dockingPorts = Item.ItemList.FindAll(i => RespawnShuttles.Contains(i.Submarine) && i.GetComponent<DockingPort>() != null);
+            var dockingPorts = Item.ItemList.Where(i => RespawnShuttles.Contains(i.Submarine) && i.GetComponent<DockingPort>() != null).ToList();
             dockingPorts.ForEach(d => d.GetComponent<DockingPort>().Undock());
 
             if (!IsShuttleInsideLevel || DateTime.Now > teamSpecificState.DespawnTime)

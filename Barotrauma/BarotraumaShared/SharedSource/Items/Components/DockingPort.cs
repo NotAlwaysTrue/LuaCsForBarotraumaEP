@@ -5,6 +5,7 @@ using FarseerPhysics.Dynamics;
 using FarseerPhysics.Dynamics.Joints;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 #if CLIENT
@@ -24,11 +25,8 @@ namespace Barotrauma.Items.Components
             Right
         }
 
-        private static readonly List<DockingPort> list = new List<DockingPort>();
-        public static IEnumerable<DockingPort> List
-        {
-            get { return list; }
-        }
+        private static readonly ConcurrentDictionary<DockingPort, byte> _dockingPortDict = new ConcurrentDictionary<DockingPort, byte>();
+        public static IEnumerable<DockingPort> List => _dockingPortDict.Keys;
 
         private Sprite overlaySprite;
         private float dockingState;
@@ -168,7 +166,7 @@ namespace Barotrauma.Items.Components
             
             IsActive = true;
             
-            list.Add(this);
+            _dockingPortDict.TryAdd(this, 0);
         }
 
         public override void FlipX(bool relativeToSub)
@@ -200,7 +198,7 @@ namespace Barotrauma.Items.Components
         {
             float closestDist = float.MaxValue;
             DockingPort closestPort = null;
-            foreach (DockingPort port in list)
+            foreach (DockingPort port in List)
             {
                 if (port == this || port.item.Submarine == item.Submarine || port.IsHorizontal != IsHorizontal) { continue; }
                 float xDist = Math.Abs(port.item.WorldPosition.X - item.WorldPosition.X);
@@ -532,8 +530,8 @@ namespace Barotrauma.Items.Components
             wire.TryConnect(recipient, addNode: false);
 
             //Flag connections to be updated
-            Powered.ChangedConnections.Add(powerConnection);
-            Powered.ChangedConnections.Add(recipient);
+            Powered.MarkConnectionChanged(powerConnection);
+            Powered.MarkConnectionChanged(recipient);
         }
 
         private void CreateDoorBody()
@@ -1007,7 +1005,7 @@ namespace Barotrauma.Items.Components
             Connection powerConnection = Item.Connections.Find(c => c.IsPower);
             if (powerConnection != null)
             {
-                Powered.ChangedConnections.Add(powerConnection);
+                Powered.MarkConnectionChanged(powerConnection);
             }
 
             if (doorBody != null)
@@ -1151,7 +1149,7 @@ namespace Barotrauma.Items.Components
         protected override void RemoveComponentSpecific()
         {
             base.RemoveComponentSpecific();
-            list.Remove(this);
+            _dockingPortDict.TryRemove(this, out _);
             hulls[0]?.Remove(); hulls[0] = null;
             hulls[1]?.Remove(); hulls[1] = null;
             gap?.Remove(); gap = null;

@@ -1,13 +1,67 @@
 ﻿using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace Barotrauma
 {
+    /// <summary>
+    /// Thread-safe wrapper for AITarget list operations.
+    /// Uses copy-on-write pattern for lock-free reads.
+    /// </summary>
+    class ThreadSafeAITargetList : IEnumerable<AITarget>
+    {
+        private volatile List<AITarget> _list = new List<AITarget>();
+        private readonly object _writeLock = new object();
+
+        public int Count => _list.Count;
+
+        public void Add(AITarget target)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<AITarget>(_list) { target };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+
+        public bool Remove(AITarget target)
+        {
+            lock (_writeLock)
+            {
+                var newList = new List<AITarget>(_list);
+                bool removed = newList.Remove(target);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
+
+        public void Clear()
+        {
+            Interlocked.Exchange(ref _list, new List<AITarget>());
+        }
+
+        public bool Contains(AITarget target) => _list.Contains(target);
+
+        public AITarget this[int index] => _list[index];
+
+        public IEnumerator<AITarget> GetEnumerator() => _list.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public List<AITarget> ToList() => new List<AITarget>(_list);
+        public AITarget FirstOrDefault(Func<AITarget, bool> predicate) => _list.FirstOrDefault(predicate);
+        public IEnumerable<AITarget> Where(Func<AITarget, bool> predicate) => _list.Where(predicate);
+        public bool Any(Func<AITarget, bool> predicate) => _list.Any(predicate);
+    }
+
     partial class AITarget
     {
-        public static List<AITarget> List = new List<AITarget>();
+        public static ThreadSafeAITargetList List = new ThreadSafeAITargetList();
 
         private Entity entity;
         public Entity Entity

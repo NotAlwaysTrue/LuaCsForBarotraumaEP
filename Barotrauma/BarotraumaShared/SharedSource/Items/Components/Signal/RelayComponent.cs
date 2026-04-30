@@ -2,6 +2,7 @@
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Xml.Linq;
 
@@ -31,7 +32,8 @@ namespace Barotrauma.Items.Components
 
         private float thirdInverseMax = 0, loadEqnConstant = 0;
 
-        private static readonly Dictionary<string, string> connectionPairs = new Dictionary<string, string>
+        // Thread-safe immutable dictionary for connection pairs (read-only after initialization)
+        private static readonly ImmutableDictionary<string, string> connectionPairs = new Dictionary<string, string>
         {
             { "power_in", "power_out"},
             { "signal_in", "signal_out" },
@@ -40,7 +42,7 @@ namespace Barotrauma.Items.Components
             { "signal_in3", "signal_out3" },
             { "signal_in4", "signal_out4" },
             { "signal_in5", "signal_out5" }
-        };
+        }.ToImmutableDictionary();
 
         protected override PowerPriority Priority { get { return PowerPriority.Relay; } }
 

@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Barotrauma.Extensions;
 using Barotrauma.MapCreatures.Behavior;
 
@@ -315,7 +316,7 @@ namespace Barotrauma.Items.Components
 
         partial void UseProjSpecific(float deltaTime, Vector2 raystart);
 
-        private static readonly List<Body> hitBodies = new List<Body>();
+        private static readonly ThreadLocal<List<Body>> hitBodies = new ThreadLocal<List<Body>>(() => new List<Body>());
         private readonly HashSet<Character> hitCharacters = new HashSet<Character>();
         private readonly List<FireSource> fireSourcesInRange = new List<FireSource>();
         private void Repair(Vector2 rayStart, Vector2 rayEnd, float deltaTime, Character user, float degreeOfSuccess, List<Body> ignoredBodies)
@@ -373,13 +374,13 @@ namespace Barotrauma.Items.Components
                     },
                     allowInsideFixture: true);
 
-                hitBodies.Clear();
-                hitBodies.AddRange(bodies.Distinct());
+                hitBodies.Value.Clear();
+                hitBodies.Value.AddRange(bodies.Distinct());
 
                 lastPickedFraction = Submarine.LastPickedFraction;
                 Type lastHitType = null;
                 hitCharacters.Clear();
-                foreach (Body body in hitBodies)
+                foreach (Body body in hitBodies.Value)
                 {
                     Type bodyType = body.UserData?.GetType();
                     if (!RepairThroughWalls && bodyType != null && bodyType != lastHitType)
@@ -897,48 +898,49 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        private static List<ISerializableEntity> currentTargets = new List<ISerializableEntity>();
+        private static readonly ThreadLocal<List<ISerializableEntity>> currentTargets = new ThreadLocal<List<ISerializableEntity>>(() => new List<ISerializableEntity>());
         private void ApplyStatusEffectsOnTarget(Character user, float deltaTime, ActionType actionType, Item targetItem = null, Character character = null, Limb limb = null, Structure structure = null)
         {
             if (statusEffectLists == null) { return; }
             if (!statusEffectLists.TryGetValue(actionType, out List<StatusEffect> statusEffects)) { return; }
 
+            var targets = currentTargets.Value;
             foreach (StatusEffect effect in statusEffects)
             {
-                currentTargets.Clear();
+                targets.Clear();
                 effect.SetUser(user);
                 if (effect.HasTargetType(StatusEffect.TargetType.UseTarget))
                 {
                     if (targetItem != null)
                     {
-                        currentTargets.AddRange(targetItem.AllPropertyObjects);
+                        targets.AddRange(targetItem.AllPropertyObjects);
                     }
                     if (structure != null)
                     {
-                        currentTargets.Add(structure);
+                        targets.Add(structure);
                     }
                     if (character != null)
                     {
-                        currentTargets.Add(character);
+                        targets.Add(character);
                     }
-                    effect.Apply(actionType, deltaTime, item, currentTargets);
+                    effect.Apply(actionType, deltaTime, item, targets);
                 }
                 else if (effect.HasTargetType(StatusEffect.TargetType.Character))
                 {
-                    currentTargets.Add(user);
-                    effect.Apply(actionType, deltaTime, item, currentTargets);
+                    targets.Add(user);
+                    effect.Apply(actionType, deltaTime, item, targets);
                 }
                 else if (effect.HasTargetType(StatusEffect.TargetType.Limb))
                 {
-                    currentTargets.Add(limb);
-                    effect.Apply(actionType, deltaTime, item, currentTargets);
+                    targets.Add(limb);
+                    effect.Apply(actionType, deltaTime, item, targets);
                 }
 
 #if CLIENT
                 if (user == null) { return; }
                 // Hard-coded progress bars for welding doors stuck.
                 // A general purpose system could be better, but it would most likely require changes in the way we define the status effects in xml.
-                foreach (ISerializableEntity target in currentTargets)
+                foreach (ISerializableEntity target in targets)
                 {
                     if (target is not Door door) { continue; }
                     if (!door.CanBeWelded || !door.Item.IsInteractable(user)) { continue; }

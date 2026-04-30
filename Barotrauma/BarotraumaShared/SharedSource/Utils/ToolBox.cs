@@ -2,6 +2,7 @@
 using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -356,32 +357,26 @@ namespace Barotrauma
             return text;
         }
 
-        private static Dictionary<string, List<string>> cachedLines = new Dictionary<string, List<string>>();
+        private static readonly ConcurrentDictionary<string, List<string>> cachedLines = new ConcurrentDictionary<string, List<string>>();
         public static string GetRandomLine(string filePath, Rand.RandSync randSync = Rand.RandSync.ServerAndClient)
         {
-            List<string> lines;
-            if (cachedLines.ContainsKey(filePath))
-            {
-                lines = cachedLines[filePath];
-            }
-            else
+            List<string> lines = cachedLines.GetOrAdd(filePath, path =>
             {
                 try
                 {
-                    lines = File.ReadAllLines(filePath, catchUnauthorizedAccessExceptions: false).ToList();
-                    cachedLines.Add(filePath, lines);
-                    if (lines.Count == 0)
+                    var fileLines = File.ReadAllLines(path, catchUnauthorizedAccessExceptions: false).ToList();
+                    if (fileLines.Count == 0)
                     {
-                        DebugConsole.ThrowError("File \"" + filePath + "\" is empty!");
-                        return "";
+                        DebugConsole.ThrowError("File \"" + path + "\" is empty!");
                     }
+                    return fileLines;
                 }
                 catch (Exception e)
                 {
-                    DebugConsole.ThrowError("Couldn't open file \"" + filePath + "\"!", e);
-                    return "";
+                    DebugConsole.ThrowError("Couldn't open file \"" + path + "\"!", e);
+                    return new List<string>();
                 }
-            }
+            });
 
             if (lines.Count == 0) return "";
             return lines[Rand.Range(0, lines.Count, randSync)];

@@ -8,8 +8,10 @@ using FarseerPhysics.Dynamics.Joints;
 using Microsoft.Xna.Framework;
 using MoonSharp.Interpreter;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 using JointParams = Barotrauma.RagdollParams.JointParams;
 using LimbParams = Barotrauma.RagdollParams.LimbParams;
@@ -26,7 +28,33 @@ namespace Barotrauma
         /// </summary>
         const float MaxImpactDamage = 0.1f;
 
-        private static readonly List<Ragdoll> list = new List<Ragdoll>();
+        // Thread-safe list using copy-on-write pattern (ConcurrentBag doesn't support indexer/Remove)
+        private static volatile List<Ragdoll> _list = new List<Ragdoll>();
+        private static readonly object _listLock = new object();
+        private static List<Ragdoll> list => _list;
+        
+        private static void ListAdd(Ragdoll ragdoll)
+        {
+            lock (_listLock)
+            {
+                var newList = new List<Ragdoll>(_list) { ragdoll };
+                Interlocked.Exchange(ref _list, newList);
+            }
+        }
+        
+        private static bool ListRemove(Ragdoll ragdoll)
+        {
+            lock (_listLock)
+            {
+                var newList = new List<Ragdoll>(_list);
+                bool removed = newList.Remove(ragdoll);
+                if (removed)
+                {
+                    Interlocked.Exchange(ref _list, newList);
+                }
+                return removed;
+            }
+        }
 
         struct Impact
         {
@@ -47,7 +75,8 @@ namespace Barotrauma
             }
         }
 
-        private readonly Queue<Impact> impactQueue = new Queue<Impact>();
+        // Thread-safe queue for physics collision callbacks
+        private readonly ConcurrentQueue<Impact> impactQueue = new ConcurrentQueue<Impact>();
 
         protected Hull currentHull;
 
@@ -469,7 +498,7 @@ namespace Barotrauma
 
         public Ragdoll(Character character, string seed, RagdollParams ragdollParams = null)
         {
-            list.Add(this);
+            ListAdd(this);
             this.character = character;
             Recreate(ragdollParams ?? RagdollParams);
         }
@@ -746,10 +775,7 @@ namespace Barotrauma
             {
                 if (!f2.IsSensor)
                 {
-                    lock (impactQueue)
-                    {
-                        impactQueue.Enqueue(new Impact(f1, f2, contact, velocity));
-                    }
+                    impactQueue.Enqueue(new Impact(f1, f2, contact, velocity));
                 }
                 return true;
             }
@@ -821,10 +847,7 @@ namespace Barotrauma
                 }
             }
 
-            lock (impactQueue)
-            {
-                impactQueue.Enqueue(new Impact(f1, f2, contact, velocity));
-            }
+            impactQueue.Enqueue(new Impact(f1, f2, contact, velocity));
 
             return true;
         }
@@ -1291,10 +1314,9 @@ namespace Barotrauma
         {
             if (!character.Enabled || character.Removed || Frozen || Invalid || Collider == null || Collider.Removed) { return; }
 
-            while (impactQueue.Count > 0)
+            while (impactQueue.TryDequeue(out var impact))
             {
-                var impact = impactQueue.Dequeue();
-                ApplyImpact(impact.F1, impact.F2, impact.WorldNormal, impact.ImpactPos, impact.Velocity);
+                ApplyImpact(impact.F1, impact.F2, impact.LocalNormal, impact.ImpactPos, impact.Velocity);
             }
 
             CheckValidity();
@@ -2368,7 +2390,7 @@ namespace Barotrauma
                 LimbJoints = null;
             }
 
-            list.Remove(this);
+            ListRemove(this);
         }
 
         public static void RemoveAll()

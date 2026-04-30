@@ -1,14 +1,17 @@
 ﻿using Barotrauma.Networking;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace Barotrauma.Items.Components
 {
     partial class Sonar : Powered, IServerSerializable, IClientSerializable
     {
-        public static List<Sonar> SonarList = new List<Sonar>();
+        private static readonly ConcurrentDictionary<Sonar, byte> _sonarDict = new ConcurrentDictionary<Sonar, byte>();
+        public static IEnumerable<Sonar> SonarList => _sonarDict.Keys;
 
         public enum Mode
         {
@@ -169,7 +172,7 @@ namespace Barotrauma.Items.Components
             IsActive = true;
             InitProjSpecific(element);
             CurrentMode = Mode.Passive;
-            SonarList.Add(this);
+            _sonarDict.TryAdd(this, 0);
         }
 
         partial void InitProjSpecific(ContentXElement element);
@@ -291,13 +294,15 @@ namespace Barotrauma.Items.Components
             return currentPingIndex != -1 && (character == null || characterUsable);
         }
 
-        private static readonly Dictionary<string, List<Character>> targetGroups = new Dictionary<string, List<Character>>();
+        private static readonly ThreadLocal<Dictionary<string, List<Character>>> targetGroups = 
+            new ThreadLocal<Dictionary<string, List<Character>>>(() => new Dictionary<string, List<Character>>());
 
         public override bool CrewAIOperate(float deltaTime, Character character, AIObjectiveOperateItem objective)
         {
             if (currentMode == Mode.Passive || !aiPingCheckPending) { return false; }
 
-            foreach (List<Character> targetGroup in targetGroups.Values)
+            var groups = targetGroups.Value;
+            foreach (List<Character> targetGroup in groups.Values)
             {
                 targetGroup.Clear();
             }
@@ -310,14 +315,14 @@ namespace Barotrauma.Items.Components
 
                 #warning This is not the best key for a dictionary.
                 string directionName = GetDirectionName(c.WorldPosition - item.WorldPosition).Value;
-                if (!targetGroups.ContainsKey(directionName))
+                if (!groups.ContainsKey(directionName))
                 {
-                    targetGroups.Add(directionName, new List<Character>());
+                    groups.Add(directionName, new List<Character>());
                 }
-                targetGroups[directionName].Add(c);
+                groups[directionName].Add(c);
             }
 
-            foreach (KeyValuePair<string, List<Character>> targetGroup in targetGroups)
+            foreach (KeyValuePair<string, List<Character>> targetGroup in groups)
             {
                 if (!targetGroup.Value.Any()) { continue; }
                 string dialogTag = "DialogSonarTarget";
@@ -401,7 +406,7 @@ namespace Barotrauma.Items.Components
 
             MineralClusters = null;
 #endif
-            SonarList.Remove(this);
+            _sonarDict.TryRemove(this, out _);
         }
 
 

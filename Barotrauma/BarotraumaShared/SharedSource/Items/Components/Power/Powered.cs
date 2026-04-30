@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Threading;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 using System.Linq;
@@ -62,17 +64,77 @@ namespace Barotrauma.Items.Components
         protected const float UpdateInterval = (float)Timing.Step;
 
         /// <summary>
-        /// List of all powered ItemComponents
+        /// List of all powered ItemComponents (thread-safe)
         /// </summary>
-        private static readonly List<Powered> poweredList = new List<Powered>();
+        private static readonly ConcurrentDictionary<Powered, byte> _poweredDict = new ConcurrentDictionary<Powered, byte>();
+        
+        /// <summary>
+        /// Cached list for iteration - updated when collection changes
+        /// </summary>
+        private static volatile List<Powered> _cachedPoweredList;
+        private static int _poweredListVersion;
+        
         public static IEnumerable<Powered> PoweredList
         {
-            get { return poweredList; }
+            get 
+            { 
+                var cached = _cachedPoweredList;
+                if (cached != null) return cached;
+                return GetCachedPoweredList();
+            }
+        }
+        
+        private static List<Powered> GetCachedPoweredList()
+        {
+            var newList = _poweredDict.Keys.ToList();
+            _cachedPoweredList = newList;
+            return newList;
+        }
+        
+        private static void InvalidatePoweredListCache()
+        {
+            _cachedPoweredList = null;
+            Interlocked.Increment(ref _poweredListVersion);
         }
 
-        public static readonly HashSet<Connection> ChangedConnections = new HashSet<Connection>();
+        /// <summary>
+        /// Thread-safe set of changed connections
+        /// </summary>
+        private static readonly ConcurrentDictionary<Connection, byte> _changedConnections = new ConcurrentDictionary<Connection, byte>();
+        
+        /// <summary>
+        /// Gets all changed connections (snapshot)
+        /// </summary>
+        public static ICollection<Connection> ChangedConnections => _changedConnections.Keys;
+        
+        /// <summary>
+        /// Add a connection to the changed set
+        /// </summary>
+        public static void MarkConnectionChanged(Connection c)
+        {
+            _changedConnections.TryAdd(c, 0);
+        }
+        
+        /// <summary>
+        /// Clear all changed connections
+        /// </summary>
+        public static void ClearChangedConnections()
+        {
+            _changedConnections.Clear();
+        }
+        
+        /// <summary>
+        /// Remove a connection from the changed set
+        /// </summary>
+        public static void UnmarkConnectionChanged(Connection c)
+        {
+            _changedConnections.TryRemove(c, out _);
+        }
 
-        public readonly static Dictionary<int, GridInfo> Grids = new Dictionary<int, GridInfo>();
+        /// <summary>
+        /// Thread-safe grid dictionary
+        /// </summary>
+        public readonly static ConcurrentDictionary<int, GridInfo> Grids = new ConcurrentDictionary<int, GridInfo>();
 
         /// <summary>
         /// The amount of power currently consumed by the item. Negative values mean that the item is providing power to connected items
@@ -209,7 +271,8 @@ namespace Barotrauma.Items.Components
         public Powered(Item item, ContentXElement element)
             : base(item, element)
         {
-            poweredList.Add(this);
+            _poweredDict.TryAdd(this, 0);
+            InvalidatePoweredListCache();
             InitProjectSpecific(element);
         }
 
@@ -322,17 +385,20 @@ namespace Barotrauma.Items.Components
             //don't use cache if there are no existing grids
             if (Grids.Count > 0 && useCache)
             {
+                // Take a snapshot of changed connections for iteration
+                var changedSnapshot = ChangedConnections.ToList();
+                
                 //delete all grids that were affected
-                foreach (Connection c in ChangedConnections)
+                foreach (Connection c in changedSnapshot)
                 {
                     if (c.Grid != null)
                     {
-                        Grids.Remove(c.Grid.ID);
+                        Grids.TryRemove(c.Grid.ID, out _);
                         c.Grid = null;
                     }
                 }
 
-                foreach (Connection c in ChangedConnections)
+                foreach (Connection c in changedSnapshot)
                 {
                     //Make sure the connection grid hasn't been resolved by another connection update
                     //Ensure the connection has other connections
@@ -346,7 +412,7 @@ namespace Barotrauma.Items.Components
             else
             {
                 //Clear all grid IDs from connections
-                foreach (Powered powered in poweredList)
+                foreach (Powered powered in PoweredList)
                 {
                     //Only check devices with connectors
                     if (powered.powerIn != null)
@@ -361,7 +427,7 @@ namespace Barotrauma.Items.Components
 
                 Grids.Clear();
 
-                foreach (Powered powered in poweredList)
+                foreach (Powered powered in PoweredList)
                 {
                     if (powered.Item.Condition <= 0f) { continue; }
 
@@ -392,7 +458,7 @@ namespace Barotrauma.Items.Components
             }
 
             //Clear changed connections after each update
-            ChangedConnections.Clear();
+            ClearChangedConnections();
         }
 
         private static GridInfo PropagateGrid(Connection conn)
@@ -422,8 +488,8 @@ namespace Barotrauma.Items.Components
                 c.Grid = grid;
                 grid.AddConnection(c);
 
-                //Add on recipients 
-                foreach (Connection otherC in c.Recipients)
+                //Add on recipients - use ToList() snapshot for thread-safe iteration
+                foreach (Connection otherC in c.Recipients.ToList())
                 {
                     //Only add valid connections
                     if (otherC.Grid != grid && (otherC.Grid == null || !Grids.ContainsKey(otherC.Grid.ID)) && ValidPowerConnection(c, otherC))
@@ -494,7 +560,7 @@ namespace Barotrauma.Items.Components
             }
 
             //Determine if devices are adding a load or providing power, also resolve solo nodes
-            foreach (Powered powered in poweredList)
+            foreach (Powered powered in PoweredList)
             {
                 //Make voltage decay to ensure the device powers down.
                 //This only effects devices with no power input (whose voltage is set by other means, e.g. status effects from a contained battery)
@@ -730,7 +796,8 @@ namespace Barotrauma.Items.Components
         {
             if (item.Connections != null && powerIn != null)
             {
-                foreach (Connection recipient in powerIn.Recipients)
+                // Use ToList() snapshot for thread-safe iteration
+                foreach (Connection recipient in powerIn.Recipients.ToList())
                 {
                     if (!recipient.IsPower || !recipient.IsOutput) { continue; }
                     if (recipient.Item?.GetComponent<PowerContainer>() is PowerContainer battery)
@@ -750,13 +817,14 @@ namespace Barotrauma.Items.Components
                 {
                     if (c.IsPower && c.Grid != null)
                     {
-                        ChangedConnections.Add(c);
+                        MarkConnectionChanged(c);
                     }
                 }
             }
 
             base.RemoveComponentSpecific();
-            poweredList.Remove(this);
+            _poweredDict.TryRemove(this, out _);
+            InvalidatePoweredListCache();
         }
     }
 
@@ -780,9 +848,9 @@ namespace Barotrauma.Items.Components
             Connections.Remove(c);
 
             //Remove the grid if it has no devices
-            if (Connections.Count == 0 && Powered.Grids.ContainsKey(ID))
+            if (Connections.Count == 0)
             {
-                Powered.Grids.Remove(ID);
+                Powered.Grids.TryRemove(ID, out _);
             }
         }
 

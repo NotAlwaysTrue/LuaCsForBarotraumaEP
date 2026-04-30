@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Barotrauma.IO;
 using System.Linq;
@@ -9,7 +10,8 @@ namespace Barotrauma
 {
     class NPCConversationCollection : Prefab
     {
-        public static readonly Dictionary<LanguageIdentifier, PrefabCollection<NPCConversationCollection>> Collections = new Dictionary<LanguageIdentifier, PrefabCollection<NPCConversationCollection>>();
+        // Thread-safe dictionary for language-based collections
+        public static readonly ConcurrentDictionary<LanguageIdentifier, PrefabCollection<NPCConversationCollection>> Collections = new ConcurrentDictionary<LanguageIdentifier, PrefabCollection<NPCConversationCollection>>();
 
         public readonly LanguageIdentifier Language;
 
@@ -160,7 +162,24 @@ namespace Barotrauma
             return currentFlags;
         }
 
-        private static readonly List<NPCConversation> previousConversations = new List<NPCConversation>();
+        // Thread-safe previous conversations tracking using copy-on-write pattern
+        private static volatile List<NPCConversation> _previousConversations = new List<NPCConversation>();
+        private static readonly object _previousConversationsLock = new object();
+        private static List<NPCConversation> previousConversations => _previousConversations;
+        
+        private static void AddToPreviousConversations(NPCConversation conversation)
+        {
+            lock (_previousConversationsLock)
+            {
+                var newList = new List<NPCConversation>(_previousConversations);
+                newList.Insert(0, conversation);
+                if (newList.Count > MaxPreviousConversations)
+                {
+                    newList.RemoveAt(MaxPreviousConversations);
+                }
+                _previousConversations = newList;
+            }
+        }
         
         public static List<(Character speaker, string line)> CreateRandom(List<Character> availableSpeakers)
         {
@@ -281,8 +300,7 @@ namespace Barotrauma
 
             if (baseConversation == null)
             {
-                previousConversations.Insert(0, selectedConversation);
-                if (previousConversations.Count > MaxPreviousConversations) previousConversations.RemoveAt(MaxPreviousConversations);
+                AddToPreviousConversations(selectedConversation);
             }
             lineList.Add((speaker, selectedConversation.Line));
             CreateConversation(availableSpeakers, assignedSpeakers, selectedConversation, lineList, availableConversations);

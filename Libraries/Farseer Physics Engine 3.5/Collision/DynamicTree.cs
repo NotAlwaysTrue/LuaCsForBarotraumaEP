@@ -30,6 +30,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using FarseerPhysics.Common;
 using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
@@ -74,8 +75,15 @@ namespace FarseerPhysics.Collision
     /// </summary>
     public class DynamicTree<T>
     {
-        private Stack<int> _raycastStack = new Stack<int>(256);
-        private Stack<int> _queryStack = new Stack<int>(256);
+        // Thread-local stacks to ensure thread safety during parallel queries/raycasts
+        [ThreadStatic]
+        private static Stack<int> _raycastStack;
+        [ThreadStatic]
+        private static Stack<int> _queryStack;
+        
+        private static Stack<int> RaycastStack => _raycastStack ??= new Stack<int>(256);
+        private static Stack<int> QueryStack => _queryStack ??= new Stack<int>(256);
+        
         private int _freeList;
         private int _nodeCapacity;
         private int _nodeCount;
@@ -346,12 +354,12 @@ namespace FarseerPhysics.Collision
         /// <param name="aabb">The aabb.</param>
         public void Query(Func<int, bool> callback, ref AABB aabb, ref Body body)
         {
-            _queryStack.Clear();
-            _queryStack.Push(_root);
+            QueryStack.Clear();
+            QueryStack.Push(_root);
 
-            while (_queryStack.Count > 0)
+            while (QueryStack.Count > 0)
             {
-                int nodeId = _queryStack.Pop();
+                int nodeId = QueryStack.Pop();
                 if (nodeId == NullNode)
                 {
                     continue;
@@ -386,8 +394,8 @@ namespace FarseerPhysics.Collision
                     }
                     else
                     {
-                        _queryStack.Push(node.Child1);
-                        _queryStack.Push(node.Child2);
+                        QueryStack.Push(node.Child1);
+                        QueryStack.Push(node.Child2);
                     }                    
                 }
             }
@@ -395,12 +403,12 @@ namespace FarseerPhysics.Collision
 
         public void Query(Func<int, bool> callback, ref AABB aabb)
         {
-            _queryStack.Clear();
-            _queryStack.Push(_root);
+            QueryStack.Clear();
+            QueryStack.Push(_root);
 
-            while (_queryStack.Count > 0)
+            while (QueryStack.Count > 0)
             {
-                int nodeId = _queryStack.Pop();
+                int nodeId = QueryStack.Pop();
                 if (nodeId == NullNode)
                 {
                     continue;
@@ -419,8 +427,8 @@ namespace FarseerPhysics.Collision
                     }
                     else
                     {
-                        _queryStack.Push(_nodes[nodeId].Child1);
-                        _queryStack.Push(_nodes[nodeId].Child2);
+                        QueryStack.Push(_nodes[nodeId].Child1);
+                        QueryStack.Push(_nodes[nodeId].Child2);
                     }
                 }
             }
@@ -460,12 +468,12 @@ namespace FarseerPhysics.Collision
                 Vector2.Max(ref p1, ref t, out segmentAABB.UpperBound);
             }
 
-            _raycastStack.Clear();
-            _raycastStack.Push(_root);
+            RaycastStack.Clear();
+            RaycastStack.Push(_root);
 
-            while (_raycastStack.Count > 0)
+            while (RaycastStack.Count > 0)
             {
-                int nodeId = _raycastStack.Pop();
+                int nodeId = RaycastStack.Pop();
                 if (nodeId == NullNode)
                 {
                     continue;
@@ -522,8 +530,8 @@ namespace FarseerPhysics.Collision
                 }
                 else
                 {
-                    _raycastStack.Push(_nodes[nodeId].Child1);
-                    _raycastStack.Push(_nodes[nodeId].Child2);
+                    RaycastStack.Push(_nodes[nodeId].Child1);
+                    RaycastStack.Push(_nodes[nodeId].Child2);
                 }
             }
         }
