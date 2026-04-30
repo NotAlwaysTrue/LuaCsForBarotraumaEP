@@ -888,22 +888,24 @@ namespace Barotrauma
 
             Oxygen -= OxygenDeteriorationSpeed * deltaTime;
 
-            if (FakeFireSources.Count > 0)
+            SingleThreadWorker.Instance.AddAction(() =>
             {
-                if ((Character.Controlled?.CharacterHealth?.GetAffliction("psychosis")?.Strength ?? 0.0f) <= 0.0f)
+                if (FakeFireSources.Count > 0)
                 {
-                    for (int i = FakeFireSources.Count - 1; i >= 0; i--)
+                    if ((Character.Controlled?.CharacterHealth?.GetAffliction("psychosis")?.Strength ?? 0.0f) <= 0.0f)
                     {
-                        if (FakeFireSources[i].CausedByPsychosis)
+                        for (int i = FakeFireSources.Count - 1; i >= 0; i--)
                         {
-                            FakeFireSources[i].Remove();
+                            if (FakeFireSources[i].CausedByPsychosis)
+                            {
+                                FakeFireSources[i].Remove();
+                            }
                         }
                     }
+                    FireSource.UpdateAll(FakeFireSources, deltaTime);
                 }
-                FireSource.UpdateAll(FakeFireSources, deltaTime);
-            }
-
-            FireSource.UpdateAll(FireSources, deltaTime);
+                FireSource.UpdateAll(FireSources, deltaTime);
+            });
 
             foreach (Decal decal in decals)
             {

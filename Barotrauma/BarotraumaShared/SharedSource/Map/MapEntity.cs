@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using static OneOf.Types.TrueFalseOrNull;
 
 namespace Barotrauma
 {
@@ -642,6 +643,7 @@ namespace Barotrauma
         /// </summary>
         public static void UpdateAll(float deltaTime, Camera cam, ParallelOptions parallelOptions)
         {
+            Random rand = new Random();
 #if CLIENT
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
@@ -652,9 +654,15 @@ namespace Barotrauma
             var structureList = Structure.WallList.ToList();
 
             List<Gap> gapList = Gap.GapList.ToList();
-            List<Gap> shuffledGaps = new List<Gap>(gapList?.OrderBy(g => Rand.Int(int.MaxValue)));
-            // In case if it failed, but why it would fail?
-            shuffledGaps = shuffledGaps ?? gapList;
+
+            // This should never break again... right?
+            int n = gapList.Count;
+            while (n > 1)
+            {
+                n--;
+                int k = rand.Next(n + 1);
+                (gapList[n], gapList[k]) = (gapList[k], gapList[n]);
+            }
 
             var itemList = Item.ItemList.ToList();
 
@@ -662,11 +670,11 @@ namespace Barotrauma
             Parallel.Invoke(parallelOptions,
                 () =>
                 {
-                    // basically nothing here is thread-safe so
-                    foreach (var hull in hullList)
+                    Parallel.ForEach(hullList, parallelOptions, hull =>
                     {
                         hull.Update(deltaTime, cam);
-                    }
+                    });
+ 
                 },
                 // Structure parallel update
                 () =>
@@ -685,7 +693,7 @@ namespace Barotrauma
                 // moved waterflow reset here to see if we can reduce at least some time
                 {
                     // PLEASE WORK
-                    Parallel.ForEach(shuffledGaps, parallelOptions, gap =>
+                    Parallel.ForEach(gapList, parallelOptions, gap =>
                     {
                         gap.ResetWaterFlowThisFrame();
                         gap.Update(deltaTime, cam);
@@ -697,8 +705,6 @@ namespace Barotrauma
                     Powered.UpdatePower(deltaTime);
                 }
             );
-
-            SingleThreadWorker.GlobalWorker.RunActions();
 
 #if CLIENT
             // Hull Cheats need to be executed after Hull update

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
 using System;
+using static Barotrauma.SingleThreadWorker;
 
 
 #if DEBUG && CLIENT
@@ -261,7 +262,6 @@ namespace Barotrauma
 
 
             Ragdoll.UpdateAll((float)deltaTime, Cam);
-            SingleThreadWorker.GlobalWorker.RunActions();
 
 #if CLIENT
             sw.Stop();
@@ -279,6 +279,9 @@ namespace Barotrauma
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Submarine", sw.ElapsedTicks);
             sw.Restart();
 #endif
+
+            SingleThreadActionStandbySignal.Wait();
+
             try
             {
                 GameMain.World.Step((float)Timing.Step);
@@ -289,6 +292,8 @@ namespace Barotrauma
                 DebugConsole.ThrowError(errorMsg, e);
                 GameAnalyticsManager.AddErrorEventOnce("GameScreen.Update:WorldLockedException" + e.Message, GameAnalyticsManager.ErrorSeverity.Critical, errorMsg);
             }
+
+            SingleThreadActionStandbySignal.Release();
 
 #if CLIENT
             sw.Stop();

@@ -93,6 +93,7 @@ namespace Barotrauma
         private static bool hasShutDown = false;
         private static void ShutDown()
         {
+            SingleThreadWorker.Instance.Dispose();
             if (hasShutDown) { return; }
             hasShutDown = true;
 
