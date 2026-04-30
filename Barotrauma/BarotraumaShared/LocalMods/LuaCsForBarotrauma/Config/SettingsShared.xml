@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Settings>
+    <Setting Name="HideUserNamesInLogs" Type="bool" Value="true"/>
+    <Setting Name="CsRunPolicy" Type="listString" Value="Prompt" AllowChangesWhileExecuting="false">
+      <Values>
+        <Value Value="Disabled"/>
+        <Value Value="Prompt"/>
+        <Value Value="Enabled"/>
+      </Values>
+    </Setting>
+    <Setting Name="UseCaching" Type="bool" Value="true" AllowChangesWhileExecuting="false"/>
+    <Setting Name="IsCsEnabledForSession" Type="bool" AllowChangesWhileExecuting="false" ShowInMenus="false" Value="false"/>
+  </Settings>
+</Configuration>

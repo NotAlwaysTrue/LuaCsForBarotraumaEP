@@ -68,7 +68,7 @@ namespace Barotrauma
                 var owner = clients.FirstOrDefault(c => c.Character == this);
                 if (owner != null)
                 {
-                    if (!GameMain.LuaCs.Game.overrideTraitors)
+                    if (!LuaCsSetup.Instance.Game.overrideTraitors)
                     {
                         GameMain.Server.SendDirectChatMessage(TextManager.FormatServerMessage("KilledByTraitorNotification"), owner, ChatMessageType.ServerMessageBoxInGame);
                     }

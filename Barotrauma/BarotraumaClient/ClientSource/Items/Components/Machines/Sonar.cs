@@ -575,6 +575,22 @@ namespace Barotrauma.Items.Components
                         pos /= c.Resources.Count;
                         MineralClusters.Add((center: pos, resources: c.Resources));
                     }
+
+                    if (GameMain.GameSession != null)
+                    {
+                        foreach (var mission in GameMain.GameSession.Missions)
+                        {
+                            if (mission is MineralMission mineralMission)
+                            {
+                                foreach (var minerals in mineralMission.SpawnedResources)
+                                {
+                                    MineralClusters.Add((
+                                        center: new Vector2(minerals.Average(m => m.WorldPosition.X), minerals.Average(m => m.WorldPosition.Y)), 
+                                        resources: minerals));
+                                }
+                            }
+                        }
+                    }
                 }
                 else
                 {
@@ -823,18 +839,20 @@ namespace Barotrauma.Items.Components
                     if (t.Entity is Character c && !c.IsUnconscious && c.Params.HideInSonar) { continue; }
                     if (t.SoundRange <= 0.0f || float.IsNaN(t.SoundRange) || float.IsInfinity(t.SoundRange)) { continue; }
 
+                    float sonarSoundRange = t.SoundRange * t.SoundRangeOnSonarMultiplier;
+
                     float distSqr = Vector2.DistanceSquared(t.WorldPosition, transducerCenter);
-                    if (distSqr > t.SoundRange * t.SoundRange * 2) { continue; }
+                    if (distSqr > sonarSoundRange * sonarSoundRange * 2) { continue; }
 
                     float dist = (float)Math.Sqrt(distSqr);
                     if (dist > prevPassivePingRadius * Range && dist <= passivePingRadius * Range && Rand.Int(sonarBlips.Count) < 500)
                     {
                         Ping(t.WorldPosition, transducerCenter,
-                            t.SoundRange * DisplayScale, 0, DisplayScale, range,
+                            sonarSoundRange * DisplayScale, 0, DisplayScale, range,
                             passive: true, pingStrength: 0.5f, needsToBeInSector: t);
                         if (t.IsWithinSector(transducerCenter))
                         {
-                            sonarBlips.Add(new SonarBlip(t.WorldPosition, fadeTimer: 1.0f, scale: MathHelper.Clamp(t.SoundRange / 2000, 1.0f, 5.0f)));
+                            sonarBlips.Add(new SonarBlip(t.WorldPosition, fadeTimer: 1.0f, scale: MathHelper.Clamp(sonarSoundRange / 2000, 1.0f, 5.0f)));
                         }
                     }
                 }
@@ -977,7 +995,9 @@ namespace Barotrauma.Items.Components
                 if (aiTarget.InDetectable) { continue; }
                 if (aiTarget.SonarLabel.IsNullOrEmpty() || aiTarget.SoundRange <= 0.0f) { continue; }
 
-                if (Vector2.DistanceSquared(aiTarget.WorldPosition, transducerCenter) < aiTarget.SoundRange * aiTarget.SoundRange)
+                float sonarSoundRange = aiTarget.SoundRange * aiTarget.SoundRangeOnSonarMultiplier;
+
+                if (Vector2.DistanceSquared(aiTarget.WorldPosition, transducerCenter) < sonarSoundRange * sonarSoundRange)
                 {
                     DrawMarker(spriteBatch,
                         aiTarget.SonarLabel.Value,

@@ -1,4 +1,5 @@
-﻿using FarseerPhysics;
+﻿using Barotrauma.LuaCs.Events;
+using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using FarseerPhysics.Dynamics.Contacts;
 using Microsoft.Xna.Framework;
@@ -347,18 +348,9 @@ namespace Barotrauma.Items.Components
             }
             else if (f2.Body.UserData is Character targetCharacter)
             {
-                if (targetCharacter == picker || targetCharacter == User) { return false; }
-                if (targetCharacter.IgnoreMeleeWeapons) { return false; }
-                if (HitFriendlyTarget(targetCharacter)) { return false; }
-                if (AllowHitMultiple)
-                {
-                    if (hitTargets.Contains(targetCharacter)) { return false; }
-                }
-                else
-                {
-                    if (hitTargets.Any(t => t is Character)) { return false; }
-                }
-                hitTargets.Add(targetCharacter);
+                //only allow hitting limbs, not the main collider
+                //otherwise it's difficult to make certain parts of the ragdoll not take hits by making them ignore collisions or melee weapons
+                return false;
             }
             else if (!HitOnlyCharacters)
             {
@@ -435,7 +427,7 @@ namespace Barotrauma.Items.Components
             Structure targetStructure = target.UserData as Structure ?? targetFixture.UserData as Structure;
             Item targetItem = target.UserData is Holdable h ? h.Item : target.UserData as Item ?? targetFixture.UserData as Item;
             Entity targetEntity = targetCharacter ?? targetStructure ?? targetItem ?? target.UserData as Entity;
-            GameMain.LuaCs.Hook.Call("meleeWeapon.handleImpact", this, target);
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventMeleeWeaponHandleImpact>(x => x.OnMeleeWeaponHandleImpact(this, target));
 
             if (Attack != null)
             {

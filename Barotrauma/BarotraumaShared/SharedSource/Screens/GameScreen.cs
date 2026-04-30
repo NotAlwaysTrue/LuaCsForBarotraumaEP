@@ -1,6 +1,4 @@
-﻿//#define RUN_PHYSICS_IN_SEPARATE_THREAD
-
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using System.Threading;
 using FarseerPhysics.Dynamics;
 using FarseerPhysics;
@@ -8,6 +6,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
 using System;
+using static Barotrauma.SingleThreadWorker;
 
 
 #if DEBUG && CLIENT
@@ -20,12 +19,10 @@ namespace Barotrauma
 {
     partial class GameScreen : Screen
     {
-        private object updateLock = new object();
-        private double physicsTime;
-
+        // Use default instead. Hopefully this wont cause issues in long-running servers.
         private static readonly ParallelOptions parallelOptions = new ParallelOptions
         {
-            MaxDegreeOfParallelism = Math.Max(1,Environment.ProcessorCount - 1),
+            //MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount - 1)
         };
 
 #if CLIENT
@@ -63,13 +60,13 @@ namespace Barotrauma
 #if CLIENT
             if (Character.Controlled != null)
             {
-                cam.Position = Character.Controlled.WorldPosition;
-                cam.UpdateTransform(true);
+                Cam.Position = Character.Controlled.WorldPosition;
+                Cam.UpdateTransform(true);
             }
             else if (Submarine.MainSub != null)
             {
-                cam.Position = Submarine.MainSub.WorldPosition;
-                cam.UpdateTransform(true);
+                Cam.Position = Submarine.MainSub.WorldPosition;
+                Cam.UpdateTransform(true);
             }
             GameMain.GameSession?.CrewManager?.ResetCrewListOpenState();
             ChatBox.ResetChatBoxOpenState();
@@ -78,14 +75,6 @@ namespace Barotrauma
 
             MapEntity.ClearHighlightedEntities();
 
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-            var physicsThread = new Thread(ExecutePhysics)
-            {
-                Name = "Physics thread",
-                IsBackground = true
-            };
-            physicsThread.Start();
-#endif
         }
 
         public override void Deselect()
@@ -114,21 +103,15 @@ namespace Barotrauma
         public override void Update(double deltaTime)
         {
 
-#warning For now CL side performance counter is partly useless bucz multiple changes on such things. Need time to take care of it
-
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-            physicsTime += deltaTime;
-            lock (updateLock)
-            { 
-#endif
-
+            var submarines = Submarine.Loaded.ToList();
+            var physicsBodies = PhysicsBody.List.ToList();
 
 #if DEBUG && CLIENT
             if (GameMain.GameSession != null && !DebugConsole.IsOpen && GUI.KeyboardDispatcher.Subscriber == null)
             {
                 if (GameMain.GameSession.Level != null && GameMain.GameSession.Submarine != null)
                 {
-                    Submarine closestSub = Submarine.FindClosest(cam.WorldViewCenter) ?? GameMain.GameSession.Submarine;
+                    Submarine closestSub = Submarine.FindClosest(Cam.WorldViewCenter) ?? GameMain.GameSession.Submarine;
 
                     Vector2 targetMovement = Vector2.Zero;
                     if (PlayerInput.KeyDown(Keys.I)) { targetMovement.Y += 1.0f; }
@@ -150,8 +133,6 @@ namespace Barotrauma
 
             GameTime += deltaTime;
 
-            var physicsBodies = PhysicsBody.List.ToList();
-
             Parallel.ForEach(physicsBodies, parallelOptions, body =>
             {
                 if ((body.Enabled || body.UserData is Character) &&
@@ -160,49 +141,38 @@ namespace Barotrauma
                     body.Update();
                 }
             });
-            GameMain.GameSession?.Update((float)deltaTime);
-
-            Parallel.ForEach(physicsBodies, parallelOptions, body =>
-            {
-                if (body.Enabled && body.BodyType != BodyType.Static)
-                {
-                    body.SetPrevTransform(body.SimPosition, body.Rotation);
-                }
-            });
 
             MapEntity.ClearHighlightedEntities();
 
 #if CLIENT
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
-
-            Parallel.Invoke(parallelOptions,
-                () => GameMain.ParticleManager.Update((float)deltaTime),
-                () => 
-                { 
-                    PhysicsBodyQueue.IsInParallelContext = true;
-                    try
-                    {
-                        if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, cam);
-                    }
-                    finally
-                    {
-                        PhysicsBodyQueue.IsInParallelContext = false;
-                    }
-                }
-            );
-            
-            // Process any physics operations queued during Level update
-            PhysicsBodyQueue.ProcessPendingOperations();
-            
+#endif
+            GameMain.GameSession?.Update((float)deltaTime);
+#if CLIENT
             sw.Stop();
-            GameMain.PerformanceCounter.AddElapsedTicks("Update:Particles+Level", sw.ElapsedTicks);
+            GameMain.PerformanceCounter.AddElapsedTicks("Update:GameSession", sw.ElapsedTicks);
+            sw.Restart(); 
+
+            GameMain.ParticleManager?.Update((float)deltaTime);
+
+            sw.Stop();
+            GameMain.PerformanceCounter.AddElapsedTicks("Update:Particle", sw.ElapsedTicks);
+            sw.Restart(); 
+
+#endif
+
+            if (Level.Loaded != null) { Level.Loaded.Update((float)deltaTime, Cam); }
+
+#if CLIENT
+            sw.Stop();
+            GameMain.PerformanceCounter.AddElapsedTicks("Update:Level", sw.ElapsedTicks);
 
             if (Character.Controlled is { } controlled)
             {
                 if (controlled.SelectedItem != null && controlled.CanInteractWith(controlled.SelectedItem))
                 {
-                    controlled.SelectedItem.UpdateHUD(cam, controlled, (float)deltaTime);
+                    controlled.SelectedItem.UpdateHUD(Cam, controlled, (float)deltaTime);
                 }
                 if (controlled.Inventory != null)
                 {
@@ -210,7 +180,7 @@ namespace Barotrauma
                     {
                         if (controlled.HasEquippedItem(item))
                         {
-                            item.UpdateHUD(cam, controlled, (float)deltaTime);
+                            item.UpdateHUD(Cam, controlled, (float)deltaTime);
                         }
                     }
                 }
@@ -218,11 +188,19 @@ namespace Barotrauma
 
             sw.Restart();
 
-            Character.UpdateAll((float)deltaTime, cam);
+#endif
+            Character.UpdateAll((float)deltaTime, Cam);
 
+#if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Character", sw.ElapsedTicks);
             sw.Restart(); 
+#endif
+
+            //StatusEffect.UpdateAll is not thread-safe and must be executed on the main thread
+            StatusEffect.UpdateAll((float)deltaTime);
+
+#if CLIENT
 
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:StatusEffects", sw.ElapsedTicks);
@@ -248,51 +226,31 @@ namespace Barotrauma
                         }
                         Vector2 screenOffset = screenTargetPos - new Vector2(GameMain.GraphicsWidth / 2, GameMain.GraphicsHeight / 2);
                         screenOffset.Y = -screenOffset.Y;
-                        targetPos -= screenOffset / cam.Zoom;
+                        targetPos -= screenOffset / Cam.Zoom;
                     }
                 }
-                cam.TargetPos = targetPos;
+                Cam.TargetPos = targetPos;
             }
 
-            cam.MoveCamera((float)deltaTime, allowZoom: GUI.MouseOn == null && !Inventory.IsMouseOnInventory);
+            Cam.MoveCamera((float)deltaTime, allowZoom: GUI.MouseOn == null && !Inventory.IsMouseOnInventory);
 
-            Character.Controlled?.UpdateLocalCursor(cam);
-
-#elif SERVER
-            // DO NOT PARALLELIZE THESE TWO OR IT MAY STUCK HERE
-            // SO FOLLOW THE ORIGINAL SINGLE-THREAD LOGIC STRICTLY
-
-            if (Level.Loaded != null) Level.Loaded.Update((float)deltaTime, Camera.Instance);
-
-            Character.UpdateAll((float)deltaTime, Camera.Instance);
-
-            StatusEffect.UpdateAll((float)deltaTime);
-
-            PhysicsBodyQueue.ProcessPendingOperations();
+            Character.Controlled?.UpdateLocalCursor(Cam);
 #endif
 
-            var submarines = Submarine.Loaded.ToList();
-
-            Parallel.ForEach(submarines, parallelOptions, sub =>
+            foreach (Submarine sub in submarines)
             {
                 sub.SetPrevTransform(sub.Position);
-            });
+            }
 
             Parallel.ForEach(physicsBodies, parallelOptions, body =>
             {
-                if (body.Enabled && body.BodyType != FarseerPhysics.BodyType.Static) 
-                { 
-                    body.SetPrevTransform(body.SimPosition, body.Rotation); 
+                if (body.Enabled && body.BodyType != FarseerPhysics.BodyType.Static)
+                {
+                    body.SetPrevTransform(body.SimPosition, body.Rotation);
                 }
             });
 
-#if CLIENT
-            MapEntity.UpdateAll((float)deltaTime, cam, parallelOptions);
-#elif SERVER
-
-            MapEntity.UpdateAll((float)deltaTime, Camera.Instance, parallelOptions);
-
-#endif
+            MapEntity.UpdateAll((float)deltaTime, Cam, parallelOptions);
 
 #if CLIENT
             sw.Stop();
@@ -303,11 +261,8 @@ namespace Barotrauma
             Character.UpdateAnimAll((float)deltaTime);
             PhysicsBodyQueue.ProcessPendingOperations();
 
-#if CLIENT
-            Ragdoll.UpdateAll((float)deltaTime, cam);
-#elif SERVER
-            Ragdoll.UpdateAll((float)deltaTime, Camera.Instance);
-#endif
+
+            Ragdoll.UpdateAll((float)deltaTime, Cam);
 
 #if CLIENT
             sw.Stop();
@@ -315,7 +270,7 @@ namespace Barotrauma
             sw.Restart(); 
 #endif
 
-            foreach(Submarine sub in submarines)
+            foreach (Submarine sub in submarines)
             {
                 sub.Update((float)deltaTime);
             }
@@ -326,7 +281,8 @@ namespace Barotrauma
             sw.Restart();
 #endif
 
-#if !RUN_PHYSICS_IN_SEPARATE_THREAD
+            SingleThreadActionStandbySignal.Wait();
+
             try
             {
                 GameMain.World.Step((float)Timing.Step);
@@ -337,34 +293,16 @@ namespace Barotrauma
                 DebugConsole.ThrowError(errorMsg, e);
                 GameAnalyticsManager.AddErrorEventOnce("GameScreen.Update:WorldLockedException" + e.Message, GameAnalyticsManager.ErrorSeverity.Critical, errorMsg);
             }
-#endif
+
+            SingleThreadActionStandbySignal.Release();
 
 #if CLIENT
             sw.Stop();
             GameMain.PerformanceCounter.AddElapsedTicks("Update:Physics", sw.ElapsedTicks);
 #endif
             UpdateProjSpecific(deltaTime);
-
-#if RUN_PHYSICS_IN_SEPARATE_THREAD
-            }
-#endif
         }
 
         partial void UpdateProjSpecific(double deltaTime);
-
-        private void ExecutePhysics()
-        {
-            while (true)
-            {
-                while (physicsTime >= Timing.Step)
-                {
-                    lock (updateLock)
-                    {
-                        GameMain.World.Step((float)Timing.Step);
-                        physicsTime -= Timing.Step;
-                    }
-                }
-            }
-        }
     }
 }

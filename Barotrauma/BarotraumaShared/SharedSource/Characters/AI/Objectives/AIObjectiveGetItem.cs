@@ -50,6 +50,13 @@ namespace Barotrauma
         public const float MaxReach = 150;
 
         /// <summary>
+        /// How long it takes for the objective to be abandoned if no suitable item is found. 
+        /// Intended to be an optimization: if the bots are constantly trying to find some item (like a diving suit),
+        /// it can easily lead to performance issues when e.g. AIObjectiveFindDivingGear constantly starts up new GetItem objectives.
+        /// </summary>
+        private float abandonDelayIfItemNotFound = 5.0f;
+
+        /// <summary>
         /// Is the goal of this objective to get diving gear (i.e. has it been created by <see cref="AIObjectiveFindDivingGear"/>)? 
         /// If so, the objective won't attempt to create another objective if the path requires diving gear 
         /// (wouldn't make sense to start looking for diving gear so the bot can get to a room they're trying to get diving gear from!)
@@ -213,7 +220,7 @@ namespace Barotrauma
                 {
                     if (isDoneSeeking)
                     {
-                        HandlePotentialItems();
+                        HandlePotentialItems(deltaTime);
                     }
                     if (objectiveManager.CurrentOrder is not AIObjectiveGoTo)
                     {
@@ -389,6 +396,8 @@ namespace Barotrauma
                             // If the root container changes, the item is no longer where it was (taken by someone -> need to find another item)
                             AbortCondition = obj => targetItem == null || (targetItem.GetRootInventoryOwner() is Entity owner && owner != moveToTarget && owner != character),
                             SpeakIfFails = false,
+                            ForceWalkTemporarily = this.ForceWalkTemporarily,
+                            ForceWalkPermanently = this.ForceWalkPermanently,
                             endNodeFilter = CreateEndNodeFilter(moveToTarget)
                         };
                     },
@@ -598,7 +607,7 @@ namespace Barotrauma
             }
         }
         
-        private void HandlePotentialItems()
+        private void HandlePotentialItems(float deltaTime)
         {
             Debug.Assert(isDoneSeeking);
             if (itemCandidates.Any())
@@ -652,10 +661,14 @@ namespace Barotrauma
                 }
                 else
                 {
-#if DEBUG
-                    DebugConsole.NewMessage($"{character.Name}: Cannot find an item with the following identifier(s) or tag(s): {string.Join(", ", IdentifiersOrTags)}", Color.Yellow);
-#endif
-                    Abandon = true;
+                    abandonDelayIfItemNotFound -= deltaTime;
+                    if (abandonDelayIfItemNotFound <= 0.0f)
+                    {
+    #if DEBUG
+                        DebugConsole.NewMessage($"{character.Name}: Cannot find an item with the following identifier(s) or tag(s): {string.Join(", ", IdentifiersOrTags)}", Color.Yellow);
+    #endif
+                        Abandon = true;
+                    }
                 }
             }
         }
@@ -718,13 +731,15 @@ namespace Barotrauma
 
         private bool CheckItem(Item item)
         {
+            bool matchesIdentifiersOrTags = item.HasIdentifierOrTags(IdentifiersOrTags) || (AllowVariants && !item.Prefab.VariantOf.IsEmpty && IdentifiersOrTags.Contains(item.Prefab.VariantOf));
+            if (!matchesIdentifiersOrTags) { return false; }
             if (!item.HasAccess(character)) { return false; }
             if (ignoredItems.Contains(item)) { return false; };
             if (ignoredIdentifiersOrTags != null && item.HasIdentifierOrTags(ignoredIdentifiersOrTags)) { return false; }
             if (item.Condition < TargetCondition) { return false; }
             if (ItemFilter != null && !ItemFilter(item)) { return false; }
             if (RequireNonEmpty && item.Components.Any(i => i.IsEmpty(character))) { return false; }
-            return item.HasIdentifierOrTags(IdentifiersOrTags) || (AllowVariants && !item.Prefab.VariantOf.IsEmpty && IdentifiersOrTags.Contains(item.Prefab.VariantOf));
+            return true;
         }
 
         public override void Reset()

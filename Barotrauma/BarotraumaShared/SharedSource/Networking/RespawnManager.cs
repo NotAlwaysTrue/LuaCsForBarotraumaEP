@@ -213,9 +213,6 @@ namespace Barotrauma.Networking
 
         public void Update(float deltaTime)
         {
-            var result = GameMain.LuaCs.Hook.Call<bool?>("respawnManager.update");
-            if (result != null && result.Value) { return; }
-
             foreach (var teamSpecificState in teamSpecificStates.Values)
             {
                 if (RespawnShuttles.None())

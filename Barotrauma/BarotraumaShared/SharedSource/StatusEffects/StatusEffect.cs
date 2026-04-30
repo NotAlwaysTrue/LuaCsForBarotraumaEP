@@ -869,6 +869,12 @@ namespace Barotrauma
         public Vector2 Offset { get; private set; }
 
         /// <summary>
+        /// Should <see cref="Offset"/> be rotated, flipped and scaled based on the entity that this effect is executed by?
+        /// Currently only supports status effects in items.
+        /// </summary>
+        public bool OffsetCopiesEntityTransform { get; private set; }
+
+        /// <summary>
         /// An random offset (in a random direction) added to the position of the effect is executed at. Only relevant if the effect does something where position matters,
         /// for example emitting particles or explosions, spawning something or playing sounds.
         /// </summary>
@@ -928,6 +934,7 @@ namespace Barotrauma
 
             Range = element.GetAttributeFloat("range", 0.0f);
             Offset = element.GetAttributeVector2("offset", Vector2.Zero);
+            OffsetCopiesEntityTransform = element.GetAttributeBool(nameof(OffsetCopiesEntityTransform), false);
             RandomOffset = element.GetAttributeFloat("randomoffset", 0.0f);
             string[] targetLimbNames = element.GetAttributeStringArray("targetlimb", null) ?? element.GetAttributeStringArray("targetlimbs", null);
             if (targetLimbNames != null)
@@ -1830,6 +1837,7 @@ namespace Barotrauma
         protected Vector2 GetPosition(Entity entity, IReadOnlyList<ISerializableEntity> targets, Vector2? worldPosition = null)
         {
             Vector2 position = worldPosition ?? (entity == null || entity.Removed ? Vector2.Zero : entity.WorldPosition);
+
             if (worldPosition == null)
             {
                 if (entity is Character character && !character.Removed && targetLimbs != null)
@@ -1866,9 +1874,22 @@ namespace Barotrauma
                         }
                     }
                 }
-
             }
-            position += Offset;
+
+            Vector2 offset = Offset;
+
+            if (OffsetCopiesEntityTransform)
+            {
+                if (entity is Item item)
+                {
+                    offset *= item.Scale;
+                    if (item.FlippedX) { offset.X *= -1; }
+                    if (item.FlippedY) { offset.Y *= -1; }
+                    offset = Vector2.Transform(offset, Matrix.CreateRotationZ(-item.RotationRad));
+                }
+            }
+
+            position += offset;
             position += Rand.Vector(Rand.Range(0.0f, RandomOffset));
             return position;
         }
@@ -1886,14 +1907,14 @@ namespace Barotrauma
             {
                 if (entity is Item item)
                 {
-                    var result = GameMain.LuaCs.Hook.Call<bool?>("statusEffect.apply." + item.Prefab.Identifier, this, deltaTime, entity, targets, worldPosition);
+                    var result = LuaCsSetup.Instance.Hook.Call<bool?>("statusEffect.apply." + item.Prefab.Identifier, this, deltaTime, entity, targets, worldPosition);
 
                     if (result != null && result.Value) { return; }
                 }
 
                 if (entity is Character character)
                 {
-                    var result = GameMain.LuaCs.Hook.Call<bool?>("statusEffect.apply." + character.SpeciesName, this, deltaTime, entity, targets, worldPosition);
+                    var result = LuaCsSetup.Instance.Hook.Call<bool?>("statusEffect.apply." + character.SpeciesName, this, deltaTime, entity, targets, worldPosition);
 
                     if (result != null && result.Value) { return; }
                 }
@@ -1903,7 +1924,7 @@ namespace Barotrauma
             {
                 foreach ((string hookName, ContentXElement element) in luaHook)
                 {
-                    var result = GameMain.LuaCs.Hook.Call<bool?>(hookName, this, deltaTime, entity, targets, worldPosition, element);
+                    var result = LuaCsSetup.Instance.Hook.Call<bool?>(hookName, this, deltaTime, entity, targets, worldPosition, element);
 
                     if (result != null && result.Value) { return; }
                 }
@@ -2193,24 +2214,9 @@ namespace Barotrauma
                 {
                     LocalizedString messageToSay = TextManager.Get(forceSayIdentifier).Fallback(forceSayIdentifier.Value);
 
-                    if (!messageToSay.IsNullOrEmpty() && target is Character targetCharacter && targetCharacter.SpeechImpediment < 100.0f && !targetCharacter.IsDead)
+                    if (!messageToSay.IsNullOrEmpty() && target is Character targetCharacter)
                     {
-                        ChatMessageType messageType = ChatMessageType.Default;
-                        bool canUseRadio = ChatMessage.CanUseRadio(targetCharacter, out WifiComponent radio);
-                        if (canUseRadio && forceSayInRadio)
-                        {
-                            messageType = ChatMessageType.Radio;
-                        }
-#if SERVER
-                        GameMain.Server?.SendChatMessage(messageToSay.Value, messageType, senderClient: null, targetCharacter);
-#elif CLIENT
-                        //no need to create the message when playing as a client, the server will send it to us
-                        if (isNotClient)
-                        {                            
-                            AIChatMessage message = new AIChatMessage(messageToSay.Value, messageType);
-                            targetCharacter.SendSinglePlayerMessage(message, canUseRadio, radio);
-                        }
-#endif
+                        targetCharacter.ForceSay(messageToSay, forceSayInRadio);
                     }
                 }
 
@@ -2362,7 +2368,10 @@ namespace Barotrauma
                             inheritedTeam = entity switch
                             {
                                 Character c => c.TeamID,
-                                Item it => it.GetRootInventoryOwner() is Character owner ? owner.TeamID : GetTeamFromSubmarine(it),
+                                Item it => 
+                                    (it.GetRootInventoryOwner() as Character ?? it.PreviousParentInventory?.Owner as Character) is { } owner ? 
+                                        owner.TeamID : 
+                                        GetTeamFromSubmarine(it),
                                 MapEntity e => GetTeamFromSubmarine(e),
                                 _ => null
                                 // Default to Team1, when we can't deduce the team (for example when spawning outside the sub AND character inventory).

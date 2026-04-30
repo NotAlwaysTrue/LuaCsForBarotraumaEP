@@ -242,7 +242,10 @@ namespace Barotrauma
                 
             }
 
-            Barotrauma.IO.File.WriteAllText($"csv_{Language.ToString().ToLower()}_{index}.csv", sb.ToString());
+            string fileName = $"csv_{Language.ToString().ToLower()}_{index}.csv";
+            Barotrauma.IO.File.WriteAllText(fileName, sb.ToString());
+
+            DebugConsole.NewMessage($"Wrote \"{ContentFile.Path}\" to \"{fileName}\"");
         }
 #endif
     }

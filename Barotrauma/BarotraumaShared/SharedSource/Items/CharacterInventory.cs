@@ -43,8 +43,12 @@ namespace Barotrauma
         public InvSlotType[] SlotTypes
         {
             get;
-            private set;
         }
+
+        /// <summary>
+        /// Optimization for fast access of <see cref="slots"/> by <see cref="SlotTypes"/>.
+        /// </summary>
+        private readonly Dictionary<InvSlotType, List<ItemSlot>> slotsByType = [];
         
         public static readonly List<InvSlotType> AnySlot = new List<InvSlotType> { InvSlotType.Any };
         public static readonly List<InvSlotType> BagSlot = new List<InvSlotType> { InvSlotType.Bag };
@@ -106,9 +110,20 @@ namespace Barotrauma
                     case InvSlotType.RightHand:
                         slots[i].HideIfEmpty = true;
                         break;
-                }               
+                }
             }
-            
+
+            for (int i = 0; i < capacity; i++)
+            {
+                InvSlotType slotType = SlotTypes[i];
+                if (!slotsByType.TryGetValue(slotType, out List<ItemSlot> slotList))
+                {
+                    slotList = [];
+                    slotsByType[SlotTypes[i]] = slotList;
+                }
+                slotList.Add(slots[i]);
+            }
+
             InitProjSpecific(element);
 
             var itemElements = element.Elements().Where(e => e.Name.ToString().Equals("item", StringComparison.OrdinalIgnoreCase));
@@ -198,39 +213,55 @@ namespace Barotrauma
 
         public Item GetItemInLimbSlot(InvSlotType limbSlot)
         {
-            for (int i = 0; i < slots.Length; i++)
+            if (slotsByType.TryGetValue(limbSlot, out List<ItemSlot> slotList))
             {
-                if (SlotTypes[i] == limbSlot) { return slots[i].FirstOrDefault(); }
+                return slotList.First().FirstOrDefault();
             }
             return null;
         }
 
+        public IEnumerable<Item> GetItemsInLimbSlot(InvSlotType limbSlot)
+        {
+            if (slotsByType.TryGetValue(limbSlot, out List<ItemSlot> slotList))
+            {
+                foreach (var slot in slotList)
+                {
+                    foreach (Item item in slot.Items)
+                    {
+                        yield return item;
+                    }
+                }
+            }
+        }
 
         public bool IsInLimbSlot(Item item, InvSlotType limbSlot)
         {
             if (limbSlot == (InvSlotType.LeftHand | InvSlotType.RightHand))
             {
-                int rightHandSlot = FindLimbSlot(InvSlotType.RightHand);
-                int leftHandSlot = FindLimbSlot(InvSlotType.LeftHand);
-                if (rightHandSlot > -1 && slots[rightHandSlot].Contains(item) &&
-                    leftHandSlot > -1 && slots[leftHandSlot].Contains(item))
+                if (GetItemsInLimbSlot(InvSlotType.RightHand).Contains(item) &&
+                    GetItemsInLimbSlot(InvSlotType.LeftHand).Contains(item))
                 {
                     return true;
                 }
             }
-
-            for (int i = 0; i < slots.Length; i++)
+            else if (slotsByType.TryGetValue(limbSlot, out List<ItemSlot> slotList))
             {
-                if (SlotTypes[i] == limbSlot && slots[i].Contains(item)) { return true; }
+                foreach (ItemSlot slot in slotList)
+                {
+                    if (slot.Contains(item)) { return true; }
+                }
             }
             return false;
         }
 
         public bool IsSlotEmpty(InvSlotType limbSlot)
         {
-            for (int i = 0; i < slots.Length; i++)
+            if (slotsByType.TryGetValue(limbSlot, out List<ItemSlot> slotList))
             {
-                if (SlotTypes[i] == limbSlot && slots[i].Empty()) { return true; }
+                foreach (ItemSlot slot in slotList)
+                {
+                    if (slot.Empty()) { return true; }
+                }
             }
             return false;
         }
@@ -370,7 +401,7 @@ namespace Barotrauma
         /// <summary>
         /// If there is room, puts the item in the inventory and returns true, otherwise returns false
         /// </summary>
-        public override bool TryPutItem(Item item, Character user, IEnumerable<InvSlotType> allowedSlots = null, bool createNetworkEvent = true, bool ignoreCondition = false)
+        public override bool TryPutItem(Item item, Character user, IEnumerable<InvSlotType> allowedSlots = null, bool createNetworkEvent = true, bool ignoreCondition = false, bool triggerOnInsertedEffects = true)
         {
             if (allowedSlots == null || !allowedSlots.Any()) { return false; }
             if (item == null)
@@ -494,8 +525,6 @@ namespace Barotrauma
             return placedInSlot > -1;
         }
         
-
-
         public bool IsAnySlotAvailable(Item item) => GetFreeAnySlot(item, inWrongSlot: false) > -1;
 
         private int GetFreeAnySlot(Item item, bool inWrongSlot)
@@ -542,7 +571,7 @@ namespace Barotrauma
             return -1;
         }
 
-        public override bool TryPutItem(Item item, int index, bool allowSwapping, bool allowCombine, Character user, bool createNetworkEvent = true, bool ignoreCondition = false)
+        public override bool TryPutItem(Item item, int index, bool allowSwapping, bool allowCombine, Character user, bool createNetworkEvent = true, bool ignoreCondition = false, bool triggerOnInsertedEffects = true)
         {
             if (index < 0 || index >= slots.Length)
             {
@@ -590,9 +619,9 @@ namespace Barotrauma
             return TryPutItem(item, user, new List<InvSlotType>() { placeToSlots }, createNetworkEvent, ignoreCondition);
         }
 
-        protected override void PutItem(Item item, int i, Character user, bool removeItem = true, bool createNetworkEvent = true)
+        protected override void PutItem(Item item, int i, Character user, bool removeItem = true, bool createNetworkEvent = true, bool triggerOnInsertedEffects = true)
         {
-            base.PutItem(item, i, user, removeItem, createNetworkEvent);
+            base.PutItem(item, i, user, removeItem, createNetworkEvent, triggerOnInsertedEffects);
 #if CLIENT
             CreateSlots();
             if (character == Character.Controlled)

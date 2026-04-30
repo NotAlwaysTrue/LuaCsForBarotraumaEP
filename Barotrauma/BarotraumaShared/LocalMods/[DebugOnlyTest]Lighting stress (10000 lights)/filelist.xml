@@ -1,0 +1,4 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<contentpackage name="Lighting stress (10000 lights)" modversion="1.0.0" corepackage="False" gameversion="1.11.5.0">
+  <Submarine file="%ModDir%/Lighting stress (10000 lights).sub" />
+</contentpackage>

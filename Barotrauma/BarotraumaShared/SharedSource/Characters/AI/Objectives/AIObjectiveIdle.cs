@@ -267,7 +267,10 @@ namespace Barotrauma
                         if (node.Waypoint.CurrentHull != character.CurrentHull && HumanAIController.UnsafeHulls.Contains(node.Waypoint.CurrentHull)) { return false; }
                         return true;
                         //don't stop at ladders when idling
-                    }, endNodeFilter: node => node.Waypoint.Stairs == null && node.Waypoint.Ladders == null && (!isCurrentHullAllowed || !IsForbidden(node.Waypoint.CurrentHull)));
+                    }, endNodeFilter: node => 
+                        node.Waypoint.Stairs == null && node.Waypoint.CurrentHull == currentTarget && node.Waypoint.Ladders == null && 
+                        (!isCurrentHullAllowed || !IsForbidden(node.Waypoint.CurrentHull)));
+
                     if (path.Unreachable)
                     {
                         //can't go to this room, remove it from the list and try another room

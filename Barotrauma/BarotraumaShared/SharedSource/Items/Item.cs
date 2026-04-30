@@ -1,15 +1,23 @@
-﻿using Barotrauma.Items.Components;
+﻿using Barotrauma.Abilities;
+using Barotrauma.Extensions;
+using Barotrauma.Items.Components;
+using Barotrauma.LuaCs.Events;
+using Barotrauma.MapCreatures.Behavior;
 using Barotrauma.Networking;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using FarseerPhysics.Dynamics.Contacts;
 using Microsoft.Xna.Framework;
+using MoonSharp.Interpreter;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
+using static Barotrauma.CharacterHealth;
+using static Barotrauma.MedicalClinic;
 using Barotrauma.Extensions;
 using Barotrauma.MapCreatures.Behavior;
 using MoonSharp.Interpreter;
@@ -385,6 +393,8 @@ namespace Barotrauma
         /// </summary>
         public Character Equipper;
 
+        public Inventory PreviousParentInventory { get; set; }
+
         //the inventory in which the item is contained in
         public Inventory ParentInventory
         {
@@ -400,9 +410,7 @@ namespace Barotrauma
                     Container = parentInventory.Owner as Item;
                     RemoveFromDroppedStack(allowClientExecute: false);
                 }
-#if SERVER
                 PreviousParentInventory = value;
-#endif
             }
         }
 
@@ -682,6 +690,8 @@ namespace Barotrauma
             get;
             set;
         } = float.PositiveInfinity;
+
+        public Sprite OverrideInventorySprite { get; set; }
 
         protected Color spriteColor;
         [Editable, Serialize("1.0,1.0,1.0,1.0", IsPropertySaveable.Yes)]
@@ -1225,7 +1235,7 @@ namespace Barotrauma
 
         public override string ToString()
         {
-            return Name + " (ID: " + ID + ")";
+            return (Name.IsNullOrEmpty() ? Prefab.Identifier : Name) + " (ID: " + ID + ")";
         }
 
         private readonly List<ISerializableEntity> allPropertyObjects = new List<ISerializableEntity>();
@@ -1533,8 +1543,6 @@ namespace Barotrauma
 
             if (Components.Any(ic => ic is Wire) && Components.All(ic => ic is Wire || ic is Holdable)) { isWire = true; }
             if (HasTag(Barotrauma.Tags.LogicItem)) { isLogic = true; }
-
-            GameMain.LuaCs.Hook.Call("item.created", this);
 
             ApplyStatusEffects(ActionType.OnSpawn, 1.0f);
 
@@ -1925,7 +1933,8 @@ namespace Barotrauma
                 ic.Move(amount, ignoreContacts);
             }
 
-            if (body != null && (Submarine == null || !Submarine.Loading) || Screen.Selected is { IsEditor: true }) { FindHull(); }
+            // Refresh items without a body in editors so vents (or other static items that do something with hulls) know which hull they are in after being moved
+            if ((body != null || Screen.Selected is { IsEditor: true }) && Submarine is not { Loading: true }) { FindHull(); }
         }
 
         public Rectangle TransformTrigger(Rectangle trigger, bool world = false)
@@ -2203,6 +2212,12 @@ namespace Barotrauma
                 }
                 static bool MatchesComponent(ItemComponent comp, PropertyConditional cond) => comp.Name == cond.TargetItemComponent;
             }
+        }
+
+        public IEnumerable<StatusEffect> GetStatusEffectsOfType(ActionType type)
+        {
+            if (!hasStatusEffectsOfType[(int)type]) { return Enumerable.Empty<StatusEffect>(); }
+            return statusEffectLists[type];
         }
 
         /// <summary>
@@ -3427,7 +3442,9 @@ namespace Barotrauma
                 bool showUiMsg = false;
 #if CLIENT
                 if (!ic.HasRequiredSkills(user, out Skill tempRequiredSkill)) { hasRequiredSkills = false; skillMultiplier = ic.GetSkillMultiplier(); }
-                showUiMsg = user == Character.Controlled && Screen.Selected != GameMain.SubEditorScreen;
+                showUiMsg = user == Character.Controlled && Screen.Selected != GameMain.SubEditorScreen &&
+                    // Only show the UI message of the component that we actually want to interact with
+                    (pickHit && ic.CanBePicked || selectHit && ic.CanBeSelected);
 #endif
                 if (!ignoreRequiredItems && !ic.HasRequiredItems(user, showUiMsg)) { continue; }
                 if ((ic.CanBePicked && pickHit && ic.Pick(user)) ||
@@ -3533,10 +3550,6 @@ namespace Barotrauma
             }
 
             if (condition <= 0.0f) { return; }
-
-            var should = GameMain.LuaCs.Hook.Call<bool?>("item.use", new object[] { this, user, targetLimb, useTarget });
-
-            if (should != null && should.Value) { return; }
         
             bool remove = false;
 
@@ -3568,11 +3581,6 @@ namespace Barotrauma
         public void SecondaryUse(float deltaTime, Character character = null)
         {
             if (condition <= 0.0f) { return; }
-
-            var should = GameMain.LuaCs.Hook.Call<bool?>("item.secondaryUse", this, character);
-
-            if (should != null && should.Value)
-                return;
 
             bool remove = false;
 
@@ -4111,9 +4119,9 @@ namespace Barotrauma
                 }
             }
 
-            var result = GameMain.LuaCs.Hook.Call<bool?>("item.readPropertyChange", this, property, parentObject, allowEditing, sender);
-            if (result != null && result.Value)
-                return;
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventItemReadPropertyChange>(x => should = x.OnItemReadPropertyChange(this, property, parentObject, allowEditing, sender) ?? should);
+            if (should != null && should.Value) { return; }
 
             Type type = property.PropertyType;
             string logValue = "";
@@ -4579,6 +4587,9 @@ namespace Barotrauma
                 Rotation = Rotation
             };
 
+            if (FlippedX) { newItem.FlipX(relativeToSub: false); }
+            if (FlippedY) { newItem.FlipY(relativeToSub: false); }
+
             float scaleRelativeToPrefab = Scale / Prefab.Scale;
             newItem.Scale *= scaleRelativeToPrefab;
 
@@ -4830,8 +4841,6 @@ namespace Barotrauma
                 body.Remove();
                 body = null;
             }
-
-            GameMain.LuaCs.Hook.Call("item.removed", this);
         }
 
         public override void Remove()
@@ -4915,8 +4924,6 @@ namespace Barotrauma
             }
 
             RemoveProjSpecific();
-
-            GameMain.LuaCs.Hook.Call("item.removed", this);
         }
 
         private void RemoveFromLists()

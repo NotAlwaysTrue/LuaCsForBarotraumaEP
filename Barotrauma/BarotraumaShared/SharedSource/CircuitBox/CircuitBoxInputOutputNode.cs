@@ -77,8 +77,8 @@ namespace Barotrauma
                 }
                 else
                 {
-                    conn.SetLabel(conn.Connection.DisplayName, this);
                     conn.Connection.DisplayNameOverride = null;
+                    conn.SetLabel(conn.Connection.DisplayName, this);
                 }
             }
 #endif

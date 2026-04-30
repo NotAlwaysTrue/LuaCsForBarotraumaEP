@@ -277,6 +277,14 @@ namespace Barotrauma
                         int selectedOption = (userdata as int?) ?? 0;
                         if (actionInstance != null)
                         {
+                            var option = actionInstance.Options[selectedOption];
+                            if (GameMain.Client == null && option.ForceSay)
+                            {
+                                Character.Controlled.ForceSay(
+                                    option.ForceSayText.IsNullOrEmpty() ? TextManager.Get(option.Text).Fallback(option.Text) : TextManager.Get(option.ForceSayText).Fallback(option.ForceSayText),
+                                    option.ForceSayInRadio,
+                                    option.ForceSayRemoveQuotes);
+                            }
                             actionInstance.selectedOption = selectedOption;
                             DisableButtons(optionButtons, btn);
                             btn.ExternalHighlight = true;
@@ -340,7 +348,8 @@ namespace Barotrauma
             if (speaker?.Info != null && drawChathead)
             {
                 // chathead
-                new GUICustomComponent(new RectTransform(new Vector2(0.15f, 0.8f), content.RectTransform), onDraw: (sb, customComponent) =>
+                int chatHeadWidth = (int)(content.RectTransform.Rect.Width * 0.15f);
+                new GUICustomComponent(new RectTransform(new Point(chatHeadWidth, chatHeadWidth), content.RectTransform, isFixedSize: true), onDraw: (sb, customComponent) =>
                 {
                     speaker.Info.DrawIcon(sb, customComponent.Rect.Center.ToVector2(), customComponent.Rect.Size.ToVector2());
                 });
@@ -382,7 +391,7 @@ namespace Barotrauma
             }
 
             textContent.RectTransform.MinSize = new Point(0, textContent.Children.Sum(c => c.Rect.Height + textContent.AbsoluteSpacing) + GUI.IntScale(16));
-            content.RectTransform.MinSize = new Point(0, content.Children.Sum(c => c.Rect.Height));
+            content.RectTransform.MinSize = textContent.RectTransform.MinSize;
 
             // Recalculate the text size as it is scaled up and no longer matching the text height due to the textContent's minSize increasing
             textBlock.CalculateHeightFromText();

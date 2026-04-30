@@ -389,6 +389,13 @@ namespace Barotrauma.Items.Components
             {
                 Attack.DamageMultiplier = damageMultiplier;
             }
+            foreach (var statusEffect in Item.GetStatusEffectsOfType(ActionType.OnImpact))
+            {
+                foreach (var explosion in statusEffect.Explosions)
+                {
+                    explosion.Attack.DamageMultiplier = damageMultiplier;
+                }
+            }
             // Set user for hitscan projectiles to work properly.
             User = user;
             // Need to set null for non-characterusable items.
@@ -461,6 +468,7 @@ namespace Barotrauma.Items.Components
             {
                 initialRotation -= MathHelper.Pi;
             }
+            Submarine initialSubmarine = item.Submarine;
             for (int i = 0; i < HitScanCount; i++)
             {
                 float launchAngle;
@@ -477,6 +485,8 @@ namespace Barotrauma.Items.Components
                 Vector2 launchDir = new Vector2((float)Math.Cos(launchAngle), (float)Math.Sin(launchAngle));
                 Vector2 prevSimpos = item.SimPosition;
                 item.body.SetTransformIgnoreContacts(item.body.SimPosition, launchAngle);
+                //when launching multiple projectiles, ensure each raycast starts from the same sub
+                item.Submarine = initialSubmarine;
                 if (Hitscan)
                 {
                     DoHitscan(launchDir);

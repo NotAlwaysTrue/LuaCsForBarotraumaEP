@@ -1,0 +1,5 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<contentpackage name="[DebugOnlyTest]TestLuaMod" >
+  <Text file="%ModDir%/Texts/English.xml"/>
+  <Item file="%ModDir%/dummy.xml" />
+</contentpackage>

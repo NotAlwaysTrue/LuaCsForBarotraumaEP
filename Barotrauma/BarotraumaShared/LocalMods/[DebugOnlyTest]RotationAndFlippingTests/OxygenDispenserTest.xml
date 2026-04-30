@@ -1,0 +1,23 @@
+﻿<Items>
+  <Item
+    name="Oxygen Dispenser Test"
+    identifier="oxygendispensertest"
+    tags="oxygengenerator,refuelableitem,donttakeitemstorefill"
+    category="Machine"
+    scale="0.5"
+    isshootable="true" GrabWhenSelected="true">
+
+    <Sprite texture="%ModDir%/EthanolPowerGenerator.png" depth="0.55" sourcerect="0,336,112,128"/>
+    
+    <Body width="112" height="128" density="25" />
+    <Holdable selectkey="Select" pickkey="Use" slots="RightHand+LeftHand" msg="ItemMsgDetach" MsgWhenDropped="ItemMsgPickupSelect" PickingTime="5.0" holdpos="0,-80" handle1="-30,14" handle2="30,14" attachable="true" aimable="true" AttachesToFloor="true"
+        AttachedByDefault="true" DisallowAttachingOverTags="container,planter,refuelableitem" DisallowAttachingOverSize="115,130">
+    </Holdable>
+
+    <ItemContainer hideitems="false" drawinventory="true" ItemsUseInventoryPlacement="true" capacity="1" maxstacksize="1" canbeselected="true" itempos="32,-83" iteminterval="0,0" itemrotation="0" msg="ItemMsgOxygenRefill" containedspritedepth="0.1">
+      <GuiFrame relativesize="0.2,0.25" anchor="Center" minsize="140,170" maxsize="280,280" style="ItemUI" />
+      <SlotIcon slotindex="0" texture="Content/UI/StatusMonitorUI.png" sourcerect="64,448,64,64" origin="0.5,0.5" />
+      <Containable items="oxygensource" />
+    </ItemContainer>
+  </Item>
+</Items>

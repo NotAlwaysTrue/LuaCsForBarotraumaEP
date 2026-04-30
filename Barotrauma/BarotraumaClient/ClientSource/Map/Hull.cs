@@ -16,15 +16,17 @@ namespace Barotrauma
         {
             public readonly UInt32 DecalId;
             public readonly int SpriteIndex;
-            public Vector2 NormalizedPos;
+            public readonly Vector2 NormalizedPos;
             public readonly float Scale;
+            public readonly float DecalAlpha;
 
-            public RemoteDecal(UInt32 decalId, int spriteIndex, Vector2 normalizedPos, float scale)
+            public RemoteDecal(UInt32 decalId, int spriteIndex, Vector2 normalizedPos, float scale, float decalAlpha)
             {
                 DecalId = decalId;
                 SpriteIndex = spriteIndex;
                 NormalizedPos = normalizedPos;
                 Scale = scale;
+                DecalAlpha = decalAlpha;
             }
         }
 
@@ -696,7 +698,7 @@ namespace Barotrauma
                     var decal = decalEventData.Decal;
                     int decalIndex = decals.IndexOf(decal);
                     msg.WriteByte((byte)(decalIndex < 0 ? 255 : decalIndex));
-                    msg.WriteRangedSingle(decal.BaseAlpha, 0.0f, 1.0f, 8);
+                    msg.WriteRangedSingle(decal.BaseAlpha, 0f, 1f, 8);
                     break;
                 default:
                     throw new Exception($"Malformed hull event: did not expect {eventData.GetType().Name}");
@@ -752,7 +754,9 @@ namespace Barotrauma
                         float normalizedXPos = msg.ReadRangedSingle(0.0f, 1.0f, 8);
                         float normalizedYPos = msg.ReadRangedSingle(0.0f, 1.0f, 8);
                         float decalScale = msg.ReadRangedSingle(0.0f, 2.0f, 12);
-                        remoteDecals.Add(new RemoteDecal(decalId, spriteIndex, new Vector2(normalizedXPos, normalizedYPos), decalScale));
+                        float decalAlpha = msg.ReadRangedSingle(0f, 1f, 8);
+
+                        remoteDecals.Add(new RemoteDecal(decalId, spriteIndex, new Vector2(normalizedXPos, normalizedYPos), decalScale, decalAlpha));
                     }
                     break;
                 case EventType.BallastFlora:
@@ -804,7 +808,8 @@ namespace Barotrauma
                         decalPosX += Submarine.Position.X;
                         decalPosY += Submarine.Position.Y;
                     }
-                    AddDecal(remoteDecal.DecalId, new Vector2(decalPosX, decalPosY), remoteDecal.Scale, isNetworkEvent: true, spriteIndex: remoteDecal.SpriteIndex);
+                    Decal decal = AddDecal(remoteDecal.DecalId, new Vector2(decalPosX, decalPosY), remoteDecal.Scale, isNetworkEvent: true, spriteIndex: remoteDecal.SpriteIndex);
+                    decal.BaseAlpha = remoteDecal.DecalAlpha;
                 }
                 remoteDecals.Clear();
             }

@@ -1435,8 +1435,15 @@ namespace Barotrauma
                     Uri baseAddress = new Uri(url);
                     Uri remoteDirectory = new Uri(baseAddress, ".");
                     string remoteFileName = Path.GetFileName(baseAddress.LocalPath);
-                    IRestClient client = new RestClient(remoteDirectory);
-                    var response = client.Execute(new RestRequest(remoteFileName, Method.GET));
+                    var client = RestFactory.CreateClient(remoteDirectory.ToString());
+                    var request = RestFactory.CreateRequest(remoteFileName);
+                    var response = client.Execute(request);
+                    if (response.ErrorException != null)
+                    {
+                        DebugConsole.AddWarning($"Connection error: Failed to load remote sprite from {url} " +
+                            $"({response.ErrorException.Message}).");
+                        return null;
+                    }
                     if (response.ResponseStatus != ResponseStatus.Completed) { return null; }
                     if (response.StatusCode != HttpStatusCode.OK) { return null; }
 

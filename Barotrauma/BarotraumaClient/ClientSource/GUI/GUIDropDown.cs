@@ -26,7 +26,9 @@ namespace Barotrauma
 
         public OnSelectedHandler OnDropped;
 
-        private readonly GUIButton button;
+        private readonly GUIButton button;        
+        public GUIButton Button => button;
+
         private readonly GUIImage icon;
         private readonly GUIListBox listBox;
 

@@ -1,5 +1,7 @@
 ﻿using Barotrauma.Extensions;
 using Barotrauma.Items.Components;
+using Barotrauma.LuaCs.Events;
+using Barotrauma.Networking;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
@@ -804,7 +806,6 @@ namespace Barotrauma
             waterFlowThisFrame = 0.0f;
         }
 
-        private static readonly ConcurrentBag<Hull> checkedHulls = new ConcurrentBag<Hull>();
 
         /// <summary>
         /// Simulates water flow from the source to all the hulls it's connected to across the sub, as if the water was coming directly from outside.
@@ -812,7 +813,7 @@ namespace Barotrauma
         /// </summary>
         void SimulateWaterFlowFromOutsideToConnectedHulls(Hull hull, float maxFlow, float deltaTime)
         {
-            checkedHulls.Clear();
+            List<Hull> checkedHulls = new List<Hull>();
             checkedHulls.Add(hull);
             foreach (var connectedGap in hull.ConnectedGaps)
             {
@@ -823,7 +824,7 @@ namespace Barotrauma
             }
         }
 
-        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, ConcurrentBag<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
+        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, List<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
         {
             const float decay = 0.95f;
 
@@ -871,7 +872,12 @@ namespace Barotrauma
             if (outsideCollisionBlocker == null) { return false; }
             if (IsRoomToRoom || Submarine == null || open <= 0.0f || linkedTo.Count == 0 || linkedTo[0] is not Hull) 
             {
-                outsideCollisionBlocker.Enabled = false;
+                SingleThreadWorker.Instance.AddAction(() =>
+                {
+                    if (outsideCollisionBlocker == null) { return; }
+                    outsideCollisionBlocker.Enabled = false; 
+                });
+                
                 return false; 
             }
 
@@ -942,8 +948,8 @@ namespace Barotrauma
                 if (Math.Max(hull1.WorldSurface + hull1.WaveY[hull1.WaveY.Length - 1], hull2.WorldSurface + hull2.WaveY[0]) > WorldRect.Y) { return; }
             }
 
-            var should = GameMain.LuaCs.Hook.Call<bool?>("gapOxygenUpdate", this, hull1, hull2);
-
+            bool? should = null;
+            LuaCsSetup.Instance.EventService.PublishEvent<IEventGapOxygenUpdate>(x => should = x.OnGapOxygenUpdate(this, hull1, hull2) ?? should);
             if (should != null && should.Value) return;
 
             float totalOxygen = hull1.Oxygen + hull2.Oxygen;
@@ -1053,8 +1059,6 @@ namespace Barotrauma
         {
             base.Remove();
             GapList.Remove(this);
-
-            checkedHulls.Clear();
 
             foreach (Hull hull in Hull.HullList)
             {

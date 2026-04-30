@@ -16,6 +16,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Barotrauma.LuaCs.Events;
 using static Barotrauma.FabricationRecipe;
 
 namespace Barotrauma
@@ -222,8 +223,6 @@ namespace Barotrauma
 
         private static bool IsCommandPermitted(Identifier command, GameClient client)
         {
-            if (GameMain.LuaCs.Game.IsCustomCommandPermitted(command)) { return true; }
-
             switch (command.Value.ToLowerInvariant())
             {
                 case "kick":
@@ -658,14 +657,6 @@ namespace Barotrauma
                     ThrowError($"Cannot find a sub that matches the name \"{subName}\".");
                     return;
                 }
-
-                bool luaCsEnabled = true;
-                if (args.Length > 3)
-                {
-                    bool.TryParse(args[3], out luaCsEnabled);
-                }
-
-                if (luaCsEnabled) { GameMain.LuaCs.Initialize(); }
 
                 GameMain.MainMenuScreen.QuickStart(fixedSeed: false, subName, difficulty, levelGenerationParams);
 
@@ -3553,6 +3544,11 @@ namespace Barotrauma
                  ContentPackageManager.RegularPackages.Select(p => p.Name).ToArray() 
             }));
 
+            commands.Add(new Command("ShowServerPerf", "Immediately log server performance info", (string[] args) =>
+            {
+                // TODO: Not yet :)
+            }));
+
 #if WINDOWS
             commands.Add(new Command("startdedicatedserver", "", (string[] args) =>
             {
@@ -3585,6 +3581,14 @@ namespace Barotrauma
                     NewMessage("Disabled ingame mod swapping");
                 }
             }));*/
+
+            AssignOnClientExecute(
+                "ShowServerPerf",
+                (string[] args) =>
+                {
+                    GameMain.Client?.SendConsoleCommand("ShowServerPerf");
+                }
+            );
 
             AssignOnClientExecute(
                 "giveperm",
@@ -4223,50 +4227,7 @@ namespace Barotrauma
                     NewMessage("Minimum main path width: " + (Level.Loaded.LevelData?.MinMainPathWidth?.ToString() ?? "unknown"));
                 }
             });
-
-            commands.Add(new Command("cl_lua", $"cl_lua: Runs a string on the client.", (string[] args) =>
-            {
-                if (GameMain.Client != null && !GameMain.Client.HasPermission(ClientPermissions.ConsoleCommands))
-                {
-                    ThrowError("Command not permitted.");
-                    return;
-                }
-
-                if (GameMain.LuaCs.Lua == null)
-                {
-                    ThrowError("LuaCs not initialized, use the console command cl_reloadluacs to force initialization.");
-                    return;
-                }
-
-                try
-                {
-                    GameMain.LuaCs.Lua.DoString(string.Join(" ", args));
-                }
-                catch(Exception ex)
-                {
-                    LuaCsLogger.HandleException(ex, LuaCsMessageOrigin.LuaMod);
-                }
-            }));
-
-            commands.Add(new Command("cl_reloadlua|cl_reloadcs|cl_reloadluacs", "Re-initializes the LuaCs environment.", (string[] args) =>
-            {
-                GameMain.LuaCs.Initialize();
-            }));
-
-            commands.Add(new Command("cl_toggleluadebug", "Toggles the MoonSharp Debug Server.", (string[] args) =>
-            {
-                int port = 41912;
-
-                if (args.Length > 0)
-                {
-                    int.TryParse(args[0], out port);
-                }
-
-                GameMain.LuaCs.ToggleDebugger(port);
-            }));
         }
-
-
 
         private static void ReloadWearables(Character character, int variant = 0)
         {

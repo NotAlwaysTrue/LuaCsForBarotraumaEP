@@ -1,4 +1,107 @@
 ﻿-------------------------------------------------------------------------------------------------------------------------------------------------
+v1.12.7.0
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+- Reduced how much the new weak points in the reworked subs push bots around to make them more capable of fixing broken weak points.
+- Fixed selecting any item that forces the character to some pose (chairs, periscopes) getting logged in the server console.
+- Mac only: added a button for settings mic permissions to the audio settings. It seems that on Mac, the game updates may cause the OS to revoke the permissions.
+- Fixed some of the Workshop tags you can choose in-game not working on Steam's side.
+
+Modding:
+- Fixed contained items being misaligned on attachable items (e.g. in mods that make diving suit cabinets attachable).
+- Fixed monsters spawned by an event inside an outpost being unable to attack any items inside that outpost. To our knowledge, didn't affect vanilla events, but caused issues in certain mods.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+v1.12.6.2
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+- Updated localization files.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+v1.12.6.1
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+- Fixed some conversation prompts (such as the one with Artie Dolittle) being misaligned, causing parts the text to be cropped. More specifically, ones that start with some special event sprite but also show the speaker's face in the prompt.
+- Fixed pets having trouble moving due to some of the navigation changes in the previous build. Also caused huskified containers to get launched off with enormous speed when they tried to eat something.
+- Fixed navigation terminals in shuttles having their maintain position get messed up between level transitions.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+v1.12.6.0 (Spring Update 2026)
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+Submarine reworks:
+- Tier 1 submarines (Barsuk, Dugong, Orca and Camel) have all received a visual polish as well as gameplay polishing.
+- Camel and Orca now uses the pipe weakpoints and valves system.
+- Various improvements and additions to the vanilla item assemblies.
+
+Balance:
+- Increase health of flare, alienflare and glowstick. Now doesn't get destroyed as quickly by monsters, allowing it be a more useful distraction again. Glowsticks don't aggro monsters from as far as flares.
+- Sonar Beacon's sound range is reduced, and when dropped can now be destroyed by monsters (to avoid making flares redundant due to being a better and invulnerable version of monster distraction).
+
+Changes:
+- Characters can now be "deconstructed" by dragging them into a deconstructor, producing small amounts of raw materials. Also a handy way to get rid of monster corpses on the submarine, and perhaps problematic crew mates as well.
+- Stationary batteries can charge the battery cells inside them even when the output is disabled.
+- A handful of missions in which you can earn a reward for getting through the level fast enough (which also serve as an example of the new custom mission functionality, see the Modding section for more information).
+- Minor lighting optimizations.
+
+Multiplayer:
+- Reduced the default respawn interval from 300 seconds to 30.
+- Fixed an issue that sometimes caused the list of hidden subs to get out of sync in multiplayer, preventing some subs from being purchased.
+- Fixed pickup sound not playing when picking up an item in multiplayer.
+- Fixed karma system considering bandages and other medical items "dangerous" and giving a penalty for taking them from other players.
+- Characters no longer drop items when the player disconnects (meaning you won't lose the items you were holding).
+
+Fixes:
+- Another attempt to fix reported freezes at 80% in the loading screen, which seems to have been caused by Steam's servers or our master server refusing connection attempts from certain kinds of IPs, causing the game to hang waiting for the connection.
+- Fixed conversation/event prompts sometimes getting stuck when you went rapidly pressing E. In particular, this happened with events that allow you to retrigger the same event by interacting with the NPC again.
+- Fixed certain monsters (e.g. mudraptors) having trouble dropping through hatches inside the sub.
+- Fixed monsters often failing to follow targets from sub to another (e.g. from Remora's drone to the main sub).
+- Fixes to pathfinding bugs that sometimes caused bots to get stuck on stairs.
+- Fixed closing the health interface while your cursor is on another character opening that character's health interface.
+- Fixed an AI bug that often prevented outpost NPCs from putting out fires.
+- Fixed projectiles that fire more than one raycast per shot (e.g. shotgun shells) only registering one hit if you're firing from inside to outside. 
+- Fixed implacable sometimes not triggering in time, causing a 5-second stun when vitality dropped below zero.
+- Fixed radio jammer not having the traitormissionitem tag (unlike every other traitor mission item).
+- Fixed ruin scan missions sometimes failing to choose all 3 positions to scan, making the mission impossible to complete. Happened with very small ruins in particular.
+- Fixed Engineering_G4 module sometimes spawning with a ladder leading nowhere.
+- Hide items inside non-interactable containers (e.g. decorative items not accessible to the player) showing up on the item finder.
+- The achievement for killing a monster is also awarded if the monster is killed by an bot in single player.
+- Fixed some items sometimes teleporting to the origin when saving and loading in the submarine editor.
+- Fixed a broken waypoint near Berilia's engine which made bots sometimes get stuck there.
+- Fixed shuttles/drones/elevators or other parts of a wreck getting crush depth damage in deep levels.
+- Characters that respawn in a flooded hull (in either a submarine or an outpost) now spawn with diving gear.
+- Fixed fabrication tooltip being unclear (previously showed "requires recipe to fabricate" in red even when the recipe is already learnt, now shows in green that is has been learned)
+- Fixed characters sometimes not taking fall damage if they fall on a mirrored structure.
+- Fixed portable pumps getting damaged by explosions, despite not being repairable. 
+- Fixed pet raptors getting assigned an incorrect team if they hatch in a hostile outpost.
+- Fixed Linux systems failing to load content packages whose filelist.xml files aren't all lower-case.
+- Fixed NPCs ignoring infected humans attacking them.
+- Fixed mirrored items becoming unmirrored when swapped by perk points (e.g. a mirrored periscope base becoming an unmirrored periscope when purchasing a turret with a perk point).
+- Fixed inability to rename already-hired bots if you no longer have the required reputation to hire the bot. 
+- Fixed WeaponDamageModifier (a multiplier in RangedWeapon which seems to be used for buffing the damage of variants of a weapon) not affecting explosion damage. Means that e.g. Harpoon-Coil Rifle or Autoshotgun's modifiers don't actually do much when using explosive ammo. 
+- Fixed creatures not being able to "properly leave a sub" if any of their severed limbs are still inside the sub. In practice, they'd still be considered to be inside the sub, and they would not collide with anything outside it.
+- Fixed toggling layer visibility selecting that layer in the sub editor.
+- Fixed pasting entities unhiding all of the layers in the sub editor.
+- Fixed condition_out connections not taking into account the multipliers applied by the Tinkerer talent.
+- Fixed bots still refusing to deconstruct items that yield nothing, even though you could order them to deconstruct those.
+
+Modding:
+- Support for custom event-based missions. The mission simply triggers a specific event, and that event can control the success/failure of the mission using MissionStateAction. See the "TimeTrial" missions in Missions.xml for an usage example.
+- Character, level and particle editors show fields set to the default values as gray. Makes it easier to tell which fields have been modified or are relevant for that specific character/level/particle.
+- It's possible to add empty RequiredItem elements to item components to make them not have any requirements by default, but allowing them to be added in the submarine editor.
+- Fixed limb's randomcolor attribute not working as expected: every character of the same type would get the same randomly chosen color, instead of a different color being chosen for each character.
+- Added ForceSayAction which can be used by scripted events to make characters speak in the chat. ConversationAction can also now be used to display text in the chat in addition to the conversation prompt.
+- CheckConditionalAction now fails instead of succeeding if it can't find the specified target. There's also a property called FailIfTargetNotFound to make it succeed instead.
+- CountTargetsAction now fails instead of succeeding if it's trying to compare against the amount of some other target (e.g. "number of flooded hulls" is at least 30% of the "number of all hulls") and none of that other target can't be found.
+- Fixed light offsets not being handled correctly on flipped items (did not affect any vanilla items).
+- Adds a new status effect property called OffsetCopiesEntityTransform that can be used by status effects to configure the offset so it copies the current entity rotation/flipping/scaling.
+- Fixed TargetSlot in RequiredItem not working properly on items that have multiple ItemContainers/inventories (only the first one was checked).
+- Fixed melee weapons sometimes hitting characters whose limbs have been set to ignore collisions. More specifically, the weapon would still hit the character's "main collider".
+- If a beacon station has a sonar transducer connected to the sonar monitor, and the monitor is set to use transducers, the transducer must be powered for the beacon mission to complete. 
+- Fix ContainedSpriteDepth being tied to the item's index in the container instead of the slot index.
+- Fixed OnInserted StatusEffects triggering when you try to swap an item inside some other item but the swap fails.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
 v1.11.5.0 (Winter Update Hotfix 1)
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -349,7 +452,6 @@ v1.8.8.1
 
 Modding:
 - Fixed transferring afflictions to a newly spawned character using status effects causing a crash if the original character had already been removed. Didn't affect any vanilla content.
->>>>>>> master
 
 -------------------------------------------------------------------------------------------------------------------------------------------------
 v1.8.7.0

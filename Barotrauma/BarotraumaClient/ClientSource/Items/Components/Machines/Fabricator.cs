@@ -434,18 +434,13 @@ namespace Barotrauma.Items.Components
 
             foreach (FabricationRecipe fi in fabricationRecipes.Values)
             {
-                RichString recipeTooltip =
-                    fi.RequiresRecipe ?
-                    RichString.Rich(fi.TargetItem.Description + "\n\n" + $"‖color:{XMLExtensions.ToStringHex(GUIStyle.Red)}‖{TextManager.Get("fabricatorrequiresrecipe")}‖color:end‖") :
-                    RichString.Rich(fi.TargetItem.Description);
-
                 var frame = new GUIFrame(new RectTransform(new Point(itemList.Content.Rect.Width, (int)(40 * GUI.yScale)), itemList.Content.RectTransform), style: null)
                 {
                     UserData = fi,
                     HoverColor = Color.Gold * 0.2f,
                     SelectedColor = Color.Gold * 0.5f,
-                    ToolTip = recipeTooltip
                 };
+                SetRecipeTooltip(frame, fi);
                 
                 var container = new GUILayoutGroup(new RectTransform(Vector2.One, frame.RectTransform),
                     childAnchor: Anchor.CenterLeft, isHorizontal: true) { RelativeSpacing = 0.02f };
@@ -457,7 +452,7 @@ namespace Barotrauma.Items.Components
                         itemIcon, scaleToFit: true)
                     {
                         Color = itemIcon == fi.TargetItem.Sprite ? fi.TargetItem.SpriteColor : fi.TargetItem.InventoryIconColor,
-                        ToolTip = recipeTooltip
+                        CanBeFocused = false
                     };
                 }
 
@@ -466,7 +461,7 @@ namespace Barotrauma.Items.Components
                 {
                     Padding = Vector4.Zero,
                     AutoScaleVertical = true,
-                    ToolTip = recipeTooltip
+                    CanBeFocused = false
                 };
 
                 new GUITextBlock(new RectTransform(new Vector2(0.85f, 1f), frame.RectTransform, Anchor.BottomRight), 
@@ -475,6 +470,20 @@ namespace Barotrauma.Items.Components
                     UserData = nameof(FabricationLimitReachedText),
                     Visible = false
                 };
+            }
+        }
+
+        private void SetRecipeTooltip(GUIComponent component, FabricationRecipe recipe)
+        {
+            if (!recipe.RequiresRecipe)
+            {
+                component.ToolTip = RichString.Rich(recipe.TargetItem.Description);
+            }
+            else
+            {
+                component.ToolTip = AnyOneHasRecipeForItem(Character.Controlled, recipe.TargetItem) ?
+                    RichString.Rich(recipe.TargetItem.Description + "\n\n" + $"‖color:{XMLExtensions.ToStringHex(GUIStyle.Green)}‖{TextManager.Get("unlockedrecipe.true")}‖color:end‖") :
+                    RichString.Rich(recipe.TargetItem.Description + "\n\n" + $"‖color:{XMLExtensions.ToStringHex(GUIStyle.Red)}‖{TextManager.Get("fabricatorrequiresrecipe")}‖color:end‖");
             }
         }
 
@@ -927,15 +936,23 @@ namespace Barotrauma.Items.Components
                     }
                 }
 
-                if (recipe.RequiresRecipe && recipe.HideIfNoRecipe)
+                if (recipe.RequiresRecipe)
                 {
-                    if (Character.Controlled != null)
+                    if (recipe.HideIfNoRecipe)
                     {
-                        if (!AnyOneHasRecipeForItem(Character.Controlled, recipe.TargetItem))
+                        bool anyOneHasRecipe = AnyOneHasRecipeForItem(Character.Controlled, recipe.TargetItem);
+                        if (Character.Controlled != null)
                         {
-                            child.Visible = false;
-                            continue;
+                            if (!anyOneHasRecipe)
+                            {
+                                child.Visible = false;
+                                continue;
+                            }
                         }
+                    }
+                    else
+                    {
+                        SetRecipeTooltip(child, recipe);
                     }
                 }
 
@@ -1147,7 +1164,16 @@ namespace Barotrauma.Items.Components
                     var lines = description.WrappedText.Split('\n');
                     if (lines.Count <= 1) { break; }
                     string newString = string.Join('\n', lines.Take(lines.Count - 1));
-                    description.Text = newString.Substring(0, newString.Length - 4) + "...";
+
+                    if (newString.Length > 4)
+                    {
+                        description.Text = newString.Substring(0, newString.Length - 4) + "...";
+                    }
+                    else
+                    {
+                        description.Text = newString + "...";
+                    }
+
                     description.CalculateHeightFromText();
                     description.ToolTip = richDescription;
                 }

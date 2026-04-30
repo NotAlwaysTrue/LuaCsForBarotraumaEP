@@ -25,7 +25,7 @@ namespace Barotrauma.Items.Components
             FiringRateMultiplier
         }
 
-        private readonly Dictionary<StatType, float> statValues = new Dictionary<StatType, float>();
+        public readonly Dictionary<StatType, float> statValues = new Dictionary<StatType, float>();
 
         private int qualityLevel;
 

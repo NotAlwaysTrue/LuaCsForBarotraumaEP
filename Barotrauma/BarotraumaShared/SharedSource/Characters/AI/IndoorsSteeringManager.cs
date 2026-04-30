@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Linq;
 using FarseerPhysics;
+using System.Diagnostics;
 
 namespace Barotrauma
 {
@@ -50,7 +51,7 @@ namespace Barotrauma
         }
 
         /// <summary>
-        /// Returns true if any node in the path is in stairs
+        /// Returns true if any node in the path is on stairs
         /// </summary>
         public bool PathHasStairs => currentPath != null && currentPath.Nodes.Any(n => n.Stairs != null);
 
@@ -285,14 +286,17 @@ namespace Barotrauma
                 }
             }
 
-            Vector2 diff = DiffToCurrentNode();
+            Vector2 diff = GetDiffAndAdvance();
             if (diff == Vector2.Zero) { return Vector2.Zero; }
             return Vector2.Normalize(diff) * weight;
         }
 
         protected override Vector2 DoSteeringSeek(Vector2 target, float weight) => CalculateSteeringSeek(target, weight);
-
-        private Vector2 DiffToCurrentNode()
+        
+        /// <summary>
+        /// Decides whether and when we should skip to the next node. Returns the difference to the current node (after skipping).
+        /// </summary>
+        private Vector2 GetDiffAndAdvance()
         {
             if (currentPath == null || currentPath.Unreachable)
             {
@@ -320,26 +324,37 @@ namespace Barotrauma
                 Reset();
                 return Vector2.Zero;
             }
-            Vector2 pos = host.WorldPosition;
-            Vector2 diff = currentPath.CurrentNode.WorldPosition - pos;
+            WayPoint currentNode = currentPath.CurrentNode;
+            WayPoint nextNode = currentPath.NextNode;
+            Vector2 diff = currentNode.WorldPosition - host.WorldPosition;
+            float horizontalDistance = Math.Abs(diff.X);
+            float verticalDistance = Math.Abs(diff.Y);
             bool isDiving = character.AnimController.InWater && character.AnimController.HeadInWater;
             bool canClimb = character.CanClimb;
             Ladder currentLadder = GetCurrentLadder();
             Ladder nextLadder = GetNextLadder();
-            var ladders = currentLadder ?? nextLadder;
+            Ladder ladders = currentLadder ?? nextLadder;
             bool useLadders = canClimb && ladders != null;
             var collider = character.AnimController.Collider;
-            Vector2 colliderSize = collider.GetSize();
+            Vector2 colliderSize = ConvertUnits.ToDisplayUnits(collider.GetSize());
+            float colliderHeight = colliderSize.Y;
+            if (character.AnimController.CurrentAnimationParams is FishGroundedParams fishGrounded)
+            {
+                // On monsters, the main collider might be rotated, so we need to take that into account here.
+                float standAngle = fishGrounded.ColliderStandAngleInRadians * character.AnimController.Dir;
+                Vector2 transformedColliderSize = PhysicsBody.RotateVector(colliderSize, standAngle);
+                colliderHeight = Math.Abs(transformedColliderSize.Y);
+            }
             if (useLadders)
             {
-                if (character.IsClimbing && Math.Abs(diff.X) - ConvertUnits.ToDisplayUnits(colliderSize.X) > Math.Abs(diff.Y))
+                if (character.IsClimbing && Math.Abs(diff.X) - colliderSize.X > Math.Abs(diff.Y))
                 {
                     // If the current node is horizontally farther from us than vertically, we don't want to keep climbing the ladders.
                     useLadders = false;
                 }
-                else if (!character.IsClimbing && currentPath.NextNode != null && nextLadder == null)
+                else if (!character.IsClimbing && nextNode != null && nextLadder == null)
                 {
-                    Vector2 diffToNextNode = currentPath.NextNode.WorldPosition - pos;
+                    Vector2 diffToNextNode = nextNode.WorldPosition - host.WorldPosition;
                     if (Math.Abs(diffToNextNode.X) > Math.Abs(diffToNextNode.Y))
                     {
                         // If the next node is horizontally farther from us than vertically, we don't want to start climbing.
@@ -356,7 +371,7 @@ namespace Barotrauma
             {
                 if (currentPath.IsAtEndNode && canClimb && ladders != null)
                 {
-                    // Don't release the ladders when ending a path in ladders.
+                    // Don't release the ladders when ending a path on ladders.
                     useLadders = true;
                 }
                 else
@@ -388,20 +403,18 @@ namespace Barotrauma
                 if (currentLadder == null && nextLadder != null && character.SelectedSecondaryItem == nextLadder.Item)
                 {
                     // Climbing a ladder but the path is still on the node next to the ladder -> Skip the node.
-                    NextNode(!doorsChecked);
+                    return NextNode(!doorsChecked);
                 }
                 else
                 {
                     bool nextLadderSameAsCurrent = currentLadder == nextLadder;
-                    float colliderHeight = collider.Height / 2 + collider.Radius;
-                    float heightDiff = currentPath.CurrentNode.SimPosition.Y - collider.SimPosition.Y;
-                    float distanceMargin = ConvertUnits.ToDisplayUnits(colliderSize.X);
+                    float distanceMargin = colliderSize.X;
                     if (currentLadder != null && nextLadder != null)
                     {
                         //climbing ladders -> don't move horizontally
                         diff.X = 0.0f;
                     }
-                    if (Math.Abs(heightDiff) < colliderHeight * 1.25f)
+                    if (verticalDistance < colliderHeight / 2 * 1.25f)
                     {
                         if (nextLadder != null && !nextLadderSameAsCurrent)
                         {
@@ -410,7 +423,7 @@ namespace Barotrauma
                             {
                                 if (nextLadder.Item.TryInteract(character, forceSelectKey: true))
                                 {
-                                    NextNode(!doorsChecked);
+                                    return NextNode(!doorsChecked);
                                 }
                             }
                         }
@@ -432,9 +445,9 @@ namespace Barotrauma
                         }
                         if (isAboveFloor)
                         {
-                            if (Math.Abs(diff.Y) < distanceMargin)
+                            if (verticalDistance < distanceMargin)
                             {
-                                NextNode(!doorsChecked);
+                                return NextNode(!doorsChecked);
                             }
                             else if (!currentPath.IsAtEndNode && (nextLadder == null || (currentLadder != null && Math.Abs(currentLadder.Item.WorldPosition.X - nextLadder.Item.WorldPosition.X) > distanceMargin)))
                             {
@@ -443,14 +456,21 @@ namespace Barotrauma
                             }
                         }
                     }
-                    else if (currentLadder != null && currentPath.NextNode != null)
+                    else if (currentLadder != null && nextNode != null)
                     {
-                        if (Math.Sign(currentPath.CurrentNode.WorldPosition.Y - character.WorldPosition.Y) != Math.Sign(currentPath.NextNode.WorldPosition.Y - character.WorldPosition.Y))
+                        if (Math.Sign(currentNode.WorldPosition.Y - character.WorldPosition.Y) != Math.Sign(nextNode.WorldPosition.Y - character.WorldPosition.Y))
                         {
                             //if the current node is below the character and the next one is above (or vice versa)
                             //and both are on ladders, we can skip directly to the next one
                             //e.g. no point in going down to reach the starting point of a path when we could go directly to the one above
-                            NextNode(!doorsChecked);
+                            return NextNode(!doorsChecked);
+                        }
+                        //heading towards a ladder waypoint below the character, but the next waypoint is above it on the same ladder 
+                         // -> allow skipping to that waypoint.
+                         //      Otherwise the character may get stuck trying to move to a waypoint near the floor at the bottom of the ladder, failing to get close enough because they can't move any lower.
+                        else if (nextLadderSameAsCurrent && diff.Y < 0 && nextNode.WorldPosition.Y > currentNode.WorldPosition.Y)
+                        {
+                            return NextNode(!doorsChecked);
                         }
                     }
                 }
@@ -458,21 +478,20 @@ namespace Barotrauma
             else if (character.AnimController.InWater)
             {
                 // Swimming
-                var door = currentPath.CurrentNode.ConnectedDoor;
+                var door = currentNode.ConnectedDoor;
                 if (door == null || door.CanBeTraversed)
                 {
-                    float margin = MathHelper.Lerp(1, 5, MathHelper.Clamp(collider.LinearVelocity.Length() / 10, 0, 1));
-                    float targetDistance = Math.Max(Math.Max(colliderSize.X, colliderSize.Y) / 2 * margin, 0.5f);
-                    float horizontalDistance = Math.Abs(character.WorldPosition.X - currentPath.CurrentNode.WorldPosition.X);
-                    float verticalDistance = Math.Abs(character.WorldPosition.Y - currentPath.CurrentNode.WorldPosition.Y);
-                    if (character.CurrentHull != currentPath.CurrentNode.CurrentHull)
+                    float distanceMultiplier = MathHelper.Lerp(1, 5, MathHelper.Clamp(collider.LinearVelocity.Length() / 10, 0, 1));
+                    float targetDistance = Math.Max(Math.Max(colliderSize.X, colliderSize.Y) / 2 * distanceMultiplier, 0.5f);
+                    float modifiedVerticalDist = verticalDistance;
+                    if (character.CurrentHull != currentNode.CurrentHull)
                     {
-                        verticalDistance *= 2;
+                        modifiedVerticalDist *= 2;
                     }
-                    float distance = horizontalDistance + verticalDistance;
-                    if (ConvertUnits.ToSimUnits(distance) < targetDistance)
+                    float distance = horizontalDistance + modifiedVerticalDist;
+                    if (distance < targetDistance)
                     {
-                        NextNode(!doorsChecked);
+                        return NextNode(!doorsChecked);
                     }
                 }
             }
@@ -480,6 +499,10 @@ namespace Barotrauma
             {
                 // Walking horizontally
                 Vector2 colliderBottom = character.AnimController.GetColliderBottom();
+                if (character.Submarine != currentNode.Submarine)
+                { 
+                    colliderBottom = Submarine.GetRelativeSimPosition(colliderBottom, currentNode.Submarine, character.Submarine);
+                }
                 Vector2 velocity = collider.LinearVelocity;
                 // If the character is very short, it would fail to use the waypoint nodes because they are always too high.
                 // If the character is very thin, it would often fail to reach the waypoints, because the horizontal distance is too small.
@@ -487,60 +510,113 @@ namespace Barotrauma
                 float minHeight = 1.6125001f;
                 float minWidth = 0.3225f;
                 // Cannot use the head position, because not all characters have head or it can be below the total height of the character
-                float characterHeight = Math.Max(colliderSize.Y + character.AnimController.ColliderHeightFromFloor, minHeight);
-                float horizontalDistance = Math.Abs(collider.SimPosition.X - currentPath.CurrentNode.SimPosition.X);
-                bool isTargetTooHigh = currentPath.CurrentNode.SimPosition.Y > colliderBottom.Y + characterHeight;
-                bool isTargetTooLow = currentPath.CurrentNode.SimPosition.Y < colliderBottom.Y;
-                var door = currentPath.CurrentNode.ConnectedDoor;
-                float margin = MathHelper.Lerp(1, 10, MathHelper.Clamp(Math.Abs(velocity.X) / 5, 0, 1));
-                float colliderHeight = collider.Height / 2 + collider.Radius;
-                if (currentPath.CurrentNode.Stairs == null)
+                float characterHeight = Math.Max(ConvertUnits.ToSimUnits(colliderHeight) + character.AnimController.ColliderHeightFromFloor, minHeight);
+                bool isTargetTooHigh = currentNode.SimPosition.Y > colliderBottom.Y + characterHeight;
+                bool isTargetTooLow = currentNode.SimPosition.Y < colliderBottom.Y;
+                var door = currentNode.ConnectedDoor;
+                float targetDistanceMultiplier = MathHelper.Lerp(1, 10, MathHelper.Clamp(Math.Abs(velocity.X) / 5, 0, 1));
+                if (currentNode.Stairs == null)
                 {
-                    float heightDiff = currentPath.CurrentNode.SimPosition.Y - collider.SimPosition.Y;
-                    if (heightDiff < colliderHeight)
+                    // Only attempt dropping if the node is below the collider bottom.
+                    // Using the next node position here, because the current node might be on the top of the ladder, which can be at the same level with the character or even above it.
+                    bool isBelowEnough = (nextNode ?? currentNode).WorldPosition.Y < character.WorldPosition.Y - colliderHeight / 2;
+                    bool drop = false;
+                    if (isBelowEnough)
                     {
-                        // Original comment:
-                        //the waypoint is between the top and bottom of the collider, no need to move vertically.
-                        // Note that the waypoint can be below collider too! This might be incorrect.
+                        if (!canClimb)
+                        {
+                            // Can't climb -> check if we should drop.
+                            Door nextDoor = door ?? nextNode?.ConnectedDoor;
+                            if (nextDoor is Door { IsHorizontal: true, CanBeTraversed: true } openHatch)
+                            {
+                               bool isHatchBelowCharacter = openHatch.LinkedGap.WorldPosition.Y < character.WorldPosition.Y;
+                               if (isHatchBelowCharacter)
+                               {
+                                   // Trying to go through an open hatch below us -> drop.
+                                   drop = true;
+                               }
+                            }
+                            else if (currentLadder != null && !isTargetTooLow && nextDoor == null)
+                            {
+                                // On ladders -> drop.
+                                drop = true;
+                            }
+                        }
+                    }
+                    if (drop)
+                    {
+                        return NextNode(!doorsChecked);
+                    }
+                    else if (verticalDistance < colliderHeight / 2)
+                    {
+                        // The waypoint is between the top and bottom of the collider, and we don't intend to drop -> no need to move vertically.
                         diff.Y = 0.0f;
                     }
                 }
                 else
                 {
-                    // In stairs
-                    bool isNextNodeInSameStairs = currentPath.NextNode?.Stairs == currentPath.CurrentNode.Stairs;
+                    // On stairs
+                    bool isNextNodeInSameStairs = nextNode?.Stairs == currentNode.Stairs;
                     if (!isNextNodeInSameStairs)
                     {
-                        margin = 1;
-                        if (currentPath.CurrentNode.SimPosition.Y < colliderBottom.Y + character.AnimController.ColliderHeightFromFloor * 0.25f)
+                        targetDistanceMultiplier = 1;
+                        if (currentNode.SimPosition.Y < colliderBottom.Y + character.AnimController.ColliderHeightFromFloor * 0.25f)
                         {
                             isTargetTooLow = true;
                         }
+                        Structure nextStairs = nextNode?.Stairs;
+                        if (character.AnimController.Stairs != null && nextStairs != null) 
+                        {
+                            //currently on stairs, and the next node is not in the same stairs
+                            // -> we must get off the current stairs first before we can skip to the next node, otherwise the character
+                            //    would attempt to get "through the stairs" to the next ones
+                            if (character.AnimController.Stairs.StairDirection == Direction.Right)
+                            {
+                                //the direction in which the bot should keep moving depends on the direction of the stairs and whether we're going up or down
+                                diff = nextStairs.WorldPosition.Y > character.AnimController.Stairs.WorldPosition.Y ? Vector2.UnitX : -Vector2.UnitX;
+                            }
+                            else
+                            {
+                                diff = nextStairs.WorldPosition.Y > character.AnimController.Stairs.WorldPosition.Y ? -Vector2.UnitX : Vector2.UnitX;
+                            }
+                        }
                     }
                 }
-                float targetDistance = Math.Max(colliderSize.X / 2 * margin, minWidth / 2);
-                if (horizontalDistance < targetDistance && !isTargetTooHigh && !isTargetTooLow)
+                // Walking horizontally, check whether we are close enough to the current node.
+                float targetDistance = Math.Max(colliderSize.X / 2 * targetDistanceMultiplier, ConvertUnits.ToDisplayUnits(minWidth / 2));
+                Debug.Assert(targetDistance < 500, "Target distance too large (a character is trying to skip on their path to a waypoint far away), something is probably off here.");
+                if (!isTargetTooHigh && !isTargetTooLow && horizontalDistance < targetDistance)
                 {
-                    if (door is not { CanBeTraversed: false } && (currentLadder == null || nextLadder == null))
+                    bool isBlockedByDoor = door is { CanBeTraversed: false };
+                    // If both the current ladder and the next ladder are not null, we are in the middle of ladders and should let the code above handle advancing the nodes.
+                    // However, if either one is null, and we get here, we are probably walking to or from ladders.
+                    bool notOnLadders = currentLadder == null || nextLadder == null;
+                    if (!isBlockedByDoor && notOnLadders)
                     {
-                        NextNode(!doorsChecked);
+                        return NextNode(!doorsChecked);
                     }
                 }
             }
-            if (currentPath.CurrentNode == null)
+            return ReturnDiff();
+            
+            Vector2 NextNode(bool checkDoors)
             {
-                return Vector2.Zero;
+                if (checkDoors)
+                {
+                    CheckDoorsInPath();
+                }
+                currentPath.SkipToNextNode();
+                return ReturnDiff();
             }
-            return ConvertUnits.ToSimUnits(diff);
-        }
-
-        private void NextNode(bool checkDoors)
-        {
-            if (checkDoors)
+            
+            Vector2 ReturnDiff()
             {
-                CheckDoorsInPath();
+                if (currentPath.CurrentNode == null)
+                {
+                    return Vector2.Zero;
+                }
+                return ConvertUnits.ToSimUnits(diff);
             }
-            currentPath.SkipToNextNode();
         }
 
         public bool CanAccessDoor(Door door, Func<Controller, bool> buttonFilter = null)
@@ -599,8 +675,6 @@ namespace Barotrauma
                 bool CanAccessButton(Controller button) => button.HasAccess(character) && (buttonFilter == null || buttonFilter(button));
             }
         }
-
-        private Vector2 GetColliderSize() => ConvertUnits.ToDisplayUnits(character.AnimController.Collider.GetSize());
 
         private float GetColliderLength()
         {
@@ -676,7 +750,7 @@ namespace Barotrauma
                         if (door.LinkedGap.IsHorizontal)
                         {
                             int dir = Math.Sign(nextWaypoint.WorldPosition.X - door.Item.WorldPosition.X);
-                            float size = character.AnimController.InWater ? colliderLength : GetColliderSize().X;
+                            float size = character.AnimController.InWater ? colliderLength : ConvertUnits.ToDisplayUnits(character.AnimController.Collider.GetSize()).X;
                             shouldBeOpen = (door.Item.WorldPosition.X - character.WorldPosition.X) * dir > -size;
                         }
                         else
@@ -794,12 +868,17 @@ namespace Barotrauma
             if (character == null) { return 0.0f; }
             float? penalty = GetSingleNodePenalty(nextNode);
             if (penalty == null) { return null; }
+            Vector2 nextNodePosition = nextNode.Position;
+            if (nextNode.Waypoint.Submarine != node.Waypoint.Submarine)
+            {
+                nextNodePosition = Submarine.GetRelativeSimPosition(nextNodePosition, node.Waypoint.Submarine, nextNode.Waypoint.Submarine);
+            }
             bool nextNodeAboveWaterLevel = nextNode.Waypoint.CurrentHull != null && nextNode.Waypoint.CurrentHull.Surface < nextNode.Waypoint.Position.Y;
             if (!character.CanClimb && node.Waypoint.Stairs == null && nextNode.Waypoint.Stairs == null)
             {
                 if (node.Waypoint.Ladders != null && nextNode.Waypoint.Ladders != null && (!nextNode.Waypoint.Ladders.Item.IsInteractable(character) || character.LockHands) ||
-                    (nextNode.Position.Y - node.Position.Y > 1.0f && //more than one sim unit to climb up
-                    nextNodeAboveWaterLevel)) //upper node not underwater
+                    (nextNodePosition.Y - node.Position.Y > 1.0f && //more than one sim unit to climb up
+                     nextNodeAboveWaterLevel)) //upper node not underwater
                 {
                     return null;
                 }
@@ -830,7 +909,7 @@ namespace Barotrauma
                     }
                 }
 
-                float yDist = Math.Abs(node.Position.Y - nextNode.Position.Y);
+                float yDist = Math.Abs(node.Position.Y - nextNodePosition.Y);
                 if (nextNodeAboveWaterLevel && node.Waypoint.Ladders == null && nextNode.Waypoint.Ladders == null && node.Waypoint.Stairs == null && nextNode.Waypoint.Stairs == null)
                 {
                     penalty += yDist * 10.0f;
@@ -898,18 +977,14 @@ namespace Barotrauma
             //steer away from edges of the hull
             bool wander = false;
             bool inWater = character.AnimController.InWater;
-            Hull currentHull = character.CurrentHull;
-            // TODO: disabled for now, because seems to cause bots to walk towards walls/doors in some places. In some places it's because how the hulls are defined, but there is probably something else too, is it seems to happen also elsewhere.
-            // if (!inWater)
-            // {
-            //     Vector2 colliderBottomPos = ConvertUnits.ToDisplayUnits(character.AnimController.GetColliderBottom());
-            //     if (Hull.FindHull(colliderBottomPos, guess: currentHull, useWorldCoordinates: false) is Hull lowestHull)
-            //     {
-            //         // Use the hull found at the collider bottom, if found.
-            //         // Makes difference in some rooms that have multiple hulls, of which the lowest hull where the feet are might not be the same as where the center position of the main collider is.
-            //         currentHull = lowestHull;
-            //     }
-            // }
+
+            //use the hull the legs are in (if one is found), so the character won't walk against the wall when their torso is in a different hull where there'd be room to walk further
+            //(e.g. if the character is in a shallow pool-type room, like in ResearchModule_01_Colony)
+            Hull currentHull = 
+                character.AnimController.GetLimb(LimbType.RightLeg)?.Hull ??
+                character.AnimController.GetLimb(LimbType.LeftLeg)?.Hull ??
+                character.CurrentHull;
+           
             if (currentHull != null && !inWater)
             {
                 float roomWidth = currentHull.Rect.Width;

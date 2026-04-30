@@ -4,6 +4,20 @@ name: Publish release
 
 on:
   workflow_dispatch:
+      inputs:
+        target:
+          description: "The git ref to checkout, build from and release"
+          required: true
+          type: string
+        tag:
+          description: "The tag of the release"
+          required: true
+          type: string
+        prerelease:
+          description: "Prerelease"
+          required: false
+          default: false
+          type: boolean
   workflow_call:
     inputs:
       target:
@@ -26,13 +40,10 @@ env:
     windows:server:Windows/Server
     linux:server:Linux/Server
     mac:server:Mac/Server
+    windows:client:Windows/Client
+    linux:client:Linux/Client
+    mac:client:Mac/Client/Barotrauma.app/Contents/MacOS
   ARCHIVE_BASE_NAME: luacsforbarotraumaEP
-
-  # windows:client:Windows/Client
-  # linux:client:Linux/Client
-  # mac:client:Mac/Client/Barotrauma.app/Contents/MacOS
-  # we do not currently provide a CL
-  
   # XXX: these file names are subject to shell expansion.
   # Be careful when using special characters.
   ARCHIVE_FILES_SERVER: |
@@ -67,15 +78,19 @@ env:
     Mono.Cecil.Mdb.dll
     Mono.Cecil.Pdb.dll
     Mono.Cecil.Rocks.dll
-    Microsoft.CodeAnalysis.CSharp.Scripting.dll
+    LightInject.dll
+    OneOf.dll
+    FluentResults.dll
+    Basic.Reference.Assemblies.Net80.dll
+    Microsoft.Extensions.Logging.Abstractions.dll
+    Microsoft.Toolkit.Diagnostics.dll
     Microsoft.CodeAnalysis.CSharp.dll
     Microsoft.CodeAnalysis.dll
-    Microsoft.CodeAnalysis.Scripting.dll
     System.Collections.Immutable.dll
     System.Reflection.Metadata.dll
     System.Runtime.CompilerServices.Unsafe.dll
     mscordaccore_amd64_amd64_*
-    Lua
+    LocalMods/LuaCsForBarotrauma
 
 jobs:
   build:

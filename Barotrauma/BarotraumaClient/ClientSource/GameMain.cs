@@ -18,12 +18,12 @@ using System.Reflection;
 using System.Threading;
 using Barotrauma.Extensions;
 using System.Collections.Immutable;
+using Barotrauma.LuaCs.Events;
 
 namespace Barotrauma
 {
     class GameMain : Game
     {
-        public static LuaCsSetup LuaCs;
         public static bool ShowFPS;
         public static bool ShowPerf;
         public static bool DebugDraw;
@@ -244,8 +244,6 @@ namespace Barotrauma
                 throw new Exception("Content folder not found. If you are trying to compile the game from the source code and own a legal copy of the game, you can copy the Content folder from the game's files to BarotraumaShared/Content.");
             }
 
-            LuaCs = new LuaCsSetup();
-
             GameSettings.Init();
             CreatureMetrics.Init();
             
@@ -297,6 +295,8 @@ namespace Barotrauma
             MainThread = Thread.CurrentThread;
 
             Window.FileDropped += OnFileDropped;
+
+            LuaCsSetup.Instance.GetType();
         }
 
         public static void ExecuteAfterContentFinishedLoading(Action action)
@@ -636,9 +636,6 @@ namespace Barotrauma
             HasLoaded = true;
 
             log("LOADING COROUTINE FINISHED");
-#if CLIENT
-            LuaCsInstaller.CheckUpdate();
-#endif
 
             contentLoaded = true;
             while (postContentLoadActions.TryDequeue(out Action action))
@@ -986,8 +983,6 @@ namespace Barotrauma
 
                     Screen.Selected.AddToGUIUpdateList();
 
-                    LuaCsLogger.AddToGUIUpdateList();
-
                     Client?.AddToGUIUpdateList();
 
                     SubmarinePreview.AddToGUIUpdateList();
@@ -1053,8 +1048,6 @@ namespace Barotrauma
                 TaskPool.Update();
 
                 SoundManager?.Update();
-
-                GameMain.LuaCs.Update();
 
                 Timing.Accumulator -= Timing.Step;
 
@@ -1237,8 +1230,6 @@ namespace Barotrauma
             GUIMessageBox.CloseAll();
             MainMenuScreen.Select();
             GameSession = null;
-
-            GameMain.LuaCs.Stop();
         }
 
         public void ShowBugReporter()
@@ -1301,6 +1292,18 @@ namespace Barotrauma
         {
             IsExiting = true;
             CreatureMetrics.Save();
+            try
+            {
+                if (LuaCsSetup.Instance is not null)
+                {
+                    LuaCsSetup.Instance.Dispose();
+                }
+            }
+            catch (Exception e)
+            {
+                DebugConsole.ThrowError($"Error while disposing of LuaCsForBarotrauma: {e.Message} | {e.StackTrace}");
+            }
+            
             DebugConsole.NewMessage("Exiting...");
             Client?.Quit();
             SteamManager.ShutDown();

@@ -419,7 +419,7 @@ namespace Barotrauma
 
                             if (fadeInBrokenSprite != null)
                             {
-                                float d = Math.Min(depth + (fadeInBrokenSprite.Sprite.Depth - activeSprite.Depth - 0.000001f), 0.999f);
+                                float d = MathHelper.Clamp(depth + (fadeInBrokenSprite.Sprite.Depth - activeSprite.Depth - 0.000001f), 0.0f, 0.999f);
                                 fadeInBrokenSprite.Sprite.DrawTiled(spriteBatch, new Vector2(DrawPosition.X - rect.Width / 2, -(DrawPosition.Y + rect.Height / 2)) + fadeInBrokenSprite.Offset.ToVector2() * Scale, size, color: color * fadeInBrokenSpriteAlpha,
                                     textureScale: Vector2.One * Scale,
                                     depth: d);
@@ -435,7 +435,7 @@ namespace Barotrauma
                             activeSprite.Draw(spriteBatch, new Vector2(DrawPosition.X, -DrawPosition.Y) + drawOffset, color, origin, RotationRad, Scale, activeSprite.effects, depth);
                             if (fadeInBrokenSprite != null)
                             {
-                                float d = Math.Min(depth + (fadeInBrokenSprite.Sprite.Depth - activeSprite.Depth - 0.000001f), 0.999f);
+                                float d = MathHelper.Clamp(depth + (fadeInBrokenSprite.Sprite.Depth - activeSprite.Depth - 0.000001f), 0.0f, 0.999f);
                                 fadeInBrokenSprite.Sprite.Draw(spriteBatch, new Vector2(DrawPosition.X, -DrawPosition.Y) + fadeInBrokenSprite.Offset.ToVector2() * Scale, color * fadeInBrokenSpriteAlpha, origin, RotationRad, Scale, activeSprite.effects, d);
                             }
                         }
@@ -885,7 +885,12 @@ namespace Barotrauma
                 Spacing = (int)(25 * GUI.Scale)
             };
 
-            var itemEditor = new SerializableEntityEditor(listBox.Content.RectTransform, this, inGame, showName: true, titleFont: GUIStyle.LargeFont) { UserData = this };
+            var itemEditor = new SerializableEntityEditor(listBox.Content.RectTransform, this, inGame, showName: true, 
+                titleFont: GUIStyle.LargeFont,
+                dimOutDefaultValues: false) 
+            {
+                UserData = this 
+            };
             activeEditors.Add(itemEditor);
             itemEditor.Children.First().Color = Color.Black * 0.7f;
             if (!inGame)
@@ -1045,7 +1050,12 @@ namespace Barotrauma
 
                 new GUIFrame(new RectTransform(new Vector2(1.0f, 0.02f), listBox.Content.RectTransform), style: "HorizontalLine");
 
-                var componentEditor = new SerializableEntityEditor(listBox.Content.RectTransform, ic, inGame, showName: !inGame, titleFont: GUIStyle.SubHeadingFont) { UserData = ic };
+                var componentEditor = new SerializableEntityEditor(listBox.Content.RectTransform, ic, inGame, showName: !inGame, 
+                    titleFont: GUIStyle.SubHeadingFont,
+                    dimOutDefaultValues: false)
+                {
+                    UserData = ic 
+                };
                 componentEditor.Children.First().Color = Color.Black * 0.7f;
                 activeEditors.Add(componentEditor);
 
@@ -1064,7 +1074,12 @@ namespace Barotrauma
                         requiredItems.Add(relatedItem);
                     }
                 }
-                requiredItems.AddRange(ic.DisabledRequiredItems);
+                //if we have some actual requirements, no need to keep the empty requirement
+                //as a "placeholder" for the user to add requirements in the sub editor
+                if (ic.RequiredItems.None())
+                {
+                    requiredItems.AddRange(ic.DisabledRequiredItems);
+                }
 
                 foreach (RelatedItem relatedItem in requiredItems)
                 {
@@ -1626,12 +1641,16 @@ namespace Barotrauma
             activeComponents.Clear();
             activeComponents.AddRange(components);
 
-            foreach (MapEntity entity in linkedTo)
+            Controller controller = GetComponent<Controller>();
+            if (controller == null || controller.User != Character.Controlled || !controller.HideAllItemComponentHUDs)
             {
-                if (Prefab.IsLinkAllowed(entity.Prefab) && entity is Item i)
+                foreach (MapEntity entity in linkedTo)
                 {
-                    if (!i.DisplaySideBySideWhenLinked) { continue; }
-                    activeComponents.AddRange(i.components);
+                    if (Prefab.IsLinkAllowed(entity.Prefab) && entity is Item i)
+                    {
+                        if (!i.DisplaySideBySideWhenLinked) { continue; }
+                        activeComponents.AddRange(i.components);
+                    }
                 }
             }
 
@@ -1701,7 +1720,9 @@ namespace Barotrauma
                 foreach (Character otherCharacter in Character.CharacterList)
                 {
                     if (otherCharacter != character &&
-                        otherCharacter.SelectedItem == this)
+                        otherCharacter.SelectedItem == this &&
+                        // Prevent the in use message from being shown if a character is, for example, inside the deconstructor
+                        !otherCharacter.IsAttachedToController())
                     {
                         ItemInUseWarning.Visible = true;
                         if (mergedHUDRect.Width > GameMain.GraphicsWidth / 2) { mergedHUDRect.Inflate(-GameMain.GraphicsWidth / 4, 0); }
@@ -1749,6 +1770,11 @@ namespace Barotrauma
                     i++;
                 }
             }
+        }
+
+        public void ClearActiveHUDs()
+        {
+            activeHUDs.Clear();
         }
 
         readonly List<ColoredText> texts = new();

@@ -23,6 +23,8 @@ namespace Barotrauma
                 //GUI.DrawString(spriteBatch, pos + textOffset, $"AI TARGET: {SelectedAiTarget.Entity.ToString()}", Color.White, Color.Black);
             }
 
+            Vector2 spacing = new Vector2(0, GUIStyle.Font.MeasureChar('T').Y);
+
             Vector2 stringDrawPos = pos + textOffset;
             GUI.DrawString(spriteBatch, stringDrawPos, Character.Name, Color.White, Color.Black);
 
@@ -33,14 +35,14 @@ namespace Barotrauma
                 currentOrders.Sort((x, y) => y.ManualPriority.CompareTo(x.ManualPriority));
                 for (int i = 0; i < currentOrders.Count; i++)
                 {
-                    stringDrawPos += new Vector2(0, 20);
+                    stringDrawPos += spacing;
                     var order = currentOrders[i];
                     GUI.DrawString(spriteBatch, stringDrawPos, $"ORDER {i + 1}: {order.Objective.DebugTag} ({order.Objective.Priority.FormatZeroDecimal()})", Color.White, Color.Black);
                 }
             }
             else if (ObjectiveManager.WaitTimer > 0)
             {
-                stringDrawPos += new Vector2(0, 20);
+                stringDrawPos += spacing;
                 GUI.DrawString(spriteBatch, stringDrawPos - textOffset, $"Waiting... {ObjectiveManager.WaitTimer.FormatZeroDecimal()}", Color.White, Color.Black);
             }
             var currentObjective = ObjectiveManager.CurrentObjective;
@@ -49,19 +51,19 @@ namespace Barotrauma
                 int offset = currentOrder != null ? 20 + ((ObjectiveManager.CurrentOrders.Count - 1) * 20) : 0;
                 if (currentOrder == null || currentOrder.Priority <= 0)
                 {
-                    stringDrawPos += new Vector2(0, 20);
+                    stringDrawPos += spacing;
                     GUI.DrawString(spriteBatch, stringDrawPos, $"MAIN OBJECTIVE: {currentObjective.DebugTag} ({currentObjective.Priority.FormatZeroDecimal()})", Color.White, Color.Black);
                 }
                 var subObjective = currentObjective.CurrentSubObjective;
                 if (subObjective != null)
                 {
-                    stringDrawPos += new Vector2(0, 20);
+                    stringDrawPos += spacing;
                     GUI.DrawString(spriteBatch, stringDrawPos, $"SUBOBJECTIVE: {subObjective.DebugTag} ({subObjective.Priority.FormatZeroDecimal()})", Color.White, Color.Black);
                 }
                 var activeObjective = ObjectiveManager.GetActiveObjective();
                 if (activeObjective != null)
                 {
-                    stringDrawPos += new Vector2(0, 20);
+                    stringDrawPos += spacing;
                     GUI.DrawString(spriteBatch, stringDrawPos, $"ACTIVE OBJECTIVE: {activeObjective.DebugTag} ({activeObjective.Priority.FormatZeroDecimal()})", Color.White, Color.Black);
                 }
                 if (currentObjective is AIObjectiveCombat 
@@ -85,12 +87,12 @@ namespace Barotrauma
                 }
             }
 
-            Vector2 objectiveStringDrawPos = stringDrawPos + new Vector2(120, 40);
+            Vector2 objectiveStringDrawPos = stringDrawPos + new Vector2(120, spacing.Y * 2);
             for (int i = 0; i < ObjectiveManager.Objectives.Count; i++)
             {
                 var objective = ObjectiveManager.Objectives[i];
                 GUI.DrawString(spriteBatch, objectiveStringDrawPos, $"{objective.DebugTag} ({objective.Priority.FormatZeroDecimal()})", Color.White, Color.Black * 0.5f);
-                objectiveStringDrawPos += new Vector2(0, 18);
+                objectiveStringDrawPos += spacing * 0.8f;
             }
 
             if (steeringManager is IndoorsSteeringManager pathSteering)

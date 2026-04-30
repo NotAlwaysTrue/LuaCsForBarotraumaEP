@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Barotrauma.Extensions;
 using Barotrauma.RuinGeneration;
 using Microsoft.Xna.Framework;
@@ -199,7 +199,7 @@ namespace Barotrauma
 
         private static bool IsEnemyDefeated(Character enemy) => enemy == null ||enemy.Removed || enemy.IsDead;
 
-        protected override bool DetermineCompleted()
+        protected override bool DetermineCompleted(CampaignMode.TransitionType transitionType)
         {
             bool exitingLevel = GameMain.GameSession?.GameMode is CampaignMode campaign ?
                 campaign.GetAvailableTransition() != CampaignMode.TransitionType.None :
