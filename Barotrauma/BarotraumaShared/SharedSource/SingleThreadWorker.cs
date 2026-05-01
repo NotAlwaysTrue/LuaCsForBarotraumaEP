@@ -1,9 +1,7 @@
-﻿using Barotrauma.Networking;
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
-using static Barotrauma.EosInterface.Ownership;
 
 namespace Barotrauma
 {
@@ -15,7 +13,8 @@ namespace Barotrauma
 
         private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
         private readonly SemaphoreSlim actionSignal = new SemaphoreSlim(0);
-        private static Task WorkerTask;
+        private readonly Task workerTask;
+        private bool disposed;
 
         public static readonly SemaphoreSlim SingleThreadActionStandbySignal = new SemaphoreSlim(1);
 
@@ -26,28 +25,35 @@ namespace Barotrauma
         public SingleThreadWorker()
         {
             ActionQueue = new ConcurrentQueue<Action>();
-            WorkerTask = CreateProcessTask(cancellationTokenSource.Token);
+            workerTask = CreateProcessTask(cancellationTokenSource.Token);
         }
 
         public void Dispose()
         {
+            if (disposed) { return; }
+            disposed = true;
             cancellationTokenSource.Cancel();
-            WorkerTask.Wait();
-            WorkerTask.Dispose();
-            Instance = null;
+            try
+            {
+                actionSignal.Release();
+                workerTask.Wait(2);
+            }
+            catch (AggregateException) { }
+            catch (ObjectDisposedException) { }
             cancellationTokenSource.Dispose();
             actionSignal.Dispose();
-            SingleThreadActionStandbySignal.Dispose();
         }
 
         private async Task CreateProcessTask(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
+                bool lockTaken = false;
                 try
                 {
                     await actionSignal.WaitAsync(100, token);
                     SingleThreadActionStandbySignal.Wait(CancellationToken.None);
+                    lockTaken = true;
                     RunActions();
                 }
                 catch (OperationCanceledException)
@@ -56,7 +62,10 @@ namespace Barotrauma
                 }
                 finally
                 {
-                    SingleThreadActionStandbySignal.Release();
+                    if (lockTaken)
+                    {
+                        SingleThreadActionStandbySignal.Release();
+                    }
                 }
             }
         }
@@ -68,6 +77,8 @@ namespace Barotrauma
         /// <param name="action"></param>
         public void AddAction(Action action)
         {
+            if (disposed || action == null) { return; }
+
             // enqueue and let background task handle the rest
             ActionQueue.Enqueue(action);
 
@@ -96,7 +107,7 @@ namespace Barotrauma
                     Console.ForegroundColor = ConsoleColor.Yellow;
                     Console.WriteLine($"WARNING: Error occurred when running Single Thread Actions." +
                         $"If the server didn't crash or stop responding then this should be fine \n{e}");
-                    Console.ForegroundColor = Console.ForegroundColor;
+                    Console.ForegroundColor = originalForeground;
                 }
             }
         }

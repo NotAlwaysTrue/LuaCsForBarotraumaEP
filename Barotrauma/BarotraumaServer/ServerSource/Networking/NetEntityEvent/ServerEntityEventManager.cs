@@ -5,12 +5,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
-using static Barotrauma.EosInterface.Ownership;
 
 
-// DO NOT TOUCH ANYTHING HERE
-// OR EVERYTHING WILL FAIL
 namespace Barotrauma.Networking
 {
     class ServerEntityEvent : NetEntityEvent
@@ -66,13 +62,41 @@ namespace Barotrauma.Networking
 
         public List<ServerEntityEvent> Events
         {
-            get { return events; }
+            get
+            {
+                FlushPendingCreates();
+                return events;
+            }
         }
 
         public List<ServerEntityEvent> UniqueEvents
         {
-            get { return uniqueEvents; }
+            get
+            {
+                FlushPendingCreates();
+                return uniqueEvents;
+            }
         }
+
+        public int PendingCreateEventCount => pendingCreateQueue.Count;
+        public int EventCount
+        {
+            get
+            {
+                FlushPendingCreates();
+                return events.Count;
+            }
+        }
+        public int UniqueEventCount
+        {
+            get
+            {
+                FlushPendingCreates();
+                return uniqueEvents.Count;
+            }
+        }
+        public int BufferedEventCount => bufferedEvents.Count;
+        public UInt16 LastCreatedEventID => ID;
 
         private class BufferedEvent
         {
@@ -124,11 +148,6 @@ namespace Barotrauma.Networking
 
         private readonly ConcurrentQueue<PendingCreateEvent> pendingCreateQueue;
 
-        private readonly Task createEventTask;
-
-        private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-        private readonly SemaphoreSlim eventSignal = new SemaphoreSlim(0);
-
         public ServerEntityEventManager(GameServer server)
         {
             events = new List<ServerEntityEvent>();
@@ -138,33 +157,24 @@ namespace Barotrauma.Networking
             pendingCreateQueue = new ConcurrentQueue<PendingCreateEvent>();
             lastWarningTime = -10.0;
             SEM = this;
-
-            createEventTask = Task.Run(() => CreateEventProcessorLoop(cancellationTokenSource.Token));
         }
 
-        private async Task CreateEventProcessorLoop(CancellationToken token)
+        public void FlushPendingCreates()
         {
-            while (!token.IsCancellationRequested)
+            if (GameMain.MainThread != null && Thread.CurrentThread != GameMain.MainThread)
             {
-                try
-                {
-                    await eventSignal.WaitAsync(100, token);
-                    ProcessPendingCreateEvents();
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
+                throw new InvalidOperationException($"{nameof(ServerEntityEventManager)} pending events must be flushed on the main thread.");
             }
+            ProcessPendingCreateEvents();
         }
 
         private void ProcessPendingCreateEvents()
         {
-            // Dequeue and process all pending events currently in the queue.
-            // Use a lock to synchronize modifications to shared lists / ID.
+            // CreateEntityEvent can be called from parallel update code. The queue keeps
+            // that enqueue path safe, while this method is only called from the main tick
+            // before reading or writing entity-event state.
             while (pendingCreateQueue.TryDequeue(out PendingCreateEvent pending))
             {
-                // The original CreateEvent logic (mostly unchanged) but executed under a lock
                 if (pending == null || pending.Entity == null) { continue; }
 
                 var entity = pending.Entity;
@@ -216,34 +226,18 @@ namespace Barotrauma.Networking
         {
             if (!ValidateEntity(entity)) { return; }
 
-            // enqueue and let background task handle the rest
             pendingCreateQueue.Enqueue(new PendingCreateEvent(entity, extraData));
-            
-            if (eventSignal.CurrentCount == 0)
-            {
-                eventSignal.Release();
-            }
         }
 
         public void Dispose()
         {
-            cancellationTokenSource.Cancel();
-            eventSignal.Release();
-            try
-            {
-                createEventTask?.Wait(2000);
-            }
-            catch (AggregateException) { }
-            finally
-            {
-                cancellationTokenSource.Dispose();
-                eventSignal.Dispose();
-            }
+            ClearPendingCreates();
         }
 
-        // Due to intensive access demend and time it takes to refactor, we use try-catch when facing thread-safety issue to skip to next update :(
         public void Update(List<Client> clients)
         {
+            FlushPendingCreates();
+
             foreach (BufferedEvent bufferedEvent in bufferedEvents)
             {
                 if (bufferedEvent.Character == null || bufferedEvent.Character.IsDead)
@@ -329,14 +323,7 @@ namespace Barotrauma.Networking
                     }
                 }
 
-                try
-                {
-                    lastSentToAnyoneTime = events.ToList().Find(e => e.ID == lastSentToAnyone)?.CreateTime ?? Timing.TotalTime;
-                }
-                catch
-                {
-                    lastSentToAnyoneTime = Timing.TotalTime;
-                }
+                lastSentToAnyoneTime = events.Find(e => e.ID == lastSentToAnyone)?.CreateTime ?? Timing.TotalTime;
 
 
                 if (Timing.TotalTime - lastWarningTime > 5.0 &&
@@ -353,15 +340,7 @@ namespace Barotrauma.Networking
 
                 clients.Where(c => c.NeedsMidRoundSync).ForEach(c => { if (NetIdUtils.IdMoreRecent(lastSentToAll, c.FirstNewEventID)) lastSentToAll = (ushort)(c.FirstNewEventID - 1); });
 
-                ServerEntityEvent firstEventToResend;
-                try
-                {
-                    firstEventToResend = events.Find(e => e.ID == (ushort)(lastSentToAll + 1));
-                }
-                catch
-                {
-                    firstEventToResend = null;
-                }
+                ServerEntityEvent firstEventToResend = events.Find(e => e.ID == (ushort)(lastSentToAll + 1));
                  
                 if (firstEventToResend != null &&
                     GameMain.GameSession.RoundDuration > server.ServerSettings.RoundStartSyncDuration &&
@@ -450,6 +429,8 @@ namespace Barotrauma.Networking
         /// </summary>
         public void Write(in SegmentTableWriter<ServerNetSegment> segmentTable, Client client, IWriteMessage msg, out List<NetEntityEvent> sentEvents)
         {
+            FlushPendingCreates();
+
             List<NetEntityEvent> eventsToSync = GetEventsToSync(client);
 
             if (eventsToSync.Count == 0)
@@ -576,6 +557,8 @@ namespace Barotrauma.Networking
 
         public void InitClientMidRoundSync(Client client)
         {
+            FlushPendingCreates();
+
             //no need for midround syncing if no events have been created,
             //or if the first created unique event is still in the event list
             if (uniqueEvents.Count == 0 || (events.Count > 0 && events[0].ID == uniqueEvents[0].ID))
@@ -693,6 +676,8 @@ namespace Barotrauma.Networking
 
         public void Clear()
         {
+            ClearPendingCreates();
+
             ID = 0;
             events.Clear();
 
@@ -708,6 +693,11 @@ namespace Barotrauma.Networking
                 c.LastRecvEntityEventID = 0;
                 c.LastSentEntityEventID = 0;
             }
+        }
+
+        private void ClearPendingCreates()
+        {
+            while (pendingCreateQueue.TryDequeue(out _)) { }
         }
     }
 }

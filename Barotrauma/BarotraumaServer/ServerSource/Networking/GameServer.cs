@@ -1133,6 +1133,9 @@ namespace Barotrauma.Networking
 
             Log(ClientLogName(c) + " has reported an error: " + errorStr, ServerLog.MessageType.Error);
             GameAnalyticsManager.AddErrorEventOnce("GameServer.HandleClientError:" + errorStrNoName, GameAnalyticsManager.ErrorSeverity.Error, errorStr);
+            Log(
+                $"Entity event state at client error: pending={EntityEventManager.PendingCreateEventCount}, queued={EntityEventManager.EventCount}, unique={EntityEventManager.UniqueEventCount}, buffered={EntityEventManager.BufferedEventCount}, lastCreated={EntityEventManager.LastCreatedEventID}",
+                ServerLog.MessageType.Error);
 
             try
             {

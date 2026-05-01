@@ -8,7 +8,6 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Xml.Linq;
-using static OneOf.Types.TrueFalseOrNull;
 
 namespace Barotrauma
 {
@@ -643,7 +642,7 @@ namespace Barotrauma
         /// </summary>
         public static void UpdateAll(float deltaTime, Camera cam, ParallelOptions parallelOptions)
         {
-            Random rand = new Random();
+            mapEntityUpdateTick++;
 #if CLIENT
             var sw = new System.Diagnostics.Stopwatch();
             sw.Start();
@@ -665,46 +664,50 @@ namespace Barotrauma
             while (n > 1)
             {
                 n--;
-                int k = rand.Next(n + 1);
+                int k = Rand.Int(n + 1);
                 (gapList[n], gapList[k]) = (gapList[k], gapList[n]);
             }
 
             var itemList = Item.ItemList.ToList();
 
-            // First phase: parallel updates that have no order dependencies
-            Parallel.Invoke(parallelOptions,
-                () =>
-                {
-                    Parallel.ForEach(hullList, parallelOptions, hull =>
+            int mapEntityUpdateInterval = Math.Max(MapEntityUpdateInterval, 1);
+            int poweredUpdateInterval = Math.Max(PoweredUpdateInterval, 1);
+
+            if (mapEntityUpdateTick % mapEntityUpdateInterval == 0)
+            {
+                float mapEntityDeltaTime = deltaTime * mapEntityUpdateInterval;
+
+                Parallel.Invoke(parallelOptions,
+                    () =>
                     {
-                        hull.Update(deltaTime, cam);
-                    });
- 
-                },
-                // Structure parallel update
-                () =>
-                {
-                    Parallel.ForEach(structureList, parallelOptions, structure =>
+                        Parallel.ForEach(hullList, parallelOptions, hull =>
+                        {
+                            hull.Update(mapEntityDeltaTime, cam);
+                        });
+                    },
+                    () =>
                     {
-                        structure.Update(deltaTime, cam);
+                        Parallel.ForEach(structureList, parallelOptions, structure =>
+                        {
+                            structure.Update(mapEntityDeltaTime, cam);
+                        });
                     });
-                },
-                () =>
-                // moved waterflow reset here to see if we can reduce at least some time
-                {
-                    // PLEASE WORK
-                    Parallel.ForEach(gapList, parallelOptions, gap =>
-                    {
-                        gap.ResetWaterFlowThisFrame();
-                        gap.Update(deltaTime, cam);
-                    });
-                },
-                // Powered components update
-                () =>
-                {
-                    Powered.UpdatePower(deltaTime);
-                }
-            );
+            }
+
+            foreach (Gap gap in gapList)
+            {
+                gap.ResetWaterFlowThisFrame();
+            }
+
+            foreach (Gap gap in gapList)
+            {
+                gap.Update(deltaTime, cam);
+            }
+
+            if (mapEntityUpdateTick % poweredUpdateInterval == 0)
+            {
+                Powered.UpdatePower(deltaTime * poweredUpdateInterval);
+            }
 
 #if CLIENT
             // Hull Cheats need to be executed after Hull update
@@ -720,27 +723,42 @@ namespace Barotrauma
             // Item update (Item.Update() is not thread-safe and must be executed on the main thread)
             Item.UpdatePendingConditionUpdates(deltaTime);
 
-            Item lastUpdatedItem = null;
-
-            try
+            if (mapEntityUpdateTick % mapEntityUpdateInterval == 0)
             {
-                foreach (Item item in itemList)
+                float itemDeltaTime = deltaTime * mapEntityUpdateInterval;
+                Item lastUpdatedItem = null;
+
+                try
                 {
-                    lastUpdatedItem = item;
-                    item.Update(deltaTime, cam);
+                    foreach (Item item in itemList)
+                    {
+                        if (LuaCsSetup.Instance.Game.UpdatePriorityItems.Contains(item)) { continue; }
+                        lastUpdatedItem = item;
+                        item.Update(itemDeltaTime, cam);
+                    }
+                }
+                catch (InvalidOperationException e)
+                {
+                    GameAnalyticsManager.AddErrorEventOnce(
+                        "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
+                        GameAnalyticsManager.ErrorSeverity.Critical,
+                        $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
+                    throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
                 }
             }
-            catch (InvalidOperationException e)
+
+            foreach (var item in LuaCsSetup.Instance.Game.UpdatePriorityItems)
             {
-                GameAnalyticsManager.AddErrorEventOnce(
-                    "MapEntity.UpdateAll:ItemUpdateInvalidOperation",
-                    GameAnalyticsManager.ErrorSeverity.Critical,
-                    $"Error while updating item {lastUpdatedItem?.Name ?? "null"}: {e.Message}");
-                throw new InvalidOperationException($"Error while updating item {lastUpdatedItem?.Name ?? "null"}", innerException: e);
+                if (item.Removed) { continue; }
+
+                item.Update(deltaTime, cam);
             }
 
-            UpdateAllProjSpecific(deltaTime);
-            Spawner?.Update();
+            if (mapEntityUpdateTick % mapEntityUpdateInterval == 0)
+            {
+                UpdateAllProjSpecific(deltaTime * mapEntityUpdateInterval);
+                Spawner?.Update();
+            }
 
 #if CLIENT
             sw.Stop();

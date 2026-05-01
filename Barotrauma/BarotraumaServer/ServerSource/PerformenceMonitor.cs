@@ -2,11 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 
 
 namespace Barotrauma
@@ -39,7 +35,27 @@ namespace Barotrauma
         }
         public int ConnectClients
         {
-            get { return GameMain.Server.ConnectedClients.Count; }
+            get { return GameMain.Server?.ConnectedClients.Count ?? 0; }
+        }
+
+        public int PendingEntityEvents
+        {
+            get { return GameMain.Server?.EntityEventManager?.PendingCreateEventCount ?? 0; }
+        }
+
+        public int EntityEvents
+        {
+            get { return GameMain.Server?.EntityEventManager?.EventCount ?? 0; }
+        }
+
+        public int UniqueEntityEvents
+        {
+            get { return GameMain.Server?.EntityEventManager?.UniqueEventCount ?? 0; }
+        }
+
+        public int BufferedEntityEvents
+        {
+            get { return GameMain.Server?.EntityEventManager?.BufferedEventCount ?? 0; }
         }
 
         public double RealTickRate
@@ -166,6 +182,10 @@ namespace Barotrauma
                    $"Character Count: {CharacterCount}\n" +
                    $"Clients Count {ConnectClients}\n " +
                    $"PhysicsBody Count: {PhysicsBodyCount}\n" +
+                   $"Entity Events: {EntityEvents}\n" +
+                   $"Unique Entity Events: {UniqueEntityEvents}\n" +
+                   $"Pending Entity Events: {PendingEntityEvents}\n" +
+                   $"Buffered Entity Events: {BufferedEntityEvents}\n" +
                    $"Tick Rate: {RealTickRate}\n" +
                    $"Min Tick Rate: {TickRateLow}\n" +
                    $"Max Tick Rate: {TickRateHigh}\n" +

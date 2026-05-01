@@ -281,7 +281,6 @@ namespace Barotrauma
 #endif
 
             SingleThreadActionStandbySignal.Wait();
-
             try
             {
                 GameMain.World.Step((float)Timing.Step);
@@ -292,8 +291,10 @@ namespace Barotrauma
                 DebugConsole.ThrowError(errorMsg, e);
                 GameAnalyticsManager.AddErrorEventOnce("GameScreen.Update:WorldLockedException" + e.Message, GameAnalyticsManager.ErrorSeverity.Critical, errorMsg);
             }
-
-            SingleThreadActionStandbySignal.Release();
+            finally
+            {
+                SingleThreadActionStandbySignal.Release();
+            }
 
 #if CLIENT
             sw.Stop();
