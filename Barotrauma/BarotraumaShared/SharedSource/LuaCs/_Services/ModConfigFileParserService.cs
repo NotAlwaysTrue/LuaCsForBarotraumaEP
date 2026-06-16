@@ -23,6 +23,7 @@ public sealed partial class ModConfigFileParserService :
     public ModConfigFileParserService(IStorageService storageService)
     {
         _storageService = storageService;
+        _storageService.UseCaching = false;
     }
 
     #region Dispose

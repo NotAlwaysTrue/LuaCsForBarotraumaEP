@@ -252,7 +252,7 @@ namespace Barotrauma
                 GameMain.NetworkMember.ShowNetStats = !GameMain.NetworkMember.ShowNetStats;
             }));
 
-            commands.Add(new Command("spawn|spawncharacter", "spawn [creaturename/jobname] [near/inside/outside/cursor] [team] [add to crew (true/false)]: Spawn a creature at a random spawnpoint (use the second parameter to only select spawnpoints near/inside/outside the submarine). You can also enter the name of a job (e.g. \"Mechanic\") to spawn a character with a specific job and the appropriate equipment.", null,
+            commands.Add(new Command("spawn|spawncharacter", "spawn [creaturename/jobname] [near/inside/outside/cursor] [team] [add to crew (true/false)] [name]: Spawn a creature at a random spawnpoint (use the second parameter to only select spawnpoints near/inside/outside the submarine). You can also enter the name of a job (e.g. \"Mechanic\") to spawn a character with a specific job and the appropriate equipment.", null,
             () =>
             {
                 string[] creatureAndJobNames =
@@ -271,7 +271,7 @@ namespace Barotrauma
                 };
             }, isCheat: true));
             
-            commands.Add(new Command("give|giveitem", "give|giveitem [itemname/itemidentifier] [amount] [condition]: Spawn an item in the inventory of the controlled character",
+            commands.Add(new Command("give|giveitem", "give|giveitem [itemname/itemidentifier] [amount] [condition] [quality]: Spawn an item in the inventory of the controlled character",
             (string[] args) =>
             {
                 if (Character.Controlled == null)
@@ -292,9 +292,12 @@ namespace Barotrauma
             },
             getValidArgs: () =>
             {
-                return new string[][]
+                return new string[][]                
                 {
-                    GetItemNameOrIdParams().ToArray()
+                    GetItemNameOrIdParams().ToArray(),
+                    new string[] { "1" },
+                    new string[] { "100" },
+                    ItemQualityNames.ToArray()
                 };
             }, isCheat: true));
 
@@ -311,7 +314,7 @@ namespace Barotrauma
                 };
             }, isCheat: true));
 
-            commands.Add(new Command("spawnitem", "spawnitem [itemname/itemidentifier] [cursor/inventory/cargo/random/[name]] [amount] [condition]: Spawn an item at the position of the cursor, in the inventory of the controlled character, in the inventory of the client with the given name, or at a random spawnpoint if the location parameter is omitted or \"random\".",
+            commands.Add(new Command("spawnitem", "spawnitem [itemname/itemidentifier] [cursor/inventory/cargo/random/[name]] [amount] [condition] [quality]: Spawn an item at the position of the cursor, in the inventory of the controlled character, in the inventory of the client with the given name, or at a random spawnpoint if the location parameter is omitted or \"random\".",
             (string[] args) =>
             {
                 TrySpawnItem(args);
@@ -321,7 +324,10 @@ namespace Barotrauma
                 return new string[][]
                 {
                     GetItemNameOrIdParams().ToArray(),
-                    GetSpawnPosParams().ToArray()
+                    GetSpawnPosParams().ToArray(),
+                    new string[] { "1" },
+                    new string[] { "100" },
+                    ItemQualityNames.ToArray()
                 };
             }, isCheat: true));
             
@@ -1324,6 +1330,7 @@ namespace Barotrauma
                 }
                 else
                 {
+                    if (GameMain.GameSession?.Map is Map map) { NewMessage("Map seed: " + map.Seed); }
                     NewMessage("Level seed: " + Level.Loaded.Seed);
                     NewMessage("Level generation params: " + Level.Loaded.GenerationParams.Identifier);
                     NewMessage("Adjacent locations: " + (Level.Loaded.StartLocation?.Type.Identifier ?? "none".ToIdentifier()) + ", " + (Level.Loaded.StartLocation?.Type.Identifier ?? "none".ToIdentifier()));
@@ -1333,17 +1340,29 @@ namespace Barotrauma
                 }
             },null));
             
-            commands.Add(new Command("teleportsub", "teleportsub [start/end/endoutpost/cursor]: Teleport the submarine to the position of the cursor, or the start or end of the level. The 'endoutpost' argument also automatically docks the sub with the outpost at the end of the level. WARNING: does not take outposts into account, so often leads to physics glitches. Only use for debugging.", 
+            commands.Add(new Command("teleportsub", "teleportsub [start/end/endoutpost/cursor] [submarine_team]: Teleport the submarine to the position of the cursor, or the start or end of the level. The 'endoutpost' argument also automatically docks the sub with the outpost at the end of the level. WARNING: does not take outposts into account, so often leads to physics glitches. Only use for debugging.", 
             onExecute:(string[] args) =>
             {
                 if (Submarine.MainSub == null) { return; }
+                Submarine submarineToTeleport = Submarine.MainSub;
+                if (args.Length > 1)
+                {
+                    foreach (Submarine sub in Submarine.Loaded.Where(s => s.PhysicsBody.BodyType == FarseerPhysics.BodyType.Dynamic))
+                    {
+                        if ((sub.Info.Name + "_" + sub.TeamID) == args[1])
+                        {
+                            submarineToTeleport = sub;
+                            break;
+                        }
+                    }
+                }
 
                 if (args.Length == 0 || args[0].Equals("cursor", StringComparison.OrdinalIgnoreCase))
                 {
 #if SERVER
                     ThrowError("Cannot teleport the sub to the position of the cursor. Use \"start\" or \"end\", or execute the command as a client.");
 #else
-                    Submarine.MainSub.SetPosition(Screen.Selected.Cam.ScreenToWorld(PlayerInput.MousePosition));
+                    submarineToTeleport.SetPosition(Screen.Selected.Cam.ScreenToWorld(PlayerInput.MousePosition));
 #endif
                 }
                 else if (args[0].Equals("start", StringComparison.OrdinalIgnoreCase))
@@ -1356,9 +1375,9 @@ namespace Barotrauma
                     Vector2 pos = Level.Loaded.StartPosition;
                     if (Level.Loaded.StartOutpost != null)
                     {
-                        pos -= Vector2.UnitY * (Submarine.MainSub.Borders.Height + Level.Loaded.StartOutpost.Borders.Height) / 2;
+                        pos -= Vector2.UnitY * (submarineToTeleport.Borders.Height + Level.Loaded.StartOutpost.Borders.Height) / 2;
                     }
-                    Submarine.MainSub.SetPosition(pos);
+                    submarineToTeleport.SetPosition(pos);
                 }
                 else if (args[0].Equals("end", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1370,9 +1389,9 @@ namespace Barotrauma
                     Vector2 pos = Level.Loaded.EndPosition;
                     if (Level.Loaded.EndOutpost != null)
                     {
-                        pos -= Vector2.UnitY * (Submarine.MainSub.Borders.Height + Level.Loaded.EndOutpost.Borders.Height) / 2;
+                        pos -= Vector2.UnitY * (submarineToTeleport.Borders.Height + Level.Loaded.EndOutpost.Borders.Height) / 2;
                     }
-                    Submarine.MainSub.SetPosition(pos);
+                    submarineToTeleport.SetPosition(pos);
                 }                
                 else if (args[0].Equals("endoutpost", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1381,8 +1400,8 @@ namespace Barotrauma
                         NewMessage("Can't teleport the sub to the end outpost (no outpost at the end of the level).", Color.Red);
                         return;
                     }
-                    Submarine.MainSub.SetPosition(Level.Loaded.EndExitPosition - Vector2.UnitY * Submarine.MainSub.Borders.Height);
-                    var submarineDockingPort = DockingPort.List.FirstOrDefault(d => d.Item.Submarine == Submarine.MainSub);
+                    submarineToTeleport.SetPosition(Level.Loaded.EndExitPosition - Vector2.UnitY * submarineToTeleport.Borders.Height);
+                    var submarineDockingPort = DockingPort.List.FirstOrDefault(d => d.Item.Submarine == submarineToTeleport);
                     var outpostDockingPort = DockingPort.List.FirstOrDefault(d => d.Item.Submarine == Level.Loaded.EndOutpost);
                     if (submarineDockingPort != null && outpostDockingPort != null)
                     {
@@ -1394,7 +1413,8 @@ namespace Barotrauma
             {
                 return new string[][]
                 {
-                    new string[] { "start", "end", "endoutpost", "cursor" }
+                    new string[] { "start", "end", "endoutpost", "cursor" },
+                    ListAvailableSubmarines()
                 };
             }, isCheat: true));
 
@@ -2569,7 +2589,17 @@ namespace Barotrauma
 
             return locationNames.ToArray();
         }
-        
+
+        private static string[] ListAvailableSubmarines()
+        {
+            List<string> submarineNames = new();
+            foreach (var submarine in Submarine.Loaded.Where(s => s.PhysicsBody.BodyType == FarseerPhysics.BodyType.Dynamic))
+            {
+                submarineNames.Add(submarine.Info.Name + "_" + submarine.TeamID);
+            }
+            return submarineNames.ToArray();
+        }
+
         private static bool TryFindTeleportPosition(string locationName, out Vector2 teleportPosition)
         {
             if (Submarine.MainSub is Submarine mainSub && string.Equals(locationName, "mainsub", StringComparison.InvariantCultureIgnoreCase))
@@ -2952,7 +2982,7 @@ namespace Barotrauma
                 isHuman = job != null || characterLowerCase == CharacterPrefab.HumanSpeciesName;
             }
 
-            ParseOptionalArgs(out Vector2 spawnPosition, out WayPoint spawnPoint, out CharacterTeamType? teamType, out bool addToCrew);
+            ParseOptionalArgs(out Vector2 spawnPosition, out WayPoint spawnPoint, out CharacterTeamType? teamType, out bool addToCrew, out string renameCharacter);
 
             if (usePreConfiguredNPC)
             {
@@ -2983,6 +3013,14 @@ namespace Barotrauma
                 CharacterInfo characterInfo = new CharacterInfo(CharacterPrefab.HumanSpeciesName, jobOrJobPrefab: job, variant: variant);
                 Entity.Spawner.AddCharacterToSpawnQueue(CharacterPrefab.HumanSpeciesName, spawnPosition, characterInfo, onSpawn: newCharacter =>
                 {
+                    if (renameCharacter != null)
+                    {
+                        if (renameCharacter.Length > 31)
+                        {
+                            renameCharacter = renameCharacter.Substring(0, 32);
+                        }
+                        newCharacter.Info.Name = renameCharacter;
+                    }
                     SetTeamAndCrew(newCharacter);
                     newCharacter.GiveJobItems(isPvPMode: GameMain.GameSession?.GameMode is PvPMode, spawnPoint);
                     newCharacter.GiveIdCardTags(spawnPoint);
@@ -3010,7 +3048,7 @@ namespace Barotrauma
                 }
             }
 
-            void ParseOptionalArgs(out Vector2 spawnPosition, out WayPoint spawnPoint, out CharacterTeamType? teamType, out bool addToCrew)
+            void ParseOptionalArgs(out Vector2 spawnPosition, out WayPoint spawnPoint, out CharacterTeamType? teamType, out bool addToCrew, out string renameCharacter)
             {
                 spawnPosition = Vector2.Zero;
                 spawnPoint = null;
@@ -3096,6 +3134,12 @@ namespace Barotrauma
                         ThrowError($"Could not parse the \"add to crew\" argument ({args[argIndex]}). Defaulting to {addToCrew}.");
                     }
                 }
+                argIndex++;
+                renameCharacter = null;
+                if (args.Length > argIndex)
+                {
+                    renameCharacter = args[argIndex];
+                }
             }
         }
 
@@ -3103,6 +3147,7 @@ namespace Barotrauma
         {
             yield return "cursor";
             yield return "inventory";
+            yield return "cargo";
 
 #if SERVER
             if (GameMain.Server != null)
@@ -3142,6 +3187,8 @@ namespace Barotrauma
                 }
             }
         }
+
+        private static ImmutableArray<string> ItemQualityNames = ["normal", "good", "excellent", "masterwork"];
 
         private static void TrySpawnItem(string[] args)
         {
@@ -3203,7 +3250,8 @@ namespace Barotrauma
 
             int amount = 1;
             int conditionPrc = 100;
-            
+            int itemQuality = 0;
+
             if (TryGetSpawnPosParam(out string spawnLocation, out int spawnLocationIndex))
             {
                 switch (spawnLocation)
@@ -3223,7 +3271,7 @@ namespace Barotrauma
                         break;
                     default:
                         var matchingCharacter = FindMatchingCharacter(args.Skip(1).Take(1).ToArray());
-                        if (matchingCharacter != null){ spawnInventory = matchingCharacter.Inventory; }
+                        if (matchingCharacter != null) { spawnInventory = matchingCharacter.Inventory; }
                         break;
                 }
 
@@ -3232,10 +3280,21 @@ namespace Barotrauma
                     if (!int.TryParse(args[spawnLocationIndex + 1], NumberStyles.Any, CultureInfo.InvariantCulture, out amount)) { amount = 1; }
                     amount = Math.Min(amount, 100);
                 }
-                
+
                 if (args.Length > spawnLocationIndex + 2)
                 {
-                    if (!int.TryParse(args[^1], NumberStyles.Any, CultureInfo.InvariantCulture, out conditionPrc)) { conditionPrc = 100; }
+                    if (!int.TryParse(args[spawnLocationIndex + 2], NumberStyles.Any, CultureInfo.InvariantCulture, out conditionPrc)) { conditionPrc = 100; }
+                }
+
+                if (args.Length > spawnLocationIndex + 3)
+                {
+                    for (int i = 0; i <= Quality.MaxQuality; i++)
+                    {
+                        if (args[spawnLocationIndex + 3].ToLowerInvariant() == ItemQualityNames[i])
+                        {
+                            itemQuality = i;
+                        }
+                    }
                 }
             }
             
@@ -3257,7 +3316,7 @@ namespace Barotrauma
                     }
                     else
                     {
-                        Entity.Spawner?.AddItemToSpawnQueue(itemPrefab, spawnPos.Value, condition: itemCondition);
+                        Entity.Spawner?.AddItemToSpawnQueue(itemPrefab, spawnPos.Value, condition: itemCondition, quality: itemQuality);
                     }
                 }
                 else if (spawnInventory != null)
@@ -3284,6 +3343,7 @@ namespace Barotrauma
                         }
 
                         item.Condition = item.Health * Math.Clamp(conditionPrc / 100f, 0f, 1f);
+                        item.Quality = itemQuality;
                     }
                 }
             }

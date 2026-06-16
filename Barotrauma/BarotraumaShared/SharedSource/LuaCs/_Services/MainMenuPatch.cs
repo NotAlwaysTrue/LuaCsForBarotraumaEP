@@ -43,7 +43,9 @@ internal class MainMenuPatch : ISystem, IEventScreenSelected
     {
         if (mainMenuUIAdded) { return; }
 
-        var textBlock = new GUITextBlock(new RectTransform(new Point(300, 30), screen.Frame.RectTransform, Anchor.TopLeft) { AbsoluteOffset = new Point(10, 10) }, "", Color.Red)
+        var textBlock = new GUITextBlock(
+            new RectTransform(new Point(300, 30), screen.Frame.RectTransform, Anchor.TopLeft) { AbsoluteOffset = new Point(10, 10) }, 
+            "", Color.Red, textAlignment: Alignment.TopLeft)
         {
             IgnoreLayoutGroups = false
         };

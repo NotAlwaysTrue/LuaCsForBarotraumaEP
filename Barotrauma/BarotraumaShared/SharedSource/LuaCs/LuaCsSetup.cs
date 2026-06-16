@@ -332,17 +332,9 @@ namespace Barotrauma
             void RunStateUnloaded_OnEnter(State<RunState> currentState)
             {
                 Logger.LogMessage("LuaCs unloaded state entered");
-
-                if (PackageManagementService.IsAnyPackageRunning())
-                {
-                    Logger.LogResults(PackageManagementService.StopRunningPackages());
-                }
-
-                if (PackageManagementService.IsAnyPackageLoaded())
-                {
-                    DisposeLuaCsConfig();
-                    Logger.LogResults(PackageManagementService.UnloadAllPackages());
-                }
+                Logger.LogResults(PackageManagementService.StopRunningPackages());
+                DisposeLuaCsConfig();
+                Logger.LogResults(PackageManagementService.UnloadAllPackages());
 
                 EventService.Reset();
                 ConfigService.Reset();
@@ -362,11 +354,7 @@ namespace Barotrauma
             void RunStateLoadedNoExec_OnEnter(State<RunState> currentState)
             {
                 Logger.LogMessage("LuaCs no execution state entered");
-
-                if (PackageManagementService.IsAnyPackageRunning())
-                {
-                    Logger.LogResults(PackageManagementService.StopRunningPackages());
-                }
+                Logger.LogResults(PackageManagementService.StopRunningPackages());
 
                 if (!PackageManagementService.IsAnyPackageLoaded())
                 {

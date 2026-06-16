@@ -396,7 +396,7 @@ class LuaScriptManagementService : ILuaScriptManagementService, ILuaDataService,
             typeof(ISettingList<ulong>),
             typeof(ISettingList<long>),
             typeof(ISettingList<float>),
-            typeof(ISettingList<double>),
+            typeof(ISettingList<double>)
         ];
 
         Dictionary<string, Dictionary<string, object>> settingsTable = [];
@@ -420,9 +420,9 @@ class LuaScriptManagementService : ILuaScriptManagementService, ILuaDataService,
             _script.Globals[keyPair.Key] = keyPair.Value;
         }
 
-        UserData.RegisterType(typeof(ISettingRangeBase<int>));
 #if CLIENT
         UserData.RegisterType(typeof(ISettingControl));
+        _script.Globals["SettingControl"] = UserData.CreateStatic(typeof(ISettingControl));
 #endif
 
         new LuaConverters(this).RegisterLuaConverters();

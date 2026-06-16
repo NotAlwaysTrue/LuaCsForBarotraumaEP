@@ -75,11 +75,11 @@ internal sealed class ModsGameplaySettingsMenu : ModsSettingsMenuBase
     
     
     // ReSharper restore FieldCanBeMadeReadOnly.Local
-    private const string SettingsResetButtonText = "LuaCsForBarotrauma.SettingsMenu.ResetVisibleSettings";
-    private const string SettingsResetPromptTitle = "LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Title";
-    private const string SettingsResetPromptContents = "LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Message";
-    private const string SettingsResetPromptYesText = "LuaCsForBarotrauma.SettingsMenu.ResetPrompt.Yes";
-    private const string SettingsResetPromptNoText = "LuaCsForBarotrauma.SettingsMenu.ResetPrompt.No";
+    private const string SettingsResetButtonText = $"{LuaCsSetup.PackageName}.SettingsMenu.ResetVisibleSettings";
+    private const string SettingsResetPromptTitle = $"{LuaCsSetup.PackageName}.SettingsMenu.ResetPrompt.Title";
+    private const string SettingsResetPromptContents = $"{LuaCsSetup.PackageName}.SettingsMenu.ResetPrompt.Message";
+    private const string SettingsResetPromptYesText = $"{LuaCsSetup.PackageName}.SettingsMenu.ResetPrompt.Yes";
+    private const string SettingsResetPromptNoText = $"{LuaCsSetup.PackageName}.SettingsMenu.ResetPrompt.No";
     
     
     private event Action OnApplyInstalledModsChanges;
@@ -100,7 +100,7 @@ internal sealed class ModsGameplaySettingsMenu : ModsSettingsMenuBase
         var menuTitleLayoutGroup = new GUILayoutGroup(
                 new RectTransform(new Vector2(1f, MenuTitleHeight), mainLayoutGroup.RectTransform, Anchor.TopLeft), true, Anchor.TopLeft);
         GUIUtil.Label(menuTitleLayoutGroup, 
-            GetLocalizedString("LuaCsForBarotrauma.SettingsMenu.ModGameplayButton", "Mod Gameplay Settings"), 
+            GetLocalizedString($"{LuaCsSetup.PackageName}.SettingsMenu.ModGameplayButton", "Mod Gameplay Settings"), 
             GUIStyle.LargeFont, new Vector2(1f, 1f));
         
         // page contents

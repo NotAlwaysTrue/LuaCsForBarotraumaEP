@@ -45,6 +45,7 @@ public sealed class ModConfigService : IModConfigService
 #if CLIENT
         _stylesParserService = stylesParserService;
 #endif
+        _storageService.UseCaching = false;
     } 
     
     #region Dispose

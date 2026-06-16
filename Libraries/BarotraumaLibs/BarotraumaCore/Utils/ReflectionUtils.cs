@@ -114,8 +114,8 @@ namespace Barotrauma
         public static void ResetCache()
         {
             CachedNonAbstractTypes.Clear();
-            CachedNonAbstractTypes.TryAdd(typeof(ReflectionUtils).Assembly, typeof(ReflectionUtils).Assembly.GetTypes().Where(t => !t.IsAbstract).ToImmutableArray());
             TypeSearchCache.Clear();
+            CachedNonAbstractTypes.TryAdd(typeof(ReflectionUtils).Assembly, typeof(ReflectionUtils).Assembly.GetTypes().Where(t => !t.IsAbstract).ToImmutableArray());
         }
         
         public static Type? GetType(string nameWithNamespace)

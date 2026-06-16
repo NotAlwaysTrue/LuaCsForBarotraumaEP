@@ -256,6 +256,7 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public Result<Assembly> CompileScriptAssembly([NotNull] string assemblyName,
         bool compileWithInternalAccess,
         ImmutableArray<SyntaxTree> syntaxTrees,
@@ -348,6 +349,7 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public FluentResults.Result<Assembly> LoadAssemblyFromFile(string assemblyFilePath, 
         ImmutableArray<string> additionalDependencyPaths)
     {
@@ -434,6 +436,8 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
         }
     }
 
+    
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public FluentResults.Result<Assembly> GetAssemblyByName(string assemblyName)
     {
         if (IsDisposed)
@@ -481,6 +485,7 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
         }
     }
     
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public FluentResults.Result<ImmutableArray<Type>> GetTypesInAssemblies()
     {
         if (IsDisposed)
@@ -501,6 +506,7 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public IEnumerable<Type> UnsafeGetTypesInAssemblies()
     {
         if (IsDisposed)
@@ -529,6 +535,7 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public Result<Type> GetTypeInAssemblies(string typeName)
     {
         if (IsDisposed)
@@ -557,13 +564,12 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
             return; // we don't want to invoke events twice nor cause strong GC handles.
         IsDisposed = true;
         this.Unload();
-        this.DisposeInternal();
         GC.SuppressFinalize(this);
     }
 
     ~AssemblyLoader()
     {
-        this.DisposeInternal();
+        this.Unload();
     }
     
     private void OnUnload(AssemblyLoadContext context)
@@ -578,8 +584,8 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
             Thread.Sleep(1000/Timing.FixedUpdateRate-1);
         }
         
-        var wf = new WeakReference<IAssemblyLoaderService>(this);
         _onUnload?.Invoke(this);
+        this.DisposeInternal();
     }
 
     private void DisposeInternal()
@@ -590,6 +596,9 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
         base.Unloading -= OnUnload;
         this._dependencyResolvers.Clear();
         this._loadedAssemblyData.Clear();
+        
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
+        GC.WaitForFullGCComplete(10);
     }
 
     protected override Assembly Load(AssemblyName assemblyName)
@@ -658,6 +667,7 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
         public readonly ImmutableArray<Type> Types;
         public readonly ImmutableDictionary<string, Type> TypesByName;
 
+        [MethodImpl(MethodImplOptions.NoOptimization)]
         public AssemblyData(Assembly assembly, byte[] assemblyImage)
         {
             Assembly = assembly ?? throw new ArgumentNullException(nameof(assembly));
@@ -667,6 +677,7 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
             TypesByName = Types.ToImmutableDictionary(type => type.FullName, type => type);
         }
 
+        [MethodImpl(MethodImplOptions.NoOptimization)]
         public AssemblyData(Assembly assembly, string path)
         {
             Assembly = assembly ?? throw new ArgumentNullException(nameof(assembly));
@@ -694,6 +705,7 @@ public sealed class AssemblyLoader : AssemblyLoadContext, IAssemblyLoaderService
             HashCode = AssemblyName.GetHashCode();
         }
         
+        [MethodImpl(MethodImplOptions.NoOptimization)]
         public AssemblyOrStringKey(string assemblyName)
         {
             if (assemblyName.IsNullOrWhiteSpace())

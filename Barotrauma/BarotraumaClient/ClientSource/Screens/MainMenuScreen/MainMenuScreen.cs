@@ -533,6 +533,18 @@ namespace Barotrauma
                     return true;
                 }
             };
+
+            new GUITickBox(new RectTransform(new Point(300, 30), Frame.RectTransform, Anchor.TopRight) { AbsoluteOffset = new Point(40, 280) },
+                "Lenient server startup timeouts")
+            {
+                Selected = NetConfig.UseLenientHandshake,
+                ToolTip = "Start with more lenient Lidgren handshake timeouts. The server is more likely to start even when running multiple instances on the same machine under heavy load.",
+                OnSelected = (tickBox) =>
+                {
+                    NetConfig.UseLenientHandshake = tickBox.Selected;
+                    return true;
+                }
+            };
 #endif
 
             var minButtonSize = new Point(120, 20);
@@ -1125,6 +1137,11 @@ namespace Barotrauma
                     NetConfig.UseLenientHandshake = true;
                 }
 #endif
+
+                if (NetConfig.UseLenientHandshake)
+                {
+                    arguments.Add("-lenienthandshake");
+                }
 
                 var processInfo = new ProcessStartInfo
                 {

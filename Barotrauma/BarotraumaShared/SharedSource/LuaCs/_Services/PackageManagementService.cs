@@ -194,7 +194,7 @@ public sealed class PackageManagementService : IPackageManagementService
         
         IService.CheckDisposed(this);
         var result = new FluentResults.Result();
-        var packages2 = packages.OrderBy(pkg => pkg.Name == "LuaCsForBarotrauma" ? 0 : 1) // always run lua cs first.
+        var packages2 = packages.OrderBy(pkg => pkg.Name == LuaCsSetup.PackageName ? 0 : 1) // always run lua cs first.
             .ThenBy(packages.IndexOf)
             .ToImmutableArray();
             
@@ -318,7 +318,7 @@ public sealed class PackageManagementService : IPackageManagementService
         
         // get loading order. Note: packages not in the execution order list will load first.
         var loadingOrderedPackages = _loadedPackages
-            .OrderBy(pkg => pkg.Key.Name == "LuaCsForBarotrauma" ? 0 : 1) // always run lua cs first.
+            .OrderBy(pkg => pkg.Key.Name == LuaCsSetup.PackageName ? 0 : 1) // always run lua cs first.
             .ThenBy(pkg => executionOrder.IndexOf(pkg.Key))
             .ToImmutableArray();
         var loadOrderByPackage = loadingOrderedPackages.Select(p => p.Key).ToImmutableArray();
@@ -415,7 +415,9 @@ public sealed class PackageManagementService : IPackageManagementService
         
         if (_loadedPackages.IsEmpty || _runningPackages.IsEmpty)
         {
+#if DEGUG
             _logger.LogWarning($"{nameof(StopRunningPackages)}: No packages are currently executing.");
+#endif
             return FluentResults.Result.Ok();
         }
         
