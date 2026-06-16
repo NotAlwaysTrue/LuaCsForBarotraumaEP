@@ -7,6 +7,7 @@ using FarseerPhysics.Dynamics;
 using Microsoft.Xna.Framework;
 using MoonSharp.Interpreter;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
@@ -747,7 +748,6 @@ namespace Barotrauma
             waterFlowThisFrame = 0.0f;
         }
 
-        private static readonly HashSet<Hull> checkedHulls = new HashSet<Hull>();
 
         /// <summary>
         /// Simulates water flow from the source to all the hulls it's connected to across the sub, as if the water was coming directly from outside.
@@ -755,7 +755,7 @@ namespace Barotrauma
         /// </summary>
         void SimulateWaterFlowFromOutsideToConnectedHulls(Hull hull, float maxFlow, float deltaTime)
         {
-            checkedHulls.Clear();
+            List<Hull> checkedHulls = new List<Hull>();
             checkedHulls.Add(hull);
             foreach (var connectedGap in hull.ConnectedGaps)
             {
@@ -766,7 +766,7 @@ namespace Barotrauma
             }
         }
 
-        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, HashSet<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
+        static void SimulateWaterFlowFromOutsideToConnectedHullsRecursive(Hull targetHull, Gap gap, List<Hull> checkedHulls, Hull originHull, float maxFlow, float deltaTime)
         {
             const float decay = 0.95f;
 
@@ -814,7 +814,12 @@ namespace Barotrauma
             if (outsideCollisionBlocker == null) { return false; }
             if (IsRoomToRoom || Submarine == null || open <= 0.0f || linkedTo.Count == 0 || linkedTo[0] is not Hull) 
             {
-                outsideCollisionBlocker.Enabled = false;
+                SingleThreadWorker.GlobalWorker.AddAction(() =>
+                {
+                    if (outsideCollisionBlocker == null) { return; }
+                    outsideCollisionBlocker.Enabled = false; 
+                });
+                
                 return false; 
             }
 
@@ -996,8 +1001,6 @@ namespace Barotrauma
         {
             base.Remove();
             GapList.Remove(this);
-
-            checkedHulls.Clear();
 
             foreach (Hull hull in Hull.HullList)
             {

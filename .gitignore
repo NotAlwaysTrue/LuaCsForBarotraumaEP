@@ -60,3 +60,4 @@ Deploy/DeployAll/PrivateKey.*
 
 #Rider
 *.DotSettings.user
+.vscode/settings.json

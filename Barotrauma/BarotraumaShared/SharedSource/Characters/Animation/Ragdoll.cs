@@ -1193,6 +1193,10 @@ namespace Barotrauma
 
         public void Teleport(Vector2 moveAmount, Vector2 velocityChange, bool detachProjectiles = true)
         {
+            // Hopefully this will fix some crashes :(
+            // If Collider was null then no need to procced: nothing is there already
+            if (Collider == null) { return; }
+
             foreach (Limb limb in Limbs)
             {
                 if (limb.IsSevered) { continue; }
@@ -1214,6 +1218,7 @@ namespace Barotrauma
 
             character.DisableImpactDamageTimer = 0.25f;
 
+            // Why they did null check below but didn't do it here????
             SetPosition(Collider.SimPosition + moveAmount);
             character.CursorPosition += moveAmount;
 
@@ -2235,8 +2240,9 @@ namespace Barotrauma
             if (limb == null)
             {
                 // Didn't seek or find a (valid) limb of the matching type. If there's multiple limbs of the same type, check the other limbs.
-                foreach (var l in limbs)
+                foreach (var l in Limbs)
                 {
+                    if (l == null) { continue; }
                     if (l.Removed) { continue; }
                     if (useSecondaryType)
                     {

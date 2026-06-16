@@ -49,6 +49,9 @@ namespace Barotrauma
         private GUITextBox serverNameBox, passwordBox, maxPlayersBox;
         private GUITickBox isPublicBox, wrongPasswordBanBox, karmaBox;
         private GUIDropDown languageDropdown, serverExecutableDropdown;
+#if DEBUG
+        private GUITickBox lenientHandshakeBox;
+#endif
         private readonly GUIButton joinServerButton, hostServerButton;
 
         private readonly GUIFrame modsButtonContainer;
@@ -1127,6 +1130,13 @@ namespace Barotrauma
                 int ownerKey = Math.Max(CryptoRandom.Instance.Next(), 1);
                 arguments.Add("-ownerkey");
                 arguments.Add(ownerKey.ToString());
+#if DEBUG
+                if (lenientHandshakeBox.Selected)
+                {
+                    arguments.Add("-lenienthandshake");
+                    NetConfig.UseLenientHandshake = true;
+                }
+#endif
 
                 if (NetConfig.UseLenientHandshake)
                 {
@@ -1600,6 +1610,14 @@ namespace Barotrauma
                 Selected = karmaEnabled,
                 ToolTip = TextManager.Get("hostserverkarmasettingtooltip")
             };
+
+#if DEBUG
+            lenientHandshakeBox = new GUITickBox(new RectTransform(new Vector2(0.5f, 1.0f), tickboxAreaLower.RectTransform), "DEBUG: Lenient server startup timeouts")
+            {
+                Selected = true,
+                ToolTip = "Start with more lenient Lidgren handshake timeouts. The server is more likely to start even when running multiple instances on the same machine under heavy load."
+            };
+#endif
 
             tickboxAreaLower.RectTransform.IsFixedSize = true;
 

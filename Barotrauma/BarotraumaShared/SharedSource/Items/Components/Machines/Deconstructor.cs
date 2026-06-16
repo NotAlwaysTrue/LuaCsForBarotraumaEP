@@ -210,6 +210,8 @@ namespace Barotrauma.Items.Components
                 amountMultiplier = (int)itemCreationMultiplier.Value;
             }
 
+            ApplyDeconstructionStatusEffects(targetItem, ActionType.OnDeconstructed, 1f);
+
             if (targetItem.Prefab.RandomDeconstructionOutput)
             {
                 int amount = targetItem.Prefab.RandomDeconstructionOutputAmount;

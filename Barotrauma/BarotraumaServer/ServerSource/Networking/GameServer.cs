@@ -1153,7 +1153,9 @@ namespace Barotrauma.Networking
             }
             else
             {
-                KickClient(c, errorStr);
+                //Is it necessary to kick a client for a non-existing entity?
+                //there are plenty of things have been done if received an non-existing entity update.
+                //KickClient(c, errorStr);
             }
         }
 
@@ -1217,17 +1219,24 @@ namespace Barotrauma.Networking
 
             errorLines.Add("");
             errorLines.Add("EntitySpawner events:");
-            foreach (var entityEvent in entityEventManager.UniqueEvents)
+            try
             {
-                if (entityEvent.Entity is EntitySpawner)
+                foreach (var entityEvent in entityEventManager.UniqueEvents.ToList())
                 {
-                    var spawnData = entityEvent.Data as EntitySpawner.SpawnOrRemove;
-                    errorLines.Add(
-                        entityEvent.ID + ": " +
-                        (spawnData is EntitySpawner.RemoveEntity ? "Remove " : "Create ") +
-                        spawnData.Entity.ToString() +
-                        " (" + spawnData.ID + ", " + spawnData.Entity.ID + ")");
+                    if (entityEvent.Entity is EntitySpawner)
+                    {
+                        var spawnData = entityEvent.Data as EntitySpawner.SpawnOrRemove;
+                        errorLines.Add(
+                            entityEvent.ID + ": " +
+                            (spawnData is EntitySpawner.RemoveEntity ? "Remove " : "Create ") +
+                            spawnData.Entity.ToString() +
+                            " (" + spawnData.ID + ", " + spawnData.Entity.ID + ")");
+                    }
                 }
+            }
+            catch
+            {
+                errorLines.Add("Failed to write EntitySpawner events.");
             }
 
             errorLines.Add("");
