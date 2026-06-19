@@ -1,4 +1,15 @@
 ﻿-------------------------------------------------------------------------------------------------------------------------------------------------
+v1.13.4.0 (Summer Update 2026 Hotfix 1)
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+- Fixed a missing gap in the reworked Typhon + other minor fixes.
+- Minor visual fixes to Orca 2.
+- Adjustments to Azimuth's lighting.
+- Tweaked Azimuth's stealth mode circuit to make piloting smoother.
+- Fixed "style" attribute in item GuiFrame XML being case-sensitive.
+- Fixed battery cells not being visible when charged in a battery or shuttle battery.
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
 v1.13.3.1 (Summer Update 2026)
 -------------------------------------------------------------------------------------------------------------------------------------------------
 
