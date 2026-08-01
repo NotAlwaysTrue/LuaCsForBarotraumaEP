@@ -109,7 +109,7 @@ namespace Barotrauma
 #if WINDOWS
                 Platform.Windows;
 #elif OSX
-                Platform.MacOS;
+                Platform.OSX;
 #elif LINUX
                 Platform.Linux;
 #else
