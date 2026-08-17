@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 
@@ -652,9 +653,14 @@ namespace Barotrauma
             var structureList = Structure.WallList.ToList();
 
             List<Gap> gapList = Gap.GapList.ToList();
-            List<Gap> shuffledGaps = new List<Gap>(gapList?.OrderBy(g => Rand.Int(int.MaxValue)));
-            // In case if it failed, but why it would fail?
-            shuffledGaps = shuffledGaps ?? gapList;
+            int n = gapList.Count;
+            Span<Gap> span = CollectionsMarshal.AsSpan(gapList);
+            Random rand = new Random();
+            for (int i = n - 1; i > 0; i--)
+            {
+                int j = rand.Next(i + 1);
+                (span[i], span[j]) = (span[j], span[i]);
+            }
 
             var itemList = Item.ItemList.ToList();
 
@@ -685,10 +691,10 @@ namespace Barotrauma
                 // moved waterflow reset here to see if we can reduce at least some time
                 {
                     // PLEASE WORK
-                    Parallel.ForEach(shuffledGaps, parallelOptions, gap =>
+                    Parallel.ForEach(gapList, parallelOptions, gap =>
                     {
-                        gap.ResetWaterFlowThisFrame();
-                        gap.Update(deltaTime, cam);
+                        gap?.ResetWaterFlowThisFrame();
+                        gap?.Update(deltaTime, cam);
                     });
                 },
                 // Powered components update
