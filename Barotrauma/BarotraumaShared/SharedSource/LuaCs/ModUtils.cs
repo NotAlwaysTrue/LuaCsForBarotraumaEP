@@ -108,8 +108,8 @@ namespace Barotrauma
             public static readonly Platform CurrentPlatform =
 #if WINDOWS
                 Platform.Windows;
-#elif MACOS
-                Platform.MacOS;
+#elif OSX
+                Platform.OSX;
 #elif LINUX
                 Platform.Linux;
 #else
